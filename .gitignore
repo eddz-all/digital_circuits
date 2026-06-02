@@ -1,0 +1,14 @@
+.DS_Store
+
+# GHDL simulation build artifacts
+work-obj*.cf
+*.o
+e~*.o
+mcu_v1_*_tb
+
+# Vivado local project/cache outputs
+.Xil/
+*.jou
+*.log
+*.str
+*.wdb
