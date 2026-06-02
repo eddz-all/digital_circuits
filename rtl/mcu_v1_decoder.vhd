@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use work.mcu_v1_pkg.all;
 
 entity mcu_v1_decoder is
     port (
@@ -17,8 +18,9 @@ entity mcu_v1_decoder is
         mem_to_reg    : out std_logic;
         flag_write    : out std_logic;
         branch_taken  : out std_logic;
+        branch_link   : out std_logic;
 
-        alu_control   : out std_logic_vector(2 downto 0);
+        alu_control   : out std_logic_vector(3 downto 0);
         alu_src_imm   : out std_logic;
 
         ra1           : out std_logic_vector(3 downto 0);
@@ -31,28 +33,6 @@ entity mcu_v1_decoder is
 end entity mcu_v1_decoder;
 
 architecture rtl of mcu_v1_decoder is
-    constant ALU_AND : std_logic_vector(2 downto 0) := "000";
-    constant ALU_ORR : std_logic_vector(2 downto 0) := "001";
-    constant ALU_ADD : std_logic_vector(2 downto 0) := "010";
-    constant ALU_SUB : std_logic_vector(2 downto 0) := "011";
-    constant ALU_MUL : std_logic_vector(2 downto 0) := "100";
-    constant ALU_ASR : std_logic_vector(2 downto 0) := "101";
-    constant ALU_MOV : std_logic_vector(2 downto 0) := "110";
-
-    constant COND_EQ : std_logic_vector(3 downto 0) := "0000";
-    constant COND_NE : std_logic_vector(3 downto 0) := "0001";
-    constant COND_AL : std_logic_vector(3 downto 0) := "1110";
-
-    constant OP_DATA   : std_logic_vector(1 downto 0) := "00";
-    constant OP_MEM    : std_logic_vector(1 downto 0) := "01";
-    constant OP_BRANCH : std_logic_vector(1 downto 0) := "10";
-
-    constant OPC_ADD : std_logic_vector(3 downto 0) := "0100";
-    constant OPC_SUB : std_logic_vector(3 downto 0) := "0010";
-    constant OPC_MOV : std_logic_vector(3 downto 0) := "1101";
-    constant OPC_CMP : std_logic_vector(3 downto 0) := "1010";
-    constant OPC_MUL : std_logic_vector(3 downto 0) := "1001";
-    constant OPC_ASR : std_logic_vector(3 downto 0) := "1111";
 begin
     process(all)
         variable cond_ok_v : std_logic;
@@ -68,6 +48,7 @@ begin
         mem_to_reg    <= '0';
         flag_write    <= '0';
         branch_taken  <= '0';
+        branch_link   <= '0';
         alu_control   <= ALU_ADD;
         alu_src_imm   <= '0';
 
@@ -105,11 +86,17 @@ begin
                 end if;
 
                 case instr(24 downto 21) is
+                    when OPC_AND =>
+                        alu_control <= ALU_AND;
+                        reg_write <= cond_ok_v;
                     when OPC_ADD =>
                         alu_control <= ALU_ADD;
                         reg_write <= cond_ok_v;
                     when OPC_SUB =>
                         alu_control <= ALU_SUB;
+                        reg_write <= cond_ok_v;
+                    when OPC_ORR =>
+                        alu_control <= ALU_ORR;
                         reg_write <= cond_ok_v;
                     when OPC_MOV =>
                         alu_control <= ALU_MOV;
@@ -161,10 +148,47 @@ begin
                 end if;
 
             when OP_BRANCH =>
-                if instr(25 downto 24) /= "00" then
+                if instr(25) /= '0' then
                     illegal_v := '1';
                 end if;
                 branch_taken <= cond_ok_v;
+                branch_link <= cond_ok_v and instr(24);
+                if instr(24) = '1' then
+                    reg_write <= cond_ok_v;
+                    wa <= x"E";
+                end if;
+
+            when OP_EXT =>
+                alu_src_imm <= '0';
+                ra1 <= instr(19 downto 16);
+                ra2 <= instr(3 downto 0);
+                wa  <= instr(15 downto 12);
+                reg_write <= cond_ok_v;
+
+                if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                    illegal_v := '1';
+                end if;
+
+                case instr(25 downto 21) is
+                    when EXT_SHADD16 =>
+                        alu_control <= ALU_SHADD16;
+                    when EXT_SHSUB16 =>
+                        alu_control <= ALU_SHSUB16;
+                    when EXT_SMUAD =>
+                        alu_control <= ALU_SMUAD;
+                    when EXT_SMUSD =>
+                        alu_control <= ALU_SMUSD;
+                    when EXT_SXTH =>
+                        alu_control <= ALU_SXTH;
+                        ra2 <= (others => '0');
+                        if instr(3 downto 0) /= x"0" then
+                            illegal_v := '1';
+                        end if;
+                    when EXT_PKHBT =>
+                        alu_control <= ALU_PKHBT;
+                    when others =>
+                        illegal_v := '1';
+                end case;
 
             when others =>
                 illegal_v := '1';
@@ -177,6 +201,7 @@ begin
             mem_to_reg   <= '0';
             flag_write   <= '0';
             branch_taken <= '0';
+            branch_link  <= '0';
         end if;
 
         cond_ok <= cond_ok_v;

@@ -15,7 +15,7 @@
 3. 后续把机器码写入 instr_rom
 ```
 
-第一版目标不是完整 ARM，而是一个 ARM-like 裁剪版 MCU：32-bit 定长指令、保留 cond 条件字段、保留数据处理/访存/分支三大类，只支持 FFT 第一版真正需要的最小指令子集。
+第一版目标不是完整 ARM，而是一个 ARM-like 裁剪版 MCU：32-bit 定长指令、保留 cond 条件字段、保留数据处理/访存/分支三大类。当前 GHDL baseline 已覆盖 PPT 最低指令集所需的 `ADD / SUB / AND / ORR / MOV / LDR / STR / B / BL`，并额外支持 FFT 第一版需要的 `CMP / BEQ / BNE / MUL / ASR`。DSP 加速分支还新增 `op=11` 扩展类 packed 指令，用于 V2 FFT 加速。
 
 ## 1. 总体约定
 
@@ -165,7 +165,8 @@ R9          工作区基址或工作指针
 R10         输出区基址或输出指针
 R11         循环计数器、偏移或临时变量
 R12         常量寄存器，例如 23170
-R13 ~ R14   预留
+R13         预留
+R14         BL 链接寄存器
 R15         不作为普通寄存器使用
 ```
 
@@ -173,40 +174,60 @@ R15         不作为普通寄存器使用
 
 ```text
 R13 作为栈指针
-R14 作为链接寄存器
+R14 / BX 作为函数返回机制
 程序中直接写 R15
 ```
 
 寄存器不够时，使用内部 work RAM 暂存，不使用栈。
 
-## 5. 第一版正式支持指令
+## 5. V1 baseline 正式支持指令
 
-成员 A 当前可以直接依赖：
+成员 A 在基础版 FFT 程序中可以直接依赖：
 
 ```text
 MOV
 ADD
 SUB
+AND
+ORR
 CMP
 LDR
 STR
 B
+BL
 BEQ
 BNE
 MUL
 ASR
 ```
 
-第一版不要依赖：
+`dsp` 分支为了 V2 packed FFT 加速，额外支持：
 
 ```text
-BL
+SHADD16
+SHSUB16
+SMUAD
+SMUSD
+SXTH
+PKHBT
+```
+
+V1 baseline 不要依赖：
+
+```text
 BX
 函数调用
 栈
 MLA
 packed DSP 指令
 批量访存
+```
+
+说明：
+
+```text
+BL 已用于满足 PPT 标准指令仿真要求，会把 PC + 4 写入 R14。
+当前没有 BX，也没有栈/函数调用约定；FFT 程序仍然写成直线代码，不依赖 BL 返回。
 ```
 
 第一版 FFT 程序建议写成：
@@ -260,8 +281,10 @@ op[27:26] = 11  预留扩展
 opcode：
 
 ```text
+0000 = AND
 0100 = ADD
 0010 = SUB
+1100 = ORR
 1101 = MOV
 1010 = CMP
 1001 = MUL
@@ -355,9 +378,9 @@ address = Rn + zero_extend(imm12)
 
 ```text
 31        28 27 26 25 24 23                                   0
-+------------+-----+-----+--------------------------------------+
-|    cond    | 10  | 00  |                imm24                 |
-+------------+-----+-----+--------------------------------------+
++------------+-----+--+--+--------------------------------------+
+|    cond    | 10  | 0| L|                imm24                 |
++------------+-----+--+--+--------------------------------------+
 ```
 
 分支目标计算统一采用：
@@ -365,6 +388,13 @@ address = Rn + zero_extend(imm12)
 ```text
 branch_offset = sign_extend(imm24) << 2
 pc_next       = PC + 8 + branch_offset
+```
+
+其中：
+
+```text
+L = 0: B / BEQ / BNE，不写链接寄存器
+L = 1: BL，写 R14 = PC + 4
 ```
 
 注意：
@@ -383,6 +413,36 @@ BEQ / BNE 读取 Z
 ```
 
 成员 A 第一版程序不要依赖 `ADD/SUB` 顺手改 flags。
+
+## 10.1 DSP 扩展类
+
+DSP 加速分支使用原先预留的：
+
+```text
+op[27:26] = 11
+```
+
+格式：
+
+```text
+31        28 27 26 25     21 20 19    16 15    12 11       4 3      0
++------------+-----+---------+--+--------+--------+----------+--------+
+|    cond    | 11  |  funct  | 0|   Rn   |   Rd   | reserved |   Rm   |
++------------+-----+---------+--+--------+--------+----------+--------+
+```
+
+funct：
+
+```text
+00000 = SHADD16
+00001 = SHSUB16
+00010 = SMUAD
+00011 = SMUSD
+00100 = SXTH
+00101 = PKHBT
+```
+
+这些指令用于 `asm/fft8_v2_packed_dsp.s`，不会影响 V1 scalar baseline。
 
 ## 11. FFT 算法约定
 
@@ -434,10 +494,12 @@ X0, X4, X2, X6, X1, X5, X3, X7
 工作区 LDR/STR：32-bit
 输出区 STR：寄存器 32-bit -> 外部 16-bit
 MOV / ADD / SUB / CMP
+B / BL / BEQ / BNE，PC + 8 分支语义
+AND / ORR
 LDR / STR 立即数偏移
-B / BEQ / BNE，PC + 8 分支语义
 signed MUL，结果取 32-bit
 ASR #imm，至少支持 #1 和 #15
+DSP 加速分支额外支持 SHADD16 / SHSUB16 / SMUAD / SMUSD / SXTH / PKHBT
 ```
 
 最关键的最新变化：

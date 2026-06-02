@@ -4,6 +4,185 @@
 
 本文档用于在后续会话中快速恢复上下文，继续完成数字电路课程设计中的 8 点 FFT 速度榜任务。
 
+## 下一会话先读这里
+
+当前仓库工作目录：
+
+```text
+/Users/eddz/work/Digital_Circuits
+```
+
+当前工作分支：
+
+```text
+dsp
+```
+
+当前最重要状态：
+
+```text
+V1 scalar baseline 已完成，用于基础要求和 32-bit fixed reference。
+V2 packed DSP 已完成，用于拓展加速要求。
+V3 fused DSP 尚未实现，是下一步如果继续提速的方向。
+```
+
+完整实验数据汇总文档：
+
+```text
+docs/fft8_experiment_results.md
+```
+
+当前速度结果：
+
+```text
+V1 scalar:
+  286 instructions
+  276 timed_steps
+
+V2 packed DSP:
+  120 instructions
+  109 timed_steps
+  已达到原目标 timed_steps <= 130
+```
+
+当前 GHDL core 仿真数据：
+
+```text
+Testbench:
+  tb/mcu_v1_core_tb.vhd
+
+V1 scalar FFT:
+  MEM_FILE = asm/fft8_v1_mcu32_basic.mem
+  x0 impulse 输入:
+    x0.real = 32760
+    其余 real/imag = 0
+  x0 impulse 输出:
+    X0..X7 全部 real = 4095, imag = 0
+
+  x1 impulse 输入:
+    x1.real = 32760
+    其余 real/imag = 0
+  x1 impulse 输出槽位:
+    slot  0 =  4095
+    slot  1 =     0
+    slot  2 = -4095
+    slot  3 =     0
+    slot  4 =     0
+    slot  5 = -4095
+    slot  6 =     0
+    slot  7 =  4095
+    slot  8 =  2895
+    slot  9 = -2896
+    slot 10 = -2896
+    slot 11 =  2896
+    slot 12 = -2896
+    slot 13 = -2896
+    slot 14 =  2896
+    slot 15 =  2895
+  PC:
+    0x00000474
+  halted_debug:
+    1
+  illegal_debug:
+    0
+
+V2 packed DSP FFT, x0 impulse:
+  MEM_FILE = asm/fft8_v2_packed_dsp.mem
+  输入:
+    x0.real = 32760
+    其余 real/imag = 0
+  输出:
+    X0..X7 全部 real = 4095, imag = 0
+  PC:
+    0x000001DC
+  halted_debug:
+    1
+  illegal_debug:
+    0
+
+V2 packed DSP FFT, x1 impulse:
+  输入:
+    x1.real = 32760
+    其余 real/imag = 0
+  输出槽位:
+    slot  0 =  4095
+    slot  1 =     0
+    slot  2 = -4095
+    slot  3 =     0
+    slot  4 =     0
+    slot  5 = -4095
+    slot  6 =     0
+    slot  7 =  4095
+    slot  8 =  2895
+    slot  9 = -2896
+    slot 10 = -2896
+    slot 11 =  2896
+    slot 12 = -2896
+    slot 13 = -2896
+    slot 14 =  2896
+    slot 15 =  2895
+  PC:
+    0x000001DC
+  halted_debug:
+    1
+  illegal_debug:
+    0
+```
+
+注意速度单位：
+
+```text
+脚本里的 timed_steps/cnt_test 不是 PPT 表格里的 万次/秒。
+速度 = 时钟频率 / cnt_test
+如果按 150 MHz 估算，V2 = 150 MHz / 109 = 137.61 万次/秒。
+这已经接近用户截图里的 136.84 万次/秒档位。
+```
+
+当前架构判断：
+
+```text
+V1/V2 不是双核。
+V1/V2 是单核、单周期、单发射 MCU。
+tb/mcu_v1_core_tb.vhd 里的 basic_core / fft_core / fast_core 三个实例只是为了 GHDL 同时验证三个程序，不代表最终设计是多核。
+```
+
+下一步如果用户说“继续加速”：
+
+```text
+不要优先做双核或单核多发射。
+建议继续单核、单周期、单发射，做 V3 融合指令。
+原因：融合指令最直接降低 cnt_test，也最容易继续用 GHDL 证明。
+```
+
+推荐 V3 additive 方案：
+
+```text
+新增 asm/fft8_v3_fused_dsp.s，不替换 V1/V2。
+
+优先新增：
+  LDCPLX   一条指令读 real/imag 并打包
+  STCPLX   一条指令拆 packed real/imag 并写出
+  ROTMJ    packed complex 乘 -j
+  CMULW1   packed complex 乘 W8^1 = 0.7071 - j0.7071
+  CMULW3   packed complex 乘 W8^3 = -0.7071 - j0.7071
+
+目标：
+  把 V2 的 109 timed_steps 压到 50-60 timed_steps，接近 PPT 277.78 万次/秒档位。
+```
+
+下一会话建议执行顺序：
+
+```text
+1. 先看本节和 0.5 / 0.6。
+2. 不要切分支，继续在 dsp 分支。
+3. 先跑 V1/V2 回归确认基线仍过。
+4. 设计 V3 opcode/funct map。
+5. 扩展 assembler + host interpreter。
+6. 新增 asm/fft8_v3_fused_dsp.s。
+7. 扩展 RTL control/data_mem/ALU。
+8. 增加 GHDL tests 并跑完整回归。
+```
+
 ## 0. 2026-06-02 最新接口覆盖说明
 
 2026-06-02 用户补充两份最新要求：
@@ -58,11 +237,16 @@ ADD R12, R12, #2695
 /Users/eddz/work/Digital_Circuits/tools/test_fft8_v1_mcu32_basic.py
 /Users/eddz/work/Digital_Circuits/tools/assemble_mcu_v1.py
 /Users/eddz/work/Digital_Circuits/docs/fft8_v1_mcu32_check_rules.md
+/Users/eddz/work/Digital_Circuits/rtl/mcu_v1_pkg.vhd
 /Users/eddz/work/Digital_Circuits/rtl/mcu_v1_decoder.vhd
 /Users/eddz/work/Digital_Circuits/rtl/mcu_v1_alu.vhd
 /Users/eddz/work/Digital_Circuits/rtl/mcu_v1_regfile.vhd
 /Users/eddz/work/Digital_Circuits/rtl/mcu_v1_instr_rom.vhd
+/Users/eddz/work/Digital_Circuits/rtl/mcu_v1_input_mem.vhd
+/Users/eddz/work/Digital_Circuits/rtl/mcu_v1_work_ram.vhd
+/Users/eddz/work/Digital_Circuits/rtl/mcu_v1_output_mem.vhd
 /Users/eddz/work/Digital_Circuits/rtl/mcu_v1_data_mem.vhd
+/Users/eddz/work/Digital_Circuits/rtl/mcu_v1_pc_unit.vhd
 /Users/eddz/work/Digital_Circuits/rtl/mcu_v1_core.vhd
 /Users/eddz/work/Digital_Circuits/tb/mcu_v1_decoder_tb.vhd
 /Users/eddz/work/Digital_Circuits/tb/mcu_v1_core_tb.vhd
@@ -71,6 +255,396 @@ ADD R12, R12, #2695
 /Users/eddz/work/Digital_Circuits/asm/test_mcu_v1_basic.s
 /Users/eddz/work/Digital_Circuits/asm/test_mcu_v1_basic.mem
 /Users/eddz/work/Digital_Circuits/asm/test_mcu_v1_basic.lst
+/Users/eddz/work/Digital_Circuits/asm/fft8_v2_packed_dsp.s
+/Users/eddz/work/Digital_Circuits/asm/fft8_v2_packed_dsp.mem
+/Users/eddz/work/Digital_Circuits/asm/fft8_v2_packed_dsp.lst
+/Users/eddz/work/Digital_Circuits/tools/test_fft8_v2_packed_dsp.py
+/Users/eddz/work/Digital_Circuits/tb/mcu_v1_alu_tb.vhd
+/Users/eddz/work/Digital_Circuits/docs/fft8_v2_packed_dsp.md
+/Users/eddz/work/Digital_Circuits/docs/fft8_experiment_results.md
+```
+
+## 0.6 2026-06-02 最新讨论与下一会话入口
+
+当前工作分支：
+
+```text
+dsp
+```
+
+当前状态：
+
+```text
+V1 scalar baseline 已完成，保留为基础要求/reference。
+V2 packed DSP 加速版已完成，作为拓展要求。
+V3 融合指令版尚未实现。
+```
+
+用户后续问过“为什么速度还没有截图里的 PPT 排行榜高”。需要记住：截图单位是 `万次/秒`，而当前脚本报告的是 `timed_steps / cnt_test`。二者换算需要乘上时钟频率：
+
+```text
+速度 = 时钟频率 / cnt_test
+```
+
+如果按常见 `150 MHz` 估算：
+
+```text
+V1: 150 MHz / 276 = 54.35 万次/秒
+V2: 150 MHz / 109 = 137.61 万次/秒
+```
+
+所以 V2 的 `109 timed_steps` 实际已经接近用户截图里的 `136.84 万次/秒` 档位。若要达到：
+
+```text
+277.78 万次/秒 -> cnt 约 54
+652.27 万次/秒 -> cnt 约 23
+```
+
+这意味着下一轮不能只小修小补，需要 V3 把 cycles 从 109 继续压到约 50-60，甚至更低。
+
+重要架构解释：
+
+```text
+当前 V1/V2 不是双核。
+当前是单核、单周期、单发射 MCU。
+tb/mcu_v1_core_tb.vhd 里 basic_core / fft_core / fast_core 三个实例只是为了 GHDL 同时验证不同程序，不是最终设计中的多核。
+```
+
+术语解释：
+
+```text
+单核单发射：
+  一个 core，每个周期最多发射/执行一条指令。
+  当前 V1/V2 属于这个类型。
+
+单核多发射：
+  一个 core，每个周期可以同时发射多条不冲突的指令。
+  理论上能减少 cycles，但需要双取指、双译码、多端口 regfile、多 ALU、访存冲突和数据相关处理。
+  对本课设来说复杂度高，不建议优先做。
+```
+
+下一步推荐方向：
+
+```text
+继续单核、单周期、单发射；
+不要优先做双核或多发射；
+优先做 V3 融合指令，因为它最容易直接降低 cnt_test，也最容易用 GHDL 证明。
+```
+
+推荐 V3 指令方向：
+
+```text
+LDCPLX Rd, [Rn + offset]
+  从外部 real/imag 相邻 16-bit 槽位读取一个复数并打包到 Rd。
+  等价替代 V2 中 LDR real + LDR imag + PKHBT。
+
+STCPLX Rs, [Rn + offset]
+  把 packed complex 的 low/high halfword 分别写到外部 real/imag 相邻槽位。
+  等价替代 V2 中 STR real + ASR imag + STR imag。
+
+ROTMJ Rd, Rn
+  packed complex 乘 -j。
+  等价替代 SXTH + ASR #16 + SUB + PKHBT。
+
+CMULW1 Rd, Rn
+  packed complex 乘 W8^1 = 0.7071 - j0.7071。
+  等价替代 SMUAD + SMUSD + SUB + ASR + ASR + PKHBT。
+
+CMULW3 Rd, Rn
+  packed complex 乘 W8^3 = -0.7071 - j0.7071。
+  保持 V2 里当前采用的 rounding/shift 顺序。
+```
+
+粗略收益估计：
+
+```text
+V2 输入打包：16 LDR + 8 PKHBT = 24 条
+V3 LDCPLX：8 条
+省约 16 cycles
+
+V2 输出拆包：8 STR + 8 ASR + 8 STR = 24 条
+V3 STCPLX：8 条
+省约 16 cycles
+
+V2 旋转序列：W1/W3/-j 都是多条固定模板
+V3 ROTMJ/CMULW1/CMULW3 可再省约 20+ cycles
+```
+
+因此 V3 有希望从：
+
+```text
+V2: 109 timed_steps
+```
+
+压到：
+
+```text
+V3 target: 50-60 timed_steps
+```
+
+这样才可能接近用户截图中的 `277.78 万次/秒` 档位。
+
+实现提醒：
+
+```text
+LDCPLX / STCPLX 想保持单周期，需要扩展 mcu_v1_data_mem / input_mem / output_mem 的相邻槽位双读或双写能力。
+这不等于多发射，仍然是一条指令一个周期，只是这条指令内部做了更宽的 memory 操作。
+V3 应该 additive：新增 asm/fft8_v3_fused_dsp.s，不替换或删除 V1/V2。
+```
+
+下一会话如果用户说“继续做 V3”，建议先做：
+
+```text
+1. 设计 V3 opcode/funct map，保留现有 V1/V2 编码。
+2. 扩展 assembler + host interpreter。
+3. 新增 asm/fft8_v3_fused_dsp.s。
+4. 扩展 RTL control/data_mem 支持 LDCPLX/STCPLX 和 fused rotate。
+5. 增加 ALU/data_mem/decoder/core GHDL tests。
+6. 跑完整 regression。
+```
+
+## 0.5 2026-06-02 DSP 分支 packed FFT 加速进展
+
+用户要求不要直接改基础版电路，而是在 `dsp` 分支实现拓展加速版。当前已在 `dsp` 分支新增 packed DSP 扩展，V1 scalar baseline 仍保留。
+
+新增指令类：
+
+```text
+op[27:26] = 11
+funct[25:21]
+reserved[20] = 0
+
+00000 = SHADD16
+00001 = SHSUB16
+00010 = SMUAD
+00011 = SMUSD
+00100 = SXTH
+00101 = PKHBT
+```
+
+新增 fast FFT：
+
+```text
+asm/fft8_v2_packed_dsp.s
+asm/fft8_v2_packed_dsp.mem
+asm/fft8_v2_packed_dsp.lst
+tools/test_fft8_v2_packed_dsp.py
+docs/fft8_v2_packed_dsp.md
+```
+
+当前 V2 指标：
+
+```text
+120 条指令
+119 条执行指令 before DONE self-loop
+109 条 timed steps
+目标 timed_steps <= 130 已达到
+V1 baseline timed_steps = 276
+```
+
+数值验证口径：
+
+```text
+常见边界样例 + 1000 组中等幅度随机输入：精确匹配 V1 scalar fixed model
+5000 组完整 16-bit 随机输入：精确匹配 packed DSP fixed model
+```
+
+完整 16-bit 随机输入不强制匹配 V1 scalar，是因为 packed halfword 旋转中间值可能超过 signed 16-bit lane，V2 会按 halfword lane 语义截断；V1 scalar baseline 会保留 32-bit 中间值。答辩时建议把 V1 作为准确 reference，把 V2 作为 packed DSP 加速拓展展示。
+
+当前新增 GHDL 覆盖：
+
+```text
+tb/mcu_v1_alu_tb.vhd
+  SHADD16 / SHSUB16 / SMUAD / SMUSD / SXTH / PKHBT
+
+tb/mcu_v1_decoder_tb.vhd
+  新增 DSP opcode decode 与非法扩展格式检查
+
+tb/mcu_v1_core_tb.vhd
+  fast_core 加载 asm/fft8_v2_packed_dsp.mem
+  x0 impulse -> 全部 real=4095, imag=0
+  x1 impulse -> bit-reversal spectrum
+```
+
+当前 GHDL core 仿真数据：
+
+```text
+V1 scalar FFT:
+  asm/fft8_v1_mcu32_basic.mem
+  input:  x0.real=32760, others=0
+  output: X0..X7 all real=4095, imag=0
+  x1 impulse output slots:
+    0:  4095
+    1:     0
+    2: -4095
+    3:     0
+    4:     0
+    5: -4095
+    6:     0
+    7:  4095
+    8:  2895
+    9: -2896
+   10: -2896
+   11:  2896
+   12: -2896
+   13: -2896
+   14:  2896
+   15:  2895
+  pc_debug=0x00000474
+  halted_debug=1
+  illegal_debug=0
+
+V2 packed DSP FFT:
+  asm/fft8_v2_packed_dsp.mem
+  x0 impulse output: X0..X7 all real=4095, imag=0
+  x0 pc_debug=0x000001DC, halted_debug=1, illegal_debug=0
+
+  x1 impulse output slots:
+    0:  4095
+    1:     0
+    2: -4095
+    3:     0
+    4:     0
+    5: -4095
+    6:     0
+    7:  4095
+    8:  2895
+    9: -2896
+   10: -2896
+   11:  2896
+   12: -2896
+   13: -2896
+   14:  2896
+   15:  2895
+  x1 pc_debug=0x000001DC, halted_debug=1, illegal_debug=0
+```
+
+## 0.4 2026-06-02 VHDL 模块化进展
+
+为便于讲解，当前 RTL 已进一步模块化。
+
+新增：
+
+```text
+rtl/mcu_v1_pkg.vhd
+rtl/mcu_v1_input_mem.vhd
+rtl/mcu_v1_work_ram.vhd
+rtl/mcu_v1_output_mem.vhd
+rtl/mcu_v1_pc_unit.vhd
+```
+
+当前模块职责：
+
+```text
+mcu_v1_pkg        公共常量：ALU 控制码、opcode、条件码、地址区域码
+mcu_v1_decoder    指令译码和控制信号
+mcu_v1_regfile    16 个 32-bit 寄存器
+mcu_v1_alu        AND / ORR / ADD / SUB / MUL / ASR / MOV；dsp 分支还支持 packed DSP 操作
+mcu_v1_instr_rom  指令 ROM，读取 .mem
+mcu_v1_pc_unit    PC+4、PC+8+branch_offset、自循环 halted 检测
+mcu_v1_data_mem   数据地址区路由
+mcu_v1_input_mem  输入区，模拟 test_ROM，16-bit signed -> 32-bit signed
+mcu_v1_work_ram   工作区，32-bit RAM
+mcu_v1_output_mem 输出区，模拟 verify_RAM，写入低 16-bit
+mcu_v1_core       顶层连线
+```
+
+新的 GHDL 编译顺序：
+
+```text
+ghdl -a --std=08 \
+  rtl/mcu_v1_pkg.vhd \
+  rtl/mcu_v1_decoder.vhd \
+  rtl/mcu_v1_alu.vhd \
+  rtl/mcu_v1_regfile.vhd \
+  rtl/mcu_v1_instr_rom.vhd \
+  rtl/mcu_v1_input_mem.vhd \
+  rtl/mcu_v1_work_ram.vhd \
+  rtl/mcu_v1_output_mem.vhd \
+  rtl/mcu_v1_data_mem.vhd \
+  rtl/mcu_v1_pc_unit.vhd \
+  rtl/mcu_v1_core.vhd \
+  tb/mcu_v1_alu_tb.vhd \
+  tb/mcu_v1_decoder_tb.vhd \
+  tb/mcu_v1_core_tb.vhd
+```
+
+## 0.3 2026-06-02 指令集完善进展
+
+根据 `数字电路实验_MCU.pptx` 第 3 页最低要求，MCU 至少需要支持：
+
+```text
+ADD / SUB / AND / OR / MOV / LDR / STR / B/BL
+```
+
+当前 GHDL baseline 已补齐：
+
+```text
+AND
+ORR   ; PPT 写 OR，ARM mnemonic 使用 ORR；汇编器同时接受 OR 作为别名
+BL
+```
+
+当前正式支持指令变为：
+
+```text
+MOV / ADD / SUB / AND / ORR / CMP / LDR / STR / B / BL / BEQ / BNE / MUL / ASR
+```
+
+BL 编码沿用当前分支类格式：
+
+```text
+op[27:26] = 10
+bit25     = 0
+bit24     = L
+L = 0: B / BEQ / BNE
+L = 1: BL
+branch target = PC + 8 + (sign_extend(imm24) << 2)
+BL link write = R14 = PC + 4
+```
+
+已修改：
+
+```text
+tools/assemble_mcu_v1.py
+rtl/mcu_v1_decoder.vhd
+rtl/mcu_v1_core.vhd
+tb/mcu_v1_decoder_tb.vhd
+tb/mcu_v1_core_tb.vhd
+asm/test_mcu_v1_basic.s
+asm/test_mcu_v1_basic.mem
+asm/test_mcu_v1_basic.lst
+docs/member2_mcu_isa_plan.md
+docs/mcu_v1_decoder_vhdl.md
+docs/mcu_v1_single_cycle_core.md
+```
+
+新增基础程序检查：
+
+```text
+AND R6, R6, R7   ; 10 AND 12 = 8
+ORR R7, R6, #3   ; 8 OR 3 = 11
+BL AFTER_BL      ; R14 = 0x0074
+```
+
+最新验证：
+
+```text
+python3 tools/test_fft8_v1_mcu32_basic.py
+python3 tools/assemble_mcu_v1.py asm/fft8_v1_mcu32_basic.s
+python3 tools/assemble_mcu_v1.py asm/test_mcu_v1_basic.s
+ghdl -a/e/r mcu_v1_decoder_tb
+ghdl -a/e/r mcu_v1_core_tb
+```
+
+结果：
+
+```text
+FFT 对拍通过
+fft8_v1_mcu32_basic.s: 286 instructions, DONE PC 0x0474
+test_mcu_v1_basic.s:   36 instructions, DONE PC 0x008C
+mcu_v1_decoder_tb passed
+mcu_v1_core_tb passed
 ```
 
 ## 1. 当前任务
@@ -285,10 +859,13 @@ STR R1, [R10 + 4]
 MOV
 ADD
 SUB
+AND
+ORR
 CMP
 LDR
 STR
 B
+BL
 BEQ
 BNE
 MUL
@@ -298,7 +875,6 @@ ASR
 第一版不要依赖：
 
 ```text
-BL
 BX
 函数调用
 栈
@@ -326,7 +902,8 @@ R9         工作区基址或工作指针
 R10        输出区基址或输出指针
 R11        循环计数器或偏移
 R12        常量寄存器，例如 23170
-R13 ~ R14  预留
+R13        预留
+R14        BL 链接寄存器
 R15        不作为普通寄存器使用
 ```
 
@@ -483,7 +1060,7 @@ X0, X4, X2, X6, X1, X5, X3, X7
 INPUT_BASE / WORK_BASE / OUTPUT_BASE = 0x000 / 0x100 / 0x200
 输入区、工作区、输出区程序视角统一 +4
 不依赖 BX / MLA
-正式支持 MOV/ADD/SUB/CMP/LDR/STR/B/BEQ/BNE/MUL/ASR
+正式支持 MOV/ADD/SUB/AND/ORR/CMP/LDR/STR/B/BL/BEQ/BNE/MUL/ASR
 ```
 
 ### 第二步：编写第一版真正兼容接口的 FFT 汇编
@@ -499,7 +1076,7 @@ INPUT_BASE / WORK_BASE / OUTPUT_BASE = 0x000 / 0x100 / 0x200
 ```text
 只使用 MOV/ADD/SUB/CMP/LDR/STR/B/BEQ/BNE/MUL/ASR
 不使用 BX
-不使用 BL
+不使用 BL（MCU 已支持 BL，但 FFT 主程序不需要函数调用）
 不使用 MLA
 不使用 LDM/STM
 不使用 SHADD16/SHSUB16/SMUAD/SMUSD

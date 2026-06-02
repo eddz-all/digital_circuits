@@ -60,14 +60,23 @@ flags register
 MOV
 ADD
 SUB
+AND
+ORR
 CMP
 LDR
 STR
 B
+BL
 BEQ
 BNE
 MUL
 ASR
+SHADD16
+SHSUB16
+SMUAD
+SMUSD
+SXTH
+PKHBT
 ```
 
 不支持的格式会拉高：
@@ -83,20 +92,44 @@ illegal_instr = 1
 与最新说明文档保持一致：
 
 ```text
-000 = AND
-001 = ORR
-010 = ADD
-011 = SUB
-100 = MUL
-101 = ASR
-110 = MOV
-111 = reserved
+0000 = AND
+0001 = ORR
+0010 = ADD
+0011 = SUB
+0100 = MUL
+0101 = ASR
+0110 = MOV
+0111 = SHADD16
+1000 = SHSUB16
+1001 = SMUAD
+1010 = SMUSD
+1011 = SXTH
+1100 = PKHBT
 ```
 
-当前 decoder 实际会输出：
+这些编码集中定义在 `rtl/mcu_v1_pkg.vhd`，decoder 和 ALU 共用同一套常量。
+
+packed DSP 扩展类格式：
 
 ```text
-ADD / SUB / MUL / ASR / MOV
+cond[31:28]
+op[27:26] = 11
+funct[25:21]
+reserved[20] = 0
+Rn[19:16]
+Rd[15:12]
+operand2[11:0]
+```
+
+扩展类 funct map：
+
+```text
+00000 = SHADD16
+00001 = SHSUB16
+00010 = SMUAD
+00011 = SMUSD
+00100 = SXTH
+00101 = PKHBT
 ```
 
 ## 4. 关键语义
@@ -131,6 +164,8 @@ STR: Rd 是写内存的数据源，decoder 输出 ra2 = Rd
 
 ```text
 branch_offset = sign_extend(imm24) << 2
+B / BEQ / BNE: 只跳转
+BL: 跳转并请求顶层写 R14 = PC + 4
 ```
 
 顶层 PC 逻辑应使用：
@@ -167,7 +202,7 @@ xattr -dr com.apple.quarantine /opt/homebrew/Caskroom/ghdl/6.0.0/ghdl-llvm-6.0.0
 运行 testbench：
 
 ```bash
-ghdl -a --std=08 rtl/mcu_v1_decoder.vhd tb/mcu_v1_decoder_tb.vhd
+ghdl -a --std=08 rtl/mcu_v1_pkg.vhd rtl/mcu_v1_decoder.vhd tb/mcu_v1_decoder_tb.vhd
 ghdl -e --std=08 mcu_v1_decoder_tb
 ghdl -r --std=08 mcu_v1_decoder_tb
 ```
@@ -188,10 +223,19 @@ MOV R8, #0
 ADD R12, R12, #4095
 LDR R0, [R8 + 4]
 STR R0, [R10 + 60]
+AND R6, R6, R7
+ORR R7, R6, #3
+SHADD16 R8, R0, R4
+SHSUB16 R4, R0, R4
+SMUAD R8, R5, R12
+SMUSD R9, R5, R12
+SXTH R8, R6
+PKHBT R5, R8, R9, LSL #16
 MUL R11, R11, R12
 ASR R11, R11, #15
 CMP R1, #0
 B DONE
+BL DONE
 BEQ 条件成立/不成立
 BNE 条件成立/不成立
 非法 ASR register form

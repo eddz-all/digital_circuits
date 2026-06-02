@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use work.mcu_v1_pkg.all;
 
 entity mcu_v1_data_mem is
     port (
@@ -23,54 +24,67 @@ entity mcu_v1_data_mem is
 end entity mcu_v1_data_mem;
 
 architecture rtl of mcu_v1_data_mem is
-    type input_array_t is array (0 to 63) of std_logic_vector(15 downto 0);
-    type word_array_t  is array (0 to 63) of std_logic_vector(31 downto 0);
-
-    signal input_mem  : input_array_t := (others => (others => '0'));
-    signal work_mem   : word_array_t := (others => (others => '0'));
-    signal output_mem : input_array_t := (others => (others => '0'));
-
     signal region : std_logic_vector(1 downto 0) := (others => '0');
-    signal slot   : integer range 0 to 63 := 0;
+    signal slot   : std_logic_vector(5 downto 0) := (others => '0');
+
+    signal input_read  : std_logic_vector(31 downto 0) := (others => '0');
+    signal work_read   : std_logic_vector(31 downto 0) := (others => '0');
+    signal output_read : std_logic_vector(31 downto 0) := (others => '0');
+
+    signal work_we   : std_logic := '0';
+    signal output_we : std_logic := '0';
 begin
     region <= addr(9 downto 8);
-    slot <= to_integer(unsigned(addr(7 downto 2)));
+    slot <= addr(7 downto 2);
+    work_we <= mem_write when region = REGION_WORK else '0';
+    output_we <= mem_write when region = REGION_OUTPUT else '0';
 
-    process(clk)
-    begin
-        if rising_edge(clk) then
-            if input_we = '1' then
-                input_mem(to_integer(unsigned(input_waddr))) <= input_wdata;
-            end if;
+    u_input_mem : entity work.mcu_v1_input_mem
+        port map (
+            clk         => clk,
+            input_we    => input_we,
+            input_waddr => input_waddr,
+            input_wdata => input_wdata,
+            slot        => slot,
+            read_data   => input_read
+        );
 
-            if rst = '1' then
-                work_mem <= (others => (others => '0'));
-                output_mem <= (others => (others => '0'));
-            else
-                if mem_write = '1' then
-                    if region = "01" then
-                        work_mem(slot) <= write_data;
-                    elsif region = "10" then
-                        output_mem(slot) <= write_data(15 downto 0);
-                    end if;
-                end if;
-            end if;
-        end if;
-    end process;
+    u_work_ram : entity work.mcu_v1_work_ram
+        port map (
+            clk        => clk,
+            rst        => rst,
+            we         => work_we,
+            slot       => slot,
+            write_data => write_data,
+            read_data  => work_read
+        );
+
+    u_output_mem : entity work.mcu_v1_output_mem
+        port map (
+            clk          => clk,
+            rst          => rst,
+            we           => output_we,
+            slot         => slot,
+            write_data   => write_data,
+            output_raddr => output_raddr,
+            output_rdata => output_rdata,
+            read_data    => output_read
+        );
 
     process(all)
     begin
         read_data <= (others => '0');
         if mem_read = '1' then
-            if region = "00" then
-                read_data <= std_logic_vector(resize(signed(input_mem(slot)), 32));
-            elsif region = "01" then
-                read_data <= work_mem(slot);
-            elsif region = "10" then
-                read_data <= std_logic_vector(resize(signed(output_mem(slot)), 32));
-            end if;
+            case region is
+                when REGION_INPUT =>
+                    read_data <= input_read;
+                when REGION_WORK =>
+                    read_data <= work_read;
+                when REGION_OUTPUT =>
+                    read_data <= output_read;
+                when others =>
+                    read_data <= (others => '0');
+            end case;
         end if;
     end process;
-
-    output_rdata <= output_mem(to_integer(unsigned(output_raddr)));
 end architecture rtl;

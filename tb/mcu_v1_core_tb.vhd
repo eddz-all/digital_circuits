@@ -35,6 +35,19 @@ architecture sim of mcu_v1_core_tb is
     signal fft_z            : std_logic;
     signal fft_n            : std_logic;
 
+    signal fast_rst          : std_logic := '1';
+    signal fast_input_we     : std_logic := '0';
+    signal fast_input_waddr  : std_logic_vector(5 downto 0) := (others => '0');
+    signal fast_input_wdata  : std_logic_vector(15 downto 0) := (others => '0');
+    signal fast_output_raddr : std_logic_vector(5 downto 0) := (others => '0');
+    signal fast_output_rdata : std_logic_vector(15 downto 0);
+    signal fast_pc           : std_logic_vector(31 downto 0);
+    signal fast_instr        : std_logic_vector(31 downto 0);
+    signal fast_halted       : std_logic;
+    signal fast_illegal      : std_logic;
+    signal fast_z            : std_logic;
+    signal fast_n            : std_logic;
+
     function slv16(value : integer) return std_logic_vector is
     begin
         return std_logic_vector(to_signed(value, 16));
@@ -84,6 +97,27 @@ begin
             flag_n_debug => fft_n
         );
 
+    fast_core : entity work.mcu_v1_core
+        generic map (
+            MEM_FILE  => "asm/fft8_v2_packed_dsp.mem",
+            ROM_DEPTH => 512
+        )
+        port map (
+            clk          => clk,
+            rst          => fast_rst,
+            input_we     => fast_input_we,
+            input_waddr  => fast_input_waddr,
+            input_wdata  => fast_input_wdata,
+            output_raddr => fast_output_raddr,
+            output_rdata => fast_output_rdata,
+            pc_debug     => fast_pc,
+            instr_debug  => fast_instr,
+            halted_debug => fast_halted,
+            illegal_debug => fast_illegal,
+            flag_z_debug => fast_z,
+            flag_n_debug => fast_n
+        );
+
     stim : process
         procedure wait_cycles(count : natural) is
         begin
@@ -112,6 +146,16 @@ begin
             fft_input_we <= '0';
         end procedure;
 
+        procedure write_fast_input(slot : natural; value : integer) is
+        begin
+            fast_input_waddr <= std_logic_vector(to_unsigned(slot, 6));
+            fast_input_wdata <= slv16(value);
+            fast_input_we <= '1';
+            wait until rising_edge(clk);
+            wait for 1 ns;
+            fast_input_we <= '0';
+        end procedure;
+
         procedure expect_basic_output(slot : natural; value : integer) is
         begin
             basic_output_raddr <= std_logic_vector(to_unsigned(slot, 6));
@@ -131,21 +175,35 @@ begin
                     & " expected " & integer'image(value)
                 severity failure;
         end procedure;
+
+        procedure expect_fast_output(slot : natural; value : integer) is
+        begin
+            fast_output_raddr <= std_logic_vector(to_unsigned(slot, 6));
+            wait for 1 ns;
+            assert fast_output_rdata = slv16(value)
+                report "fast output slot " & integer'image(slot)
+                    & " expected " & integer'image(value)
+                severity failure;
+        end procedure;
     begin
         wait_cycles(2);
 
         write_basic_input(0, 1000);
         write_basic_input(1, -500);
         basic_rst <= '0';
-        wait_cycles(40);
+        wait_cycles(60);
 
         assert basic_illegal = '0' report "basic program hit illegal instruction" severity failure;
         assert basic_halted = '1' report "basic program did not reach DONE self-loop" severity failure;
-        assert basic_pc = x"00000064" report "basic PC should be at DONE" severity failure;
+        assert basic_pc = x"0000008C" report "basic PC should be at DONE" severity failure;
         expect_basic_output(0, 500);
         expect_basic_output(1, 1500);
         expect_basic_output(2, 707);
         expect_basic_output(3, 123);
+        expect_basic_output(4, 8);
+        expect_basic_output(5, 11);
+        expect_basic_output(6, 16#0074#);
+        expect_basic_output(7, 0);
 
         write_fft_input(0, 32760);
         fft_rst <= '0';
@@ -159,6 +217,83 @@ begin
             expect_fft_output(2 * complex_i, 4095);
             expect_fft_output(2 * complex_i + 1, 0);
         end loop;
+
+        fft_rst <= '1';
+        wait_cycles(2);
+        for slot_i in 0 to 15 loop
+            if slot_i = 2 then
+                write_fft_input(slot_i, 32760);
+            else
+                write_fft_input(slot_i, 0);
+            end if;
+        end loop;
+        fft_rst <= '0';
+        wait_cycles(320);
+
+        assert fft_illegal = '0' report "FFT x1 program hit illegal instruction" severity failure;
+        assert fft_halted = '1' report "FFT x1 program did not reach DONE self-loop" severity failure;
+        assert fft_pc = x"00000474" report "FFT x1 PC should be at DONE" severity failure;
+        expect_fft_output(0, 4095);
+        expect_fft_output(1, 0);
+        expect_fft_output(2, -4095);
+        expect_fft_output(3, 0);
+        expect_fft_output(4, 0);
+        expect_fft_output(5, -4095);
+        expect_fft_output(6, 0);
+        expect_fft_output(7, 4095);
+        expect_fft_output(8, 2895);
+        expect_fft_output(9, -2896);
+        expect_fft_output(10, -2896);
+        expect_fft_output(11, 2896);
+        expect_fft_output(12, -2896);
+        expect_fft_output(13, -2896);
+        expect_fft_output(14, 2896);
+        expect_fft_output(15, 2895);
+
+        write_fast_input(0, 32760);
+        fast_rst <= '0';
+        wait_cycles(150);
+
+        assert fast_illegal = '0' report "fast FFT program hit illegal instruction" severity failure;
+        assert fast_halted = '1' report "fast FFT program did not reach DONE self-loop" severity failure;
+        assert fast_pc = x"000001DC" report "fast FFT PC should be at DONE" severity failure;
+
+        for complex_i in 0 to 7 loop
+            expect_fast_output(2 * complex_i, 4095);
+            expect_fast_output(2 * complex_i + 1, 0);
+        end loop;
+
+        fast_rst <= '1';
+        wait_cycles(2);
+        for slot_i in 0 to 15 loop
+            if slot_i = 2 then
+                write_fast_input(slot_i, 32760);
+            else
+                write_fast_input(slot_i, 0);
+            end if;
+        end loop;
+        fast_rst <= '0';
+        wait_cycles(150);
+
+        assert fast_illegal = '0' report "fast FFT x1 program hit illegal instruction" severity failure;
+        assert fast_halted = '1' report "fast FFT x1 program did not reach DONE self-loop" severity failure;
+        assert fast_pc = x"000001DC" report "fast FFT x1 PC should be at DONE" severity failure;
+        expect_fast_output(0, 4095);
+        expect_fast_output(1, 0);
+        expect_fast_output(2, -4095);
+        expect_fast_output(3, 0);
+        expect_fast_output(4, 0);
+        expect_fast_output(5, -4095);
+        expect_fast_output(6, 0);
+        expect_fast_output(7, 4095);
+        expect_fast_output(8, 2895);
+        expect_fast_output(9, -2896);
+        expect_fast_output(10, -2896);
+        expect_fast_output(11, 2896);
+        expect_fast_output(12, -2896);
+        expect_fast_output(13, -2896);
+        expect_fast_output(14, 2896);
+        expect_fast_output(15, 2895);
 
         report "mcu_v1_core_tb passed" severity note;
         finish;

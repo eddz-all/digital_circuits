@@ -8,6 +8,9 @@
 ;   output slot 1 = 1500
 ;   output slot 2 = floor(1000 * 23170 / 32768) = 707
 ;   output slot 3 = 123
+;   output slot 4 = 8
+;   output slot 5 = 11
+;   output slot 6 = address after BL
 
 START:
     MOV R8, #0
@@ -39,6 +42,19 @@ START:
 
     MOV R5, #123
     STR R5, [R10 + 12]
+
+    MOV R6, #10
+    MOV R7, #12
+    AND R6, R6, R7
+    STR R6, [R10 + 16]
+    ORR R7, R6, #3
+    STR R7, [R10 + 20]
+    BL AFTER_BL
+    MOV R5, #999
+    STR R5, [R10 + 28]
+
+AFTER_BL:
+    STR R14, [R10 + 24]
     B DONE
 
 ZERO:

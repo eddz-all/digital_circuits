@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use work.mcu_v1_pkg.all;
 
 entity mcu_v1_core is
     generic (
@@ -45,7 +46,8 @@ architecture rtl of mcu_v1_core is
     signal mem_to_reg    : std_logic := '0';
     signal flag_write    : std_logic := '0';
     signal branch_taken  : std_logic := '0';
-    signal alu_control   : std_logic_vector(2 downto 0) := "010";
+    signal branch_link   : std_logic := '0';
+    signal alu_control   : std_logic_vector(3 downto 0) := ALU_ADD;
     signal alu_src_imm   : std_logic := '0';
     signal ra1           : std_logic_vector(3 downto 0) := (others => '0');
     signal ra2           : std_logic_vector(3 downto 0) := (others => '0');
@@ -85,6 +87,7 @@ begin
             mem_to_reg    => mem_to_reg,
             flag_write    => flag_write,
             branch_taken  => branch_taken,
+            branch_link   => branch_link,
             alu_control   => alu_control,
             alu_src_imm   => alu_src_imm,
             ra1           => ra1,
@@ -135,13 +138,18 @@ begin
             output_rdata => output_rdata
         );
 
-    wb_data <= mem_rd when mem_to_reg = '1' else alu_res;
+    wb_data <= std_logic_vector(unsigned(pc_reg) + 4) when branch_link = '1'
+        else mem_rd when mem_to_reg = '1'
+        else alu_res;
 
-    pc_next <= std_logic_vector(signed(pc_reg) + to_signed(8, 32) + signed(branch_offset))
-        when branch_taken = '1'
-        else std_logic_vector(unsigned(pc_reg) + 4);
-
-    halted_i <= '1' when branch_taken = '1' and pc_next = pc_reg else '0';
+    u_pc_unit : entity work.mcu_v1_pc_unit
+        port map (
+            pc_current    => pc_reg,
+            branch_taken  => branch_taken,
+            branch_offset => branch_offset,
+            pc_next       => pc_next,
+            halted        => halted_i
+        );
 
     process(clk)
     begin

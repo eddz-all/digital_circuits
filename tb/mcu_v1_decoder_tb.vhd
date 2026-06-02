@@ -1,18 +1,13 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use work.mcu_v1_pkg.all;
 use std.env.all;
 
 entity mcu_v1_decoder_tb is
 end entity mcu_v1_decoder_tb;
 
 architecture sim of mcu_v1_decoder_tb is
-    constant ALU_ADD : std_logic_vector(2 downto 0) := "010";
-    constant ALU_SUB : std_logic_vector(2 downto 0) := "011";
-    constant ALU_MUL : std_logic_vector(2 downto 0) := "100";
-    constant ALU_ASR : std_logic_vector(2 downto 0) := "101";
-    constant ALU_MOV : std_logic_vector(2 downto 0) := "110";
-
     signal instr         : std_logic_vector(31 downto 0) := (others => '0');
     signal flag_z        : std_logic := '0';
     signal flag_n        : std_logic := '0';
@@ -24,7 +19,8 @@ architecture sim of mcu_v1_decoder_tb is
     signal mem_to_reg    : std_logic;
     signal flag_write    : std_logic;
     signal branch_taken  : std_logic;
-    signal alu_control   : std_logic_vector(2 downto 0);
+    signal branch_link   : std_logic;
+    signal alu_control   : std_logic_vector(3 downto 0);
     signal alu_src_imm   : std_logic;
     signal ra1           : std_logic_vector(3 downto 0);
     signal ra2           : std_logic_vector(3 downto 0);
@@ -45,6 +41,7 @@ begin
             mem_to_reg    => mem_to_reg,
             flag_write    => flag_write,
             branch_taken  => branch_taken,
+            branch_link   => branch_link,
             alu_control   => alu_control,
             alu_src_imm   => alu_src_imm,
             ra1           => ra1,
@@ -67,6 +64,77 @@ begin
         assert alu_src_imm = '1' report "MOV immediate should select imm" severity failure;
         assert wa = x"8" report "MOV destination should be R8" severity failure;
         assert imm_ext = x"00000000" report "MOV imm_ext mismatch" severity failure;
+
+        -- AND R6, R6, R7
+        instr <= x"E0066007";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "AND should be legal" severity failure;
+        assert reg_write = '1' report "AND should write register" severity failure;
+        assert alu_control = ALU_AND report "AND ALU control mismatch" severity failure;
+        assert alu_src_imm = '0' report "AND should use register operand2" severity failure;
+        assert ra1 = x"6" report "AND first source should be R6" severity failure;
+        assert ra2 = x"7" report "AND second source should be R7" severity failure;
+        assert wa = x"6" report "AND destination should be R6" severity failure;
+
+        -- ORR R7, R6, #3
+        instr <= x"E3867003";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "ORR should be legal" severity failure;
+        assert reg_write = '1' report "ORR should write register" severity failure;
+        assert alu_control = ALU_ORR report "ORR ALU control mismatch" severity failure;
+        assert alu_src_imm = '1' report "ORR immediate should select imm" severity failure;
+        assert ra1 = x"6" report "ORR source should be R6" severity failure;
+        assert wa = x"7" report "ORR destination should be R7" severity failure;
+        assert imm_ext = x"00000003" report "ORR imm12 mismatch" severity failure;
+
+        -- SHADD16 R8, R0, R4
+        instr <= x"EC008004";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "SHADD16 should be legal" severity failure;
+        assert reg_write = '1' report "SHADD16 should write register" severity failure;
+        assert alu_control = ALU_SHADD16 report "SHADD16 ALU control mismatch" severity failure;
+        assert ra1 = x"0" and ra2 = x"4" and wa = x"8"
+            report "SHADD16 register fields mismatch" severity failure;
+
+        -- SHSUB16 R4, R0, R4
+        instr <= x"EC204004";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "SHSUB16 should be legal" severity failure;
+        assert alu_control = ALU_SHSUB16 report "SHSUB16 ALU control mismatch" severity failure;
+        assert ra1 = x"0" and ra2 = x"4" and wa = x"4"
+            report "SHSUB16 register fields mismatch" severity failure;
+
+        -- SMUAD R8, R5, R12
+        instr <= x"EC45800C";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "SMUAD should be legal" severity failure;
+        assert alu_control = ALU_SMUAD report "SMUAD ALU control mismatch" severity failure;
+        assert ra1 = x"5" and ra2 = x"C" and wa = x"8"
+            report "SMUAD register fields mismatch" severity failure;
+
+        -- SMUSD R9, R5, R12
+        instr <= x"EC65900C";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "SMUSD should be legal" severity failure;
+        assert alu_control = ALU_SMUSD report "SMUSD ALU control mismatch" severity failure;
+        assert ra1 = x"5" and ra2 = x"C" and wa = x"9"
+            report "SMUSD register fields mismatch" severity failure;
+
+        -- SXTH R8, R6
+        instr <= x"EC868000";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "SXTH should be legal" severity failure;
+        assert alu_control = ALU_SXTH report "SXTH ALU control mismatch" severity failure;
+        assert ra1 = x"6" and wa = x"8"
+            report "SXTH register fields mismatch" severity failure;
+
+        -- PKHBT R5, R8, R9, LSL #16
+        instr <= x"ECA85009";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "PKHBT should be legal" severity failure;
+        assert alu_control = ALU_PKHBT report "PKHBT ALU control mismatch" severity failure;
+        assert ra1 = x"8" and ra2 = x"9" and wa = x"5"
+            report "PKHBT register fields mismatch" severity failure;
 
         -- ADD R12, R12, #4095
         instr <= x"E28CCFFF";
@@ -146,8 +214,20 @@ begin
         assert illegal_instr = '0' report "B should be legal" severity failure;
         assert branch_taken = '1' report "B AL should branch" severity failure;
         assert branch_offset = x"FFFFFFF8" report "B offset should be -8" severity failure;
+        assert branch_link = '0' report "B should not link" severity failure;
         assert reg_write = '0' and mem_read = '0' and mem_write = '0'
             report "B should have no register/memory side effects" severity failure;
+
+        -- BL DONE encoded as imm24 = -2 and link bit = 1.
+        instr <= x"E9FFFFFE";
+        flag_z <= '0';
+        wait for 1 ns;
+        assert illegal_instr = '0' report "BL should be legal" severity failure;
+        assert branch_taken = '1' report "BL AL should branch" severity failure;
+        assert branch_link = '1' report "BL should request link write" severity failure;
+        assert reg_write = '1' report "BL should write link register" severity failure;
+        assert wa = x"E" report "BL should write R14" severity failure;
+        assert branch_offset = x"FFFFFFF8" report "BL offset should be -8" severity failure;
 
         -- BEQ with Z = 0 should not branch.
         instr <= x"08FFFFFE";
@@ -178,8 +258,15 @@ begin
         instr <= x"E1E11002";
         wait for 1 ns;
         assert illegal_instr = '1' report "ASR register form should be illegal" severity failure;
-        assert reg_write = '0' and mem_read = '0' and mem_write = '0' and branch_taken = '0'
+        assert reg_write = '0' and mem_read = '0' and mem_write = '0' and branch_taken = '0' and branch_link = '0'
             report "Illegal instruction should have no side effects" severity failure;
+
+        -- Illegal example: extension reserved bit 20 must be zero.
+        instr <= x"EC100000";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "Extension reserved bit should be illegal" severity failure;
+        assert reg_write = '0' and mem_read = '0' and mem_write = '0' and branch_taken = '0' and branch_link = '0'
+            report "Illegal extension should have no side effects" severity failure;
 
         report "mcu_v1_decoder_tb passed" severity note;
         finish;

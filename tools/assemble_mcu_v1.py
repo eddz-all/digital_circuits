@@ -7,9 +7,10 @@ The encoder follows the two latest project documents:
 * 第一版MCU指令格式说明.md
 * 第一版MCU对成员A接口说明.md
 
-It intentionally supports only the subset used by asm/fft8_v1_mcu32_basic.s.
-Running it validates that every instruction is encodable as a 32-bit machine
-word with imm12 data/memory immediates and PC+8 branch offsets.
+It supports the scalar V1 subset used by asm/fft8_v1_mcu32_basic.s and the
+packed-DSP extension used by asm/fft8_v2_packed_dsp.s. Running it validates
+that every instruction is encodable as a 32-bit machine word with imm12
+data/memory immediates and PC+8 branch offsets.
 """
 
 from __future__ import annotations
@@ -21,13 +22,17 @@ from pathlib import Path
 
 COND = {
     "B": 0xE,
+    "BL": 0xE,
     "BEQ": 0x0,
     "BNE": 0x1,
 }
 
 DATA_OPCODE = {
+    "AND": 0b0000,
     "ADD": 0b0100,
     "SUB": 0b0010,
+    "OR": 0b1100,
+    "ORR": 0b1100,
     "MOV": 0b1101,
     "CMP": 0b1010,
     "MUL": 0b1001,
@@ -36,8 +41,17 @@ DATA_OPCODE = {
 
 DATA_OPS = set(DATA_OPCODE)
 MEM_OPS = {"LDR", "STR"}
-BRANCH_OPS = {"B", "BEQ", "BNE"}
-SUPPORTED_OPS = DATA_OPS | MEM_OPS | BRANCH_OPS
+BRANCH_OPS = {"B", "BL", "BEQ", "BNE"}
+EXT_FUNCT = {
+    "SHADD16": 0b00000,
+    "SHSUB16": 0b00001,
+    "SMUAD": 0b00010,
+    "SMUSD": 0b00011,
+    "SXTH": 0b00100,
+    "PKHBT": 0b00101,
+}
+EXT_OPS = set(EXT_FUNCT)
+SUPPORTED_OPS = DATA_OPS | MEM_OPS | BRANCH_OPS | EXT_OPS
 
 
 @dataclass
@@ -217,7 +231,45 @@ def encode_branch(op: str, args: list[str], pc: int, labels: dict[str, int]) -> 
         raise ValueError(f"branch target {label!r} is not word-aligned")
     imm = delta // 4
     imm24 = parse_imm(str(imm), 24, signed=True)
-    return (COND[op] << 28) | (0b10 << 26) | imm24
+    link_bit = 1 if op == "BL" else 0
+    return (COND[op] << 28) | (0b10 << 26) | (link_bit << 24) | imm24
+
+
+def encode_ext(op: str, args: list[str]) -> int:
+    cond = 0xE
+    funct = EXT_FUNCT[op]
+    rn = 0
+    rd = 0
+    rm = 0
+
+    if op == "SXTH":
+        if len(args) != 2:
+            raise ValueError("SXTH expects 2 operands")
+        rd = parse_reg(args[0])
+        rn = parse_reg(args[1])
+    elif op == "PKHBT":
+        if len(args) != 4:
+            raise ValueError("PKHBT expects Rd, Rn, Rm, LSL #16")
+        rd = parse_reg(args[0])
+        rn = parse_reg(args[1])
+        rm = parse_reg(args[2])
+        if args[3].strip().upper() != "LSL #16":
+            raise ValueError("first-version PKHBT only supports LSL #16")
+    else:
+        if len(args) != 3:
+            raise ValueError(f"{op} expects 3 operands")
+        rd = parse_reg(args[0])
+        rn = parse_reg(args[1])
+        rm = parse_reg(args[2])
+
+    return (
+        (cond << 28)
+        | (0b11 << 26)
+        | (funct << 21)
+        | (rn << 16)
+        | (rd << 12)
+        | rm
+    )
 
 
 def encode_instruction(inst: Instruction, labels: dict[str, int]) -> int:
@@ -229,7 +281,9 @@ def encode_instruction(inst: Instruction, labels: dict[str, int]) -> int:
             return encode_data(op, args)
         if op in MEM_OPS:
             return encode_mem(op, args)
-        return encode_branch(op, args, inst.pc, labels)
+        if op in BRANCH_OPS:
+            return encode_branch(op, args, inst.pc, labels)
+        return encode_ext(op, args)
     except Exception as exc:
         raise ValueError(f"line {inst.lineno}: {inst.text}: {exc}") from exc
 
