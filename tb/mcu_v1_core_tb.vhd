@@ -1,7 +1,6 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use std.env.all;
 
 entity mcu_v1_core_tb is
 end entity mcu_v1_core_tb;
@@ -161,6 +160,6 @@ begin
         end loop;
 
         report "mcu_v1_core_tb passed" severity note;
-        finish;
+        wait;
     end process;
 end architecture sim;

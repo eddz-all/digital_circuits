@@ -1,7 +1,6 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use std.env.all;
 
 entity mcu_v1_decoder_tb is
 end entity mcu_v1_decoder_tb;
@@ -182,6 +181,6 @@ begin
             report "Illegal instruction should have no side effects" severity failure;
 
         report "mcu_v1_decoder_tb passed" severity note;
-        finish;
+        wait;
     end process;
 end architecture sim;

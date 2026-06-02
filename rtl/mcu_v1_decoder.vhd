@@ -54,7 +54,7 @@ architecture rtl of mcu_v1_decoder is
     constant OPC_MUL : std_logic_vector(3 downto 0) := "1001";
     constant OPC_ASR : std_logic_vector(3 downto 0) := "1111";
 begin
-    process(all)
+    process(instr, flag_z, flag_n)
         variable cond_ok_v : std_logic;
         variable illegal_v : std_logic;
         variable br_v      : signed(31 downto 0);

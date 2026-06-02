@@ -58,7 +58,7 @@ begin
         end if;
     end process;
 
-    process(all)
+    process(mem_read, region, slot, input_mem, work_mem, output_mem)
     begin
         read_data <= (others => '0');
         if mem_read = '1' then
