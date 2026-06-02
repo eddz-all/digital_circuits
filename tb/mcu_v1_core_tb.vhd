@@ -1,13 +1,13 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use std.env.all;
 
 entity mcu_v1_core_tb is
 end entity mcu_v1_core_tb;
 
 architecture sim of mcu_v1_core_tb is
     signal clk : std_logic := '0';
+    signal sim_done : std_logic := '0';
 
     signal basic_rst          : std_logic := '1';
     signal basic_input_we     : std_logic := '0';
@@ -66,7 +66,7 @@ architecture sim of mcu_v1_core_tb is
         return std_logic_vector(to_signed(value, 16));
     end function;
 begin
-    clk <= not clk after 5 ns;
+    clk <= not clk after 5 ns when sim_done = '0' else '0';
 
     basic_core : entity work.mcu_v1_core
         generic map (
@@ -395,6 +395,7 @@ begin
         expect_v3_output(15, 2895);
 
         report "mcu_v1_core_tb passed" severity note;
-        finish;
+        sim_done <= '1';
+        wait;
     end process;
 end architecture sim;

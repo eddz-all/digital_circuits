@@ -17,7 +17,7 @@ end entity mcu_v1_alu;
 architecture rtl of mcu_v1_alu is
     signal result_i : std_logic_vector(31 downto 0) := (others => '0');
 begin
-    process(all)
+    process(a, b, alu_control)
         variable mul64 : signed(63 downto 0);
         variable shamt : natural range 0 to 31;
         variable a_lo17 : signed(16 downto 0);

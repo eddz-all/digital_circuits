@@ -2,7 +2,6 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use work.mcu_v1_pkg.all;
-use std.env.all;
 
 entity mcu_v1_alu_tb is
 end entity mcu_v1_alu_tb;
@@ -62,6 +61,6 @@ begin
         assert result = x"F4B00B4F" report "PKHBT result mismatch" severity failure;
 
         report "mcu_v1_alu_tb passed" severity note;
-        finish;
+        wait;
     end process;
 end architecture sim;

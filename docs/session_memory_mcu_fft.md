@@ -457,6 +457,42 @@ V4 如果继续做，应命名为 V4-arm-strict 或类似口径，只允许 ARM 
 目标是尽量逼近单核、单发射、单周期、ARM真实指令约束下的最小 cnt。
 ```
 
+## 0.9 2026-06-02 Vivado VHDL 兼容性清理
+
+Vivado 仿真/上板同学提出：
+
+```text
+process(all) 是 VHDL-2008 语法。
+use std.env.all 和 finish 也依赖较新的 VHDL 标准。
+如果 Vivado 工程没有明确设为 VHDL-2008，容易报标准兼容性错误。
+```
+
+已按更保守口径清理：
+
+```text
+RTL / testbench 中不再使用 process(all)，全部改为显式敏感列表。
+testbench 中不再使用 use std.env.all。
+testbench 中不再使用 finish。
+mcu_v1_alu_tb / mcu_v1_decoder_tb 结尾改为 report passed 后 wait。
+mcu_v1_core_tb 增加 sim_done，passed 后关闭 clock，再 wait，使 Run All 不会因为时钟一直跳而挂住。
+```
+
+已验证：
+
+```text
+rg 未再找到 process(all) / std.env / finish。
+ghdl --std=08 完整回归通过。
+ghdl --std=93 -fsynopsys 完整回归通过。
+```
+
+注意：
+
+```text
+GHDL 的 --std=93 下 rtl/mcu_v1_instr_rom.vhd 使用 ieee.std_logic_textio 需要 -fsynopsys。
+Vivado 通常可接受 std_logic_textio；若后续仍遇到 ROM init 兼容性问题，再单独处理 .mem 读取方式。
+0ms numeric_std metavalue warning 仍存在，来源是组合读地址初始未稳定；testbench 无 assertion failure。
+```
+
 ## 0.8 V4-arm-strict 计划
 
 V4 定义：

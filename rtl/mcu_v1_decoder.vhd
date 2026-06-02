@@ -39,7 +39,7 @@ end entity mcu_v1_decoder;
 
 architecture rtl of mcu_v1_decoder is
 begin
-    process(all)
+    process(instr, flag_z, flag_n)
         variable cond_ok_v : std_logic;
         variable illegal_v : std_logic;
         variable br_v      : signed(31 downto 0);

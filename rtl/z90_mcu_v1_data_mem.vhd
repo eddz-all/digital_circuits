@@ -92,7 +92,7 @@ begin
             bulk_read_data => output_bulk
         );
 
-    process(all)
+    process(mem_read, region, input_read, work_read, output_read)
     begin
         read_data <= (others => '0');
         if mem_read = '1' then
@@ -109,7 +109,7 @@ begin
         end if;
     end process;
 
-    process(all)
+    process(region, input_bulk, work_bulk, output_bulk)
     begin
         case region is
             when REGION_INPUT =>

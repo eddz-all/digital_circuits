@@ -171,7 +171,7 @@ begin
             output_rdata => output_rdata
         );
 
-    process(all)
+    process(bulk_regmask, bulk_mem_rd)
         variable data_index : natural range 0 to 16;
     begin
         bulk_wd <= (others => '0');

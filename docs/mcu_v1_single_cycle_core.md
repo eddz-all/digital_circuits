@@ -562,6 +562,16 @@ python3 tools/test_fft8_v3_arch_dsp.py
 
 当前 baseline 使用组合读 `instr_rom` 和组合读 `data_mem`，适合先做功能仿真和小规模 distributed memory 综合。
 
+为降低 Vivado 工程标准设置风险，当前 RTL/testbench 已避免使用 VHDL-2008 依赖点：
+
+```text
+不使用 process(all)
+不使用 std.env.all
+不使用 finish
+```
+
+组合逻辑均使用显式敏感列表。`mcu_v1_core_tb` 在通过后置位 `sim_done` 关闭时钟，再进入 `wait`，避免 `Run All` 因时钟持续翻转而不结束。
+
 如果 Vivado 把 ROM/RAM 推成同步 block RAM，则取指或 `LDR` 会天然多一拍，严格单周期结构需要调整为：
 
 ```text

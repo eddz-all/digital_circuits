@@ -29,7 +29,7 @@ begin
 
     read_data <= std_logic_vector(resize(signed(mem(to_integer(unsigned(slot)))), 32));
 
-    process(all)
+    process(slot, mem)
         variable base : integer;
         variable idx  : integer;
         variable data : std_logic_vector(511 downto 0);
