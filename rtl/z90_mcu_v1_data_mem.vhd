@@ -10,9 +10,12 @@ entity mcu_v1_data_mem is
 
         addr       : in  std_logic_vector(31 downto 0);
         write_data : in  std_logic_vector(31 downto 0);
+        write_data2 : in std_logic_vector(31 downto 0);
         mem_read   : in  std_logic;
         mem_write  : in  std_logic;
+        store_double : in std_logic;
         read_data  : out std_logic_vector(31 downto 0);
+        bulk_read_data : out std_logic_vector(511 downto 0);
 
         input_we    : in  std_logic;
         input_waddr : in  std_logic_vector(5 downto 0);
@@ -26,18 +29,27 @@ end entity mcu_v1_data_mem;
 architecture rtl of mcu_v1_data_mem is
     signal region : std_logic_vector(1 downto 0) := (others => '0');
     signal slot   : std_logic_vector(5 downto 0) := (others => '0');
+    signal slot2  : std_logic_vector(5 downto 0) := (others => '0');
 
     signal input_read  : std_logic_vector(31 downto 0) := (others => '0');
     signal work_read   : std_logic_vector(31 downto 0) := (others => '0');
     signal output_read : std_logic_vector(31 downto 0) := (others => '0');
+    signal input_bulk  : std_logic_vector(511 downto 0) := (others => '0');
+    signal work_bulk   : std_logic_vector(511 downto 0) := (others => '0');
+    signal output_bulk : std_logic_vector(511 downto 0) := (others => '0');
 
     signal work_we   : std_logic := '0';
+    signal work_we2  : std_logic := '0';
     signal output_we : std_logic := '0';
+    signal output_we2 : std_logic := '0';
 begin
     region <= addr(9 downto 8);
     slot <= addr(7 downto 2);
+    slot2 <= std_logic_vector(unsigned(addr(7 downto 2)) + 1);
     work_we <= mem_write when region = REGION_WORK else '0';
+    work_we2 <= mem_write and store_double when region = REGION_WORK else '0';
     output_we <= mem_write when region = REGION_OUTPUT else '0';
+    output_we2 <= mem_write and store_double when region = REGION_OUTPUT else '0';
 
     u_input_mem : entity work.mcu_v1_input_mem
         port map (
@@ -46,7 +58,8 @@ begin
             input_waddr => input_waddr,
             input_wdata => input_wdata,
             slot        => slot,
-            read_data   => input_read
+            read_data   => input_read,
+            bulk_read_data => input_bulk
         );
 
     u_work_ram : entity work.mcu_v1_work_ram
@@ -54,9 +67,13 @@ begin
             clk        => clk,
             rst        => rst,
             we         => work_we,
+            we2        => work_we2,
             slot       => slot,
+            slot2      => slot2,
             write_data => write_data,
-            read_data  => work_read
+            write_data2 => write_data2,
+            read_data  => work_read,
+            bulk_read_data => work_bulk
         );
 
     u_output_mem : entity work.mcu_v1_output_mem
@@ -64,11 +81,15 @@ begin
             clk          => clk,
             rst          => rst,
             we           => output_we,
+            we2          => output_we2,
             slot         => slot,
+            slot2        => slot2,
             write_data   => write_data,
+            write_data2  => write_data2,
             output_raddr => output_raddr,
             output_rdata => output_rdata,
-            read_data    => output_read
+            read_data    => output_read,
+            bulk_read_data => output_bulk
         );
 
     process(all)
@@ -86,5 +107,19 @@ begin
                     read_data <= (others => '0');
             end case;
         end if;
+    end process;
+
+    process(all)
+    begin
+        case region is
+            when REGION_INPUT =>
+                bulk_read_data <= input_bulk;
+            when REGION_WORK =>
+                bulk_read_data <= work_bulk;
+            when REGION_OUTPUT =>
+                bulk_read_data <= output_bulk;
+            when others =>
+                bulk_read_data <= (others => '0');
+        end case;
     end process;
 end architecture rtl;

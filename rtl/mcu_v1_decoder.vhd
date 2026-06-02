@@ -19,13 +19,18 @@ entity mcu_v1_decoder is
         flag_write    : out std_logic;
         branch_taken  : out std_logic;
         branch_link   : out std_logic;
+        bulk_load     : out std_logic;
+        store_double  : out std_logic;
+        bulk_writeback : out std_logic;
 
         alu_control   : out std_logic_vector(3 downto 0);
         alu_src_imm   : out std_logic;
 
         ra1           : out std_logic_vector(3 downto 0);
         ra2           : out std_logic_vector(3 downto 0);
+        ra3           : out std_logic_vector(3 downto 0);
         wa            : out std_logic_vector(3 downto 0);
+        bulk_regmask  : out std_logic_vector(15 downto 0);
 
         imm_ext       : out std_logic_vector(31 downto 0);
         branch_offset : out std_logic_vector(31 downto 0)
@@ -38,9 +43,11 @@ begin
         variable cond_ok_v : std_logic;
         variable illegal_v : std_logic;
         variable br_v      : signed(31 downto 0);
+        variable rn_index  : natural range 0 to 15;
     begin
         cond_ok_v := '0';
         illegal_v := '0';
+        rn_index := to_integer(unsigned(instr(19 downto 16)));
 
         reg_write     <= '0';
         mem_read      <= '0';
@@ -49,12 +56,17 @@ begin
         flag_write    <= '0';
         branch_taken  <= '0';
         branch_link   <= '0';
+        bulk_load     <= '0';
+        store_double  <= '0';
+        bulk_writeback <= '0';
         alu_control   <= ALU_ADD;
         alu_src_imm   <= '0';
 
         ra1 <= instr(19 downto 16);
         ra2 <= instr(3 downto 0);
+        ra3 <= instr(3 downto 0);
         wa  <= instr(15 downto 12);
+        bulk_regmask <= (others => '0');
 
         imm_ext <= std_logic_vector(resize(unsigned(instr(11 downto 0)), 32));
         br_v := shift_left(resize(signed(instr(23 downto 0)), 32), 2);
@@ -162,30 +174,74 @@ begin
                 alu_src_imm <= '0';
                 ra1 <= instr(19 downto 16);
                 ra2 <= instr(3 downto 0);
+                ra3 <= instr(3 downto 0);
                 wa  <= instr(15 downto 12);
                 reg_write <= cond_ok_v;
-
-                if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
-                    illegal_v := '1';
-                end if;
 
                 case instr(25 downto 21) is
                     when EXT_SHADD16 =>
                         alu_control <= ALU_SHADD16;
+                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                            illegal_v := '1';
+                        end if;
                     when EXT_SHSUB16 =>
                         alu_control <= ALU_SHSUB16;
+                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                            illegal_v := '1';
+                        end if;
                     when EXT_SMUAD =>
                         alu_control <= ALU_SMUAD;
+                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                            illegal_v := '1';
+                        end if;
                     when EXT_SMUSD =>
                         alu_control <= ALU_SMUSD;
+                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                            illegal_v := '1';
+                        end if;
                     when EXT_SXTH =>
                         alu_control <= ALU_SXTH;
                         ra2 <= (others => '0');
+                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                            illegal_v := '1';
+                        end if;
                         if instr(3 downto 0) /= x"0" then
                             illegal_v := '1';
                         end if;
                     when EXT_PKHBT =>
                         alu_control <= ALU_PKHBT;
+                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                            illegal_v := '1';
+                        end if;
+                    when EXT_LDMIA =>
+                        alu_control <= ALU_ADD;
+                        alu_src_imm <= '1';
+                        imm_ext <= (others => '0');
+                        bulk_load <= cond_ok_v;
+                        mem_read <= cond_ok_v;
+                        reg_write <= cond_ok_v and instr(20);
+                        bulk_writeback <= cond_ok_v and instr(20);
+                        wa <= instr(19 downto 16);
+                        bulk_regmask <= instr(15 downto 0);
+                        if instr(20) /= '1'
+                            or instr(15 downto 0) = x"0000"
+                            or instr(15) = '1'
+                            or instr(rn_index) = '1' then
+                            illegal_v := '1';
+                        end if;
+                    when EXT_STRD =>
+                        alu_control <= ALU_ADD;
+                        alu_src_imm <= '1';
+                        imm_ext <= std_logic_vector(resize(unsigned(instr(11 downto 4)), 32));
+                        ra1 <= instr(19 downto 16);
+                        ra2 <= instr(15 downto 12);
+                        ra3 <= instr(3 downto 0);
+                        mem_write <= cond_ok_v;
+                        store_double <= cond_ok_v;
+                        reg_write <= '0';
+                        if instr(20) /= '0' or instr(5 downto 4) /= "00" then
+                            illegal_v := '1';
+                        end if;
                     when others =>
                         illegal_v := '1';
                 end case;
@@ -202,6 +258,9 @@ begin
             flag_write   <= '0';
             branch_taken <= '0';
             branch_link  <= '0';
+            bulk_load    <= '0';
+            store_double <= '0';
+            bulk_writeback <= '0';
         end if;
 
         cond_ok <= cond_ok_v;

@@ -15,7 +15,7 @@
 3. 后续把机器码写入 instr_rom
 ```
 
-第一版目标不是完整 ARM，而是一个 ARM-like 裁剪版 MCU：32-bit 定长指令、保留 cond 条件字段、保留数据处理/访存/分支三大类。当前 GHDL baseline 已覆盖 PPT 最低指令集所需的 `ADD / SUB / AND / ORR / MOV / LDR / STR / B / BL`，并额外支持 FFT 第一版需要的 `CMP / BEQ / BNE / MUL / ASR`。DSP 加速分支还新增 `op=11` 扩展类 packed 指令，用于 V2 FFT 加速。
+第一版目标不是完整 ARM，而是一个 ARM-like 裁剪版 MCU：32-bit 定长指令、保留 cond 条件字段、保留数据处理/访存/分支三大类。当前 GHDL baseline 已覆盖 PPT 最低指令集所需的 `ADD / SUB / AND / ORR / MOV / LDR / STR / B / BL`，并额外支持 FFT 第一版需要的 `CMP / BEQ / BNE / MUL / ASR`。DSP 加速分支还新增 `op=11` 扩展类 packed 指令，用于 V2 FFT 加速；V3 继续在该扩展类中加入 ARM 风格 `LDMIA/STRD`，用于架构层面的输入输出搬运优化。
 
 ## 1. 总体约定
 
@@ -212,6 +212,13 @@ SXTH
 PKHBT
 ```
 
+`dsp` 分支为了 V3 architecture DSP 优化，额外支持 ARM 风格访存：
+
+```text
+LDMIA Rn!, {reglist}
+STRD Rd, Rm, [Rn + imm]
+```
+
 V1 baseline 不要依赖：
 
 ```text
@@ -364,6 +371,8 @@ write-back
 批量访存
 ```
 
+V3 architecture DSP 版例外：为了提高 FFT 输入输出搬运效率，在 `op=11` 扩展类中支持 ARM 风格 `LDMIA/STRD`。这属于加速分支能力，不作为 V1 baseline 必须项。
+
 地址语义：
 
 ```text
@@ -440,9 +449,41 @@ funct：
 00011 = SMUSD
 00100 = SXTH
 00101 = PKHBT
+00110 = LDMIA
+00111 = STRD
 ```
 
-这些指令用于 `asm/fft8_v2_packed_dsp.s`，不会影响 V1 scalar baseline。
+其中 `SHADD16` 到 `PKHBT` 用于 `asm/fft8_v2_packed_dsp.s`；`LDMIA/STRD` 用于 `asm/fft8_v3_arch_dsp.s`，不会影响 V1 scalar baseline。
+
+V3 访存扩展格式：
+
+```text
+LDMIA:
+  op[27:26]     = 11
+  funct[25:21]  = 00110
+  W[20]         = 1
+  Rn[19:16]     = base register
+  regmask[15:0] = register list
+
+STRD:
+  op[27:26]    = 11
+  funct[25:21] = 00111
+  reserved[20] = 0
+  Rn[19:16]    = base register
+  Rd[15:12]    = first source register
+  imm8[11:4]   = byte offset, must be multiple of 4
+  Rm[3:0]      = second source register
+```
+
+V3 限制：
+
+```text
+LDMIA 只支持 increment-after 和 writeback。
+LDMIA writeback 时，base register 不允许出现在 reglist 中。
+LDMIA 不使用 R15，按寄存器编号升序写入。
+STRD 写 base+imm 和 base+imm+4 两个连续 32-bit 程序槽位。
+V3 不实现 FFT8、fixed twiddle 复乘或自定义 complex load/store 指令。
+```
 
 ## 11. FFT 算法约定
 
@@ -500,6 +541,7 @@ LDR / STR 立即数偏移
 signed MUL，结果取 32-bit
 ASR #imm，至少支持 #1 和 #15
 DSP 加速分支额外支持 SHADD16 / SHSUB16 / SMUAD / SMUSD / SXTH / PKHBT
+V3 architecture DSP 分支额外支持 ARM 风格 LDMIA / STRD
 ```
 
 最关键的最新变化：

@@ -28,15 +28,20 @@ reg_write
 mem_read
 mem_write
 mem_to_reg
+bulk_load
+store_double
+bulk_writeback
 flag_write
 branch_taken
 alu_control
 alu_src_imm
 ra1
 ra2
+ra3
 wa
 imm_ext
 branch_offset
+bulk_regmask
 ```
 
 它不包含：
@@ -77,6 +82,8 @@ SMUAD
 SMUSD
 SXTH
 PKHBT
+LDMIA
+STRD
 ```
 
 不支持的格式会拉高：
@@ -107,9 +114,9 @@ illegal_instr = 1
 1100 = PKHBT
 ```
 
-这些编码集中定义在 `rtl/mcu_v1_pkg.vhd`，decoder 和 ALU 共用同一套常量。
+这些编码集中定义在 `rtl/00_mcu_v1_pkg.vhd`，decoder 和 ALU 共用同一套常量。
 
-packed DSP 扩展类格式：
+V2 packed DSP 扩展类格式：
 
 ```text
 cond[31:28]
@@ -130,7 +137,11 @@ operand2[11:0]
 00011 = SMUSD
 00100 = SXTH
 00101 = PKHBT
+00110 = LDMIA
+00111 = STRD
 ```
+
+V3 使用同一个 `op = 11` 扩展类加入 ARM 风格访存指令。其中 `LDMIA` 使用 `W[20] = 1` 和 `regmask[15:0]`，`STRD` 使用 `Rd / Rm` 双源寄存器和 `imm8[11:4]` 字节偏移。
 
 ## 4. 关键语义
 
@@ -158,6 +169,30 @@ ASR 只支持立即数型
 address = R[Rn] + zero_extend(imm12)
 LDR: Rd 是写回目标
 STR: Rd 是写内存的数据源，decoder 输出 ra2 = Rd
+```
+
+ARM 风格批量/双字访存：
+
+```text
+LDMIA Rn!, {reglist}:
+  bulk_load = 1
+  bulk_writeback = 1
+  mem_read = 1
+  reg_write = 1
+  ra1 = Rn
+  wa = Rn
+  bulk_regmask = reglist
+  imm_ext = 0
+  非法条件：W != 1、reglist 为空、reglist 包含 R15、writeback base 在 reglist 中
+
+STRD Rd, Rm, [Rn + imm]:
+  store_double = 1
+  mem_write = 1
+  ra1 = Rn
+  ra2 = Rd
+  ra3 = Rm
+  imm_ext = zero_extend(imm8)
+  非法条件：reserved[20] != 0、imm 不是 4 字节对齐
 ```
 
 分支：
@@ -202,7 +237,7 @@ xattr -dr com.apple.quarantine /opt/homebrew/Caskroom/ghdl/6.0.0/ghdl-llvm-6.0.0
 运行 testbench：
 
 ```bash
-ghdl -a --std=08 rtl/mcu_v1_pkg.vhd rtl/mcu_v1_decoder.vhd tb/mcu_v1_decoder_tb.vhd
+ghdl -a --std=08 rtl/*.vhd tb/mcu_v1_decoder_tb.vhd
 ghdl -e --std=08 mcu_v1_decoder_tb
 ghdl -r --std=08 mcu_v1_decoder_tb
 ```
@@ -211,7 +246,7 @@ ghdl -r --std=08 mcu_v1_decoder_tb
 
 ```text
 mcu_v1_decoder_tb passed
-simulation finished @13ns
+simulation finished @26ns
 ```
 
 ## 6. Testbench 覆盖
@@ -231,6 +266,8 @@ SMUAD R8, R5, R12
 SMUSD R9, R5, R12
 SXTH R8, R6
 PKHBT R5, R8, R9, LSL #16
+LDMIA R14!, {R0-R7}
+STRD R0, R8, [R10 + 0]
 MUL R11, R11, R12
 ASR R11, R11, #15
 CMP R1, #0
@@ -239,6 +276,7 @@ BL DONE
 BEQ 条件成立/不成立
 BNE 条件成立/不成立
 非法 ASR register form
+非法 LDMIA writeback base-in-reglist
 ```
 
-这足够先验证 decoder 的字段切分、控制信号和条件分支语义。接下来应把 decoder 接到 regfile、ALU、PC 和 memory，做最小 MCU 顶层联调。
+这覆盖了 decoder 的字段切分、控制信号、条件分支语义、packed DSP 译码，以及 V3 `LDMIA/STRD` 的 ARM 风格访存控制。

@@ -9,7 +9,8 @@ entity mcu_v1_input_mem is
         input_waddr : in  std_logic_vector(5 downto 0);
         input_wdata : in  std_logic_vector(15 downto 0);
         slot        : in  std_logic_vector(5 downto 0);
-        read_data   : out std_logic_vector(31 downto 0)
+        read_data   : out std_logic_vector(31 downto 0);
+        bulk_read_data : out std_logic_vector(511 downto 0)
     );
 end entity mcu_v1_input_mem;
 
@@ -27,4 +28,20 @@ begin
     end process;
 
     read_data <= std_logic_vector(resize(signed(mem(to_integer(unsigned(slot)))), 32));
+
+    process(all)
+        variable base : integer;
+        variable idx  : integer;
+        variable data : std_logic_vector(511 downto 0);
+    begin
+        base := to_integer(unsigned(slot));
+        data := (others => '0');
+        for i in 0 to 15 loop
+            idx := base + i;
+            if idx <= 63 then
+                data(32 * i + 31 downto 32 * i) := std_logic_vector(resize(signed(mem(idx)), 32));
+            end if;
+        end loop;
+        bulk_read_data <= data;
+    end process;
 end architecture rtl;

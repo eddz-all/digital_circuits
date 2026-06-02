@@ -20,11 +20,16 @@ architecture sim of mcu_v1_decoder_tb is
     signal flag_write    : std_logic;
     signal branch_taken  : std_logic;
     signal branch_link   : std_logic;
+    signal bulk_load     : std_logic;
+    signal store_double  : std_logic;
+    signal bulk_writeback : std_logic;
     signal alu_control   : std_logic_vector(3 downto 0);
     signal alu_src_imm   : std_logic;
     signal ra1           : std_logic_vector(3 downto 0);
     signal ra2           : std_logic_vector(3 downto 0);
+    signal ra3           : std_logic_vector(3 downto 0);
     signal wa            : std_logic_vector(3 downto 0);
+    signal bulk_regmask  : std_logic_vector(15 downto 0);
     signal imm_ext       : std_logic_vector(31 downto 0);
     signal branch_offset : std_logic_vector(31 downto 0);
 begin
@@ -42,11 +47,16 @@ begin
             flag_write    => flag_write,
             branch_taken  => branch_taken,
             branch_link   => branch_link,
+            bulk_load     => bulk_load,
+            store_double  => store_double,
+            bulk_writeback => bulk_writeback,
             alu_control   => alu_control,
             alu_src_imm   => alu_src_imm,
             ra1           => ra1,
             ra2           => ra2,
+            ra3           => ra3,
             wa            => wa,
+            bulk_regmask  => bulk_regmask,
             imm_ext       => imm_ext,
             branch_offset => branch_offset
         );
@@ -135,6 +145,31 @@ begin
         assert alu_control = ALU_PKHBT report "PKHBT ALU control mismatch" severity failure;
         assert ra1 = x"8" and ra2 = x"9" and wa = x"5"
             report "PKHBT register fields mismatch" severity failure;
+
+        -- LDMIA R14!, {R0-R7}
+        instr <= x"ECDE00FF";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "LDMIA should be legal" severity failure;
+        assert bulk_load = '1' report "LDMIA should request bulk load" severity failure;
+        assert bulk_writeback = '1' report "LDMIA should request writeback" severity failure;
+        assert reg_write = '1' report "LDMIA should write back base" severity failure;
+        assert mem_read = '1' report "LDMIA should read memory" severity failure;
+        assert alu_src_imm = '1' and imm_ext = x"00000000"
+            report "LDMIA address should use zero offset" severity failure;
+        assert ra1 = x"E" and wa = x"E" and bulk_regmask = x"00FF"
+            report "LDMIA fields mismatch" severity failure;
+
+        -- STRD R0, R8, [R10 + 0]
+        instr <= x"ECEA0008";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "STRD should be legal" severity failure;
+        assert store_double = '1' report "STRD should request double store" severity failure;
+        assert mem_write = '1' report "STRD should write memory" severity failure;
+        assert reg_write = '0' report "STRD should not write registers" severity failure;
+        assert alu_src_imm = '1' and imm_ext = x"00000000"
+            report "STRD offset mismatch" severity failure;
+        assert ra1 = x"A" and ra2 = x"0" and ra3 = x"8"
+            report "STRD register fields mismatch" severity failure;
 
         -- ADD R12, R12, #4095
         instr <= x"E28CCFFF";
@@ -267,6 +302,13 @@ begin
         assert illegal_instr = '1' report "Extension reserved bit should be illegal" severity failure;
         assert reg_write = '0' and mem_read = '0' and mem_write = '0' and branch_taken = '0' and branch_link = '0'
             report "Illegal extension should have no side effects" severity failure;
+
+        -- Illegal example: LDMIA writeback base cannot appear in reglist.
+        instr <= x"ECDE4000";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "LDMIA base-in-reglist should be illegal" severity failure;
+        assert reg_write = '0' and mem_read = '0' and bulk_load = '0' and bulk_writeback = '0'
+            report "Illegal LDMIA should have no side effects" severity failure;
 
         report "mcu_v1_decoder_tb passed" severity note;
         finish;

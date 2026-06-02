@@ -40,6 +40,8 @@ package mcu_v1_pkg is
     constant EXT_SMUSD   : std_logic_vector(4 downto 0) := "00011";
     constant EXT_SXTH    : std_logic_vector(4 downto 0) := "00100";
     constant EXT_PKHBT   : std_logic_vector(4 downto 0) := "00101";
+    constant EXT_LDMIA   : std_logic_vector(4 downto 0) := "00110";
+    constant EXT_STRD    : std_logic_vector(4 downto 0) := "00111";
 
     constant REGION_INPUT  : std_logic_vector(1 downto 0) := "00";
     constant REGION_WORK   : std_logic_vector(1 downto 0) := "01";
