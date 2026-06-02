@@ -750,25 +750,47 @@ mcu_v1_core_tb passed
 
 ## 8. 注意事项
 
-1. 当前项目不是 git 仓库。
-2. 旧 ARMv7E-M DSP 汇编已经能用 clang 做语法检查，但不是第一版 MCU 目标。
-3. 第一版 MCU 当前没有 `BX`，所以汇编末尾不要写 `BX LR`。可以用 `B DONE` 或约定 halt 标签。
-4. 需要确认成员 2 对程序结束的硬件机制。如果没有 halt 指令，可最后写：
+1. 当前项目已经是 git 仓库。
+2. 当前 baseline 已提交：
+
+```text
+commit 7f6b62e
+message: baselne
+branch: master
+```
+
+3. 旧 ARMv7E-M DSP 汇编只是第二版速度优化参考，不是当前第一版 MCU 目标。
+4. 第一版 MCU 当前没有 `BX`，所以汇编末尾不要写 `BX LR`。当前程序使用：
 
 ```asm
 DONE:
     B DONE
 ```
 
-5. `MUL` 必须按 signed 32-bit 乘法理解；`ASR` 必须是算术右移，不能用逻辑右移。
-6. 第一版不要追求 packed 16-bit，也不要上来用 DSP 指令。先跑通。
+5. `DONE: B DONE` 在当前机器码中编码为 `0xE8FFFFFE`，对应 `PC + 8` 分支规则下的自循环。
+6. `MUL` 必须按 signed 32-bit 乘法理解；`ASR` 必须是算术右移，不能用逻辑右移。
+7. 当前单周期 core 是功能仿真 baseline：组合读 `instr_rom` / `data_mem`。Vivado 综合上板前要关注 ROM/RAM 是否被推成同步 BRAM。
+8. 第一版不要追求 packed 16-bit，也不要上来用 DSP 指令。先跑通。
 
 ## 9. 当前一句话总结
 
-当前应继续的工作是：
+当前状态：
 
 ```text
-基于最新第一版 MCU 接口，编写一个只使用 MOV/ADD/SUB/CMP/LDR/STR/B/BEQ/BNE/MUL/ASR 的 8 点正向 DIF FFT 汇编程序。
-内部按 32-bit signed 计算，输入/输出外部仍为 16-bit signed。
-每级蝶形后 ASR #1，最终输出 FFT/8。
+已经完成 first baseline：
+1. 最新接口下的 8 点 FFT 汇编与机器码。
+2. VHDL decoder。
+3. 最小单周期 MCU core。
+4. GHDL 功能仿真通过。
+5. git commit: 7f6b62e baselne。
+```
+
+下一个对话建议从这里继续：
+
+```text
+1. 在 Vivado 中创建仿真工程，加入 rtl/*.vhd、tb/*.vhd 和 asm/*.mem。
+2. 先跑 mcu_v1_decoder_tb。
+3. 再跑 mcu_v1_core_tb。
+4. 如果 Vivado 找不到 .mem，处理仿真工作目录或改 MEM_FILE 路径。
+5. 仿真通过后，再决定是否做 Vivado-friendly ROM/RAM 或上板综合版本。
 ```
