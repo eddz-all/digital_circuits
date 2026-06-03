@@ -8,7 +8,7 @@
 
 ```text
 V5 已落仓库实现，代码实现提交为 644d857。
-当前 dsp / origin/dsp HEAD 为 f16aba0，其中包含 V5 push 后的 session memory 修正。
+当前 dsp / origin/dsp 已包含 V5 代码提交及后续 session memory 修正提交。
 最终实现结果：78 instructions, 77 before DONE, 59 timed_steps。
 最终交付前完整 V1-V5 回归已通过；后续若无共享 RTL 修改，不要一开始反复跑 V1/V2/V3/V4 checker。
 ```
