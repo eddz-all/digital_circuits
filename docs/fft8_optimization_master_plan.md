@@ -478,6 +478,71 @@ output_arbiter 写 verify_RAM 的周期必须算进 cnt。
 答辩时必须说明不是专用 DFT 电路，而是 8 个 MCU core 执行汇编。
 ```
 
+### 5.6 多核存储结构补充研究
+
+如果完全不考虑资源，增加重复 RAM 或多 bank RAM 是减少多核共享存储冲突的正确方向。
+
+但需要区分：
+
+```text
+RAM 冲突可以靠复制、分 bank、ping-pong buffer 缓解。
+FFT 级间依赖不能靠 RAM 复制消除。
+```
+
+Radix-2 FFT 的级间依赖仍然存在：
+
+```text
+Stage 2 必须等待 Stage 1 的中间结果。
+Stage 3 必须等待 Stage 2 的中间结果。
+```
+
+因此多核 radix-2 FFT 即使有足够 RAM，也仍需要 stage barrier；RAM 复制只能减少 barrier 前后的读写仲裁等待。
+
+可选存储结构：
+
+```text
+1. 输入复制。
+   适合 8-core DFT-bin。
+   先把 16 个输入槽位复制到每个 core 的本地 input RAM 或 input_snapshot replica。
+   之后 8 个 core 读输入无冲突。
+
+2. 多 bank ping-pong 工作 RAM。
+   适合多核协同 radix-2 FFT butterfly。
+   stage_buf_a 作为当前级输入，stage_buf_b 作为当前级输出。
+   每级结束后交换 a/b。
+   每个 buffer 分成 bank0..bank7，尽量让并行 butterfly 读写不同 bank。
+
+3. 每核本地 scratch + 显式交换。
+   每个 core 有本地 RAM/register file。
+   stage 间通过 result bus 或交换网络传递必要中间值。
+   控制复杂度最高，不建议作为第一版多核实现。
+```
+
+资源不受限时，最快潜力并不一定是 8-core DFT-bin。
+
+```text
+8-core DFT-bin:
+  优点是几乎无核间同步，最容易解释。
+  缺点是重复计算多，X1/X3/X5/X7 最慢 core 决定总 cnt。
+
+多核 radix-2 FFT butterfly:
+  优点是总算术量少。
+  缺点是有 stage barrier，需要多 bank/ping-pong RAM 和同步控制。
+```
+
+当前判断：
+
+```text
+最稳答辩和实现：
+  8-core DFT-bin。
+
+资源无限时最高速度潜力：
+  多核 radix-2 FFT butterfly + 多 bank/ping-pong RAM。
+
+下一步若重启多核研究：
+  先分别写 8-core DFT-bin 和 4/8-core radix-2 butterfly 的 cnt 估算脚本，再决定实现路线。
+```
+
 ## 6. 阶段 3：单核多发射
 
 ### 6.1 目标
