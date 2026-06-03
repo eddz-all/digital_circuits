@@ -35,7 +35,8 @@ V5 ARM-strict 59 已实现：只新增 ARM 真实存在的 SMLAD/STMIA，达到 
 V5 没有实现 FFT 硬件旁路、自创 FFT/complex/fixed-twiddle 指令，也没有采用 77-cycle 近似方案。
 V5 独立完成文档：docs/fft8_v5_arm_strict_59.md。
 V5 原计划文档仍保留：docs/fft8_v5_arm_strict_59_plan.md。
-V5 已提交并推送：commit `644d857`，branch `dsp` / `origin/dsp`。
+V5 代码已提交并推送：commit `644d857`，branch `dsp` / `origin/dsp`。
+当前 `dsp` / `origin/dsp` HEAD：commit `f16aba0`，用于修正 V5 push 后的 session memory。
 用户明确要求：下一个 session 不要一开始反复跑 V1/V2/V3/V4 checker；旧版本已通过，只有在准备最终交付、commit/tag，或怀疑共享 RTL 破坏旧版本时才做完整回归。
 用户明确要求：后续全量/最终汇报默认按 50 MHz 计算速率，不要再默认用 150 MHz。
 Vivado/VHDL 兼容要求：不要使用 process(all)、use std.env.all 或 finish；RTL/TB 必须用显式敏感列表。testbench 末尾可 wait，但 core TB 必须用 sim_done 停止 clock，避免 Run All 一直跑。
@@ -709,9 +710,10 @@ V5 当前状态：
 
 ```text
 已实现，已 commit/push，尚未 tag。
-commit: 644d857 add v5 arm strict 59 fft optimization
+V5 code commit: 644d857 add v5 arm strict 59 fft optimization
+current HEAD: f16aba0 update session memory for v5 push
 branch: dsp
-remote: origin/dsp 已包含该提交。
+remote: origin/dsp 已包含当前 HEAD。
 
 局部验证已通过：
   python3 tools/test_fft8_v5_arm_strict_59.py

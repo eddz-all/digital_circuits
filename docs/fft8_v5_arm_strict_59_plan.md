@@ -2,15 +2,15 @@
 
 更新时间：2026-06-03
 
-本文档是 V5 的独立执行计划。即使不读取 `docs/session_memory_mcu_fft.md`，也应能从本文恢复目标、约束、候选汇编、RTL/assembler/testbench 改动和验收标准。
+本文档是 V5 的独立执行计划。V5 已在 `dsp` 分支实现并推送；实施完成后的结果文档见 `docs/fft8_v5_arm_strict_59.md`，接力状态见 `docs/session_memory_mcu_fft.md`。本文后续章节保留原计划内容，用于追溯目标、约束、候选汇编、RTL/assembler/testbench 改动和验收标准。
 
 当前状态：
 
 ```text
-V5 尚未落仓库实现。
-本文记录的是已用临时 Python 解释器验证过的候选方案。
-临时候选结果：78 instructions, 77 before DONE, 59 timed_steps。
-当前工作区可能存在未跟踪 V5 候选文件；继续实现前必须先审查这些文件和重新验证，不要默认它们已完成验收。
+V5 已落仓库实现，代码实现提交为 644d857。
+当前 dsp / origin/dsp HEAD 为 f16aba0，其中包含 V5 push 后的 session memory 修正。
+最终实现结果：78 instructions, 77 before DONE, 59 timed_steps。
+最终交付前完整 V1-V5 回归已通过；后续若无共享 RTL 修改，不要一开始反复跑 V1/V2/V3/V4 checker。
 ```
 
 ## 1. 目标与硬约束
