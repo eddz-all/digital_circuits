@@ -366,6 +366,69 @@ V5 局部验证：
 
 GHDL core 仿真 0ms 处会打印若干 `NUMERIC_STD.TO_INTEGER: metavalue detected` warning，这是组合 RAM 初始 delta-cycle 中地址信号尚未稳定导致的提示；没有 assertion failure，最终 testbench 通过。
 
+## 5.1 GHDL V1/V5 随机 RTL scoreboard
+
+新增 V1/V5 专用随机输入输出对拍：
+
+```text
+tools/generate_fft8_random_vectors.py
+tb/fft8_v1_random_vectors.txt
+tb/fft8_v5_random_vectors.txt
+tb/mcu_v1_core_v1_random_tb.vhd
+tb/mcu_v1_core_v5_random_tb.vhd
+```
+
+生成口径：
+
+```text
+seed = 20260603
+case count = 100
+每组输入 = 16 个 signed 16-bit 槽位
+每组 expected = 16 个 signed 16-bit 输出槽位
+V1 expected = scalar fixed model
+V5 expected = packed fixed model
+```
+
+运行：
+
+```bash
+python3 tools/generate_fft8_random_vectors.py
+
+rm -rf /tmp/digital_circuits_ghdl_random
+mkdir -p /tmp/digital_circuits_ghdl_random
+ghdl -a --std=08 --workdir=/tmp/digital_circuits_ghdl_random rtl/*.vhd tb/*.vhd
+ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_random -o /tmp/mcu_v1_core_v1_random_tb mcu_v1_core_v1_random_tb
+/tmp/mcu_v1_core_v1_random_tb
+ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_random -o /tmp/mcu_v1_core_v5_random_tb mcu_v1_core_v5_random_tb
+/tmp/mcu_v1_core_v5_random_tb
+```
+
+结果：
+
+```text
+mcu_v1_core_v1_random_tb passed 100 random cases
+mcu_v1_core_v5_random_tb passed 100 random cases
+```
+
+Vivado/VHDL 兼容口径也已验证：
+
+```bash
+rm -rf /tmp/digital_circuits_ghdl_random93
+mkdir -p /tmp/digital_circuits_ghdl_random93
+ghdl -a --std=93 -fsynopsys --workdir=/tmp/digital_circuits_ghdl_random93 rtl/*.vhd tb/*.vhd
+ghdl -e --std=93 -fsynopsys --workdir=/tmp/digital_circuits_ghdl_random93 -o /tmp/mcu_v1_core_v1_random_tb_93 mcu_v1_core_v1_random_tb
+/tmp/mcu_v1_core_v1_random_tb_93
+ghdl -e --std=93 -fsynopsys --workdir=/tmp/digital_circuits_ghdl_random93 -o /tmp/mcu_v1_core_v5_random_tb_93 mcu_v1_core_v5_random_tb
+/tmp/mcu_v1_core_v5_random_tb_93
+```
+
+结果：
+
+```text
+mcu_v1_core_v1_random_tb passed 100 random cases
+mcu_v1_core_v5_random_tb passed 100 random cases
+```
+
 ## 6. GHDL basic 小程序数据
 
 ```text

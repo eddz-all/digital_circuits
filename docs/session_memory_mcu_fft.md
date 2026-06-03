@@ -37,6 +37,7 @@ V5 独立完成文档：docs/fft8_v5_arm_strict_59.md。
 V5 原计划文档仍保留：docs/fft8_v5_arm_strict_59_plan.md。
 V5 代码已提交并推送：commit `644d857`，branch `dsp` / `origin/dsp`。
 当前 `dsp` / `origin/dsp` 已包含 V5 代码提交及后续 session memory 修正提交。
+新增 V1/V5 随机 RTL scoreboard：`tb/mcu_v1_core_v1_random_tb.vhd` 和 `tb/mcu_v1_core_v5_random_tb.vhd` 各自读取 100 组固定随机输入/expected 文件，逐组 reset core、写 input_mem、运行到 DONE、比较 16 个 output slots；GHDL `--std=08` 与 `--std=93 -fsynopsys` 均已通过。
 用户明确要求：下一个 session 不要一开始反复跑 V1/V2/V3/V4 checker；旧版本已通过，只有在准备最终交付、commit/tag，或怀疑共享 RTL 破坏旧版本时才做完整回归。
 用户明确要求：后续全量/最终汇报默认按 50 MHz 计算速率，不要再默认用 150 MHz。
 用户明确要求：每次完成一次完整迭代后，都要提交并推送到远程 git 仓库，确保 `origin/dsp` 及时更新。
