@@ -127,10 +127,13 @@ LDMIA
 STRD
 SSAX
 SSUB16
+SMLAD
+STMIA
 ```
 
 V3 中 `LDMIA/STRD` 是 ARM 风格批量/双字访存，用于改善 FFT 输入输出搬运；它们仍是一条指令一个周期，不改变单核、单周期、单发射口径。
 V4 中 `SSAX/SSUB16` 是 ARM SIMD/DSP 风格 packed lane 指令，用于精确缩短 `-j` 旋转和负 twiddle 模板；它们也仍是一条指令一个周期。
+V5 中 `SMLAD/STMIA` 是 ARM DSP multiply-accumulate 和 ARM store-multiple 指令，用于精确缩短 W3 sign handling 和输出批量写回；它们也仍是一条指令一个周期。
 
 地址空间：
 
@@ -155,6 +158,7 @@ OUTPUT_BASE  = 0x200
 输出区 STR：保存 write_data[15:0]，模拟外部 16-bit verify_RAM
 LDMIA：从连续 32-bit 槽位读取多个寄存器，按寄存器编号升序写入，并写回 base
 STRD：向连续两个 32-bit 槽位写两个源寄存器；输出区仍只保存每个写入值的 low16
+STMIA：向连续 32-bit 槽位写 reglist；输出区仍只保存每个写入 word 的 low16
 ```
 
 ## 4. 分支与停机
@@ -246,7 +250,7 @@ GHDL 在 core 仿真 0ns 处可能打印少量 `NUMERIC_STD.TO_INTEGER: metavalu
 
 ## 6. Core Testbench 覆盖
 
-`tb/mcu_v1_core_tb.vhd` 包含五个 core 实例：
+`tb/mcu_v1_core_tb.vhd` 包含六个 core 实例：
 
 ```text
 basic_core  加载基础指令小程序
@@ -254,6 +258,7 @@ fft_core    加载 V1 scalar FFT
 fast_core   加载 V2 packed DSP FFT
 v3_core     加载 V3 arch DSP FFT
 v4_core     加载 V4 ARM-strict exact FFT
+v5_core     加载 V5 ARM-strict 59 FFT
 ```
 
 ### 6.1 基础小程序

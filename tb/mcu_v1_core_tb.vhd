@@ -74,6 +74,19 @@ architecture sim of mcu_v1_core_tb is
     signal v4_z            : std_logic;
     signal v4_n            : std_logic;
 
+    signal v5_rst          : std_logic := '1';
+    signal v5_input_we     : std_logic := '0';
+    signal v5_input_waddr  : std_logic_vector(5 downto 0) := (others => '0');
+    signal v5_input_wdata  : std_logic_vector(15 downto 0) := (others => '0');
+    signal v5_output_raddr : std_logic_vector(5 downto 0) := (others => '0');
+    signal v5_output_rdata : std_logic_vector(15 downto 0);
+    signal v5_pc           : std_logic_vector(31 downto 0);
+    signal v5_instr        : std_logic_vector(31 downto 0);
+    signal v5_halted       : std_logic;
+    signal v5_illegal      : std_logic;
+    signal v5_z            : std_logic;
+    signal v5_n            : std_logic;
+
     function slv16(value : integer) return std_logic_vector is
     begin
         return std_logic_vector(to_signed(value, 16));
@@ -186,6 +199,27 @@ begin
             flag_n_debug => v4_n
         );
 
+    v5_core : entity work.mcu_v1_core
+        generic map (
+            MEM_FILE  => "asm/fft8_v5_arm_strict_59.mem",
+            ROM_DEPTH => 256
+        )
+        port map (
+            clk          => clk,
+            rst          => v5_rst,
+            input_we     => v5_input_we,
+            input_waddr  => v5_input_waddr,
+            input_wdata  => v5_input_wdata,
+            output_raddr => v5_output_raddr,
+            output_rdata => v5_output_rdata,
+            pc_debug     => v5_pc,
+            instr_debug  => v5_instr,
+            halted_debug => v5_halted,
+            illegal_debug => v5_illegal,
+            flag_z_debug => v5_z,
+            flag_n_debug => v5_n
+        );
+
     stim : process
         procedure wait_cycles(count : natural) is
         begin
@@ -244,6 +278,16 @@ begin
             v4_input_we <= '0';
         end procedure;
 
+        procedure write_v5_input(slot : natural; value : integer) is
+        begin
+            v5_input_waddr <= std_logic_vector(to_unsigned(slot, 6));
+            v5_input_wdata <= slv16(value);
+            v5_input_we <= '1';
+            wait until rising_edge(clk);
+            wait for 1 ns;
+            v5_input_we <= '0';
+        end procedure;
+
         procedure expect_basic_output(slot : natural; value : integer) is
         begin
             basic_output_raddr <= std_logic_vector(to_unsigned(slot, 6));
@@ -290,6 +334,16 @@ begin
             wait for 1 ns;
             assert v4_output_rdata = slv16(value)
                 report "v4 output slot " & integer'image(slot)
+                    & " expected " & integer'image(value)
+                severity failure;
+        end procedure;
+
+        procedure expect_v5_output(slot : natural; value : integer) is
+        begin
+            v5_output_raddr <= std_logic_vector(to_unsigned(slot, 6));
+            wait for 1 ns;
+            assert v5_output_rdata = slv16(value)
+                report "v5 output slot " & integer'image(slot)
                     & " expected " & integer'image(value)
                 severity failure;
         end procedure;
@@ -493,6 +547,51 @@ begin
         expect_v4_output(13, -2896);
         expect_v4_output(14, 2896);
         expect_v4_output(15, 2895);
+
+        write_v5_input(0, 32760);
+        v5_rst <= '0';
+        wait_cycles(100);
+
+        assert v5_illegal = '0' report "V5 FFT program hit illegal instruction" severity failure;
+        assert v5_halted = '1' report "V5 FFT program did not reach DONE self-loop" severity failure;
+        assert v5_pc = x"00000134" report "V5 FFT PC should be at DONE" severity failure;
+
+        for complex_i in 0 to 7 loop
+            expect_v5_output(2 * complex_i, 4095);
+            expect_v5_output(2 * complex_i + 1, 0);
+        end loop;
+
+        v5_rst <= '1';
+        wait_cycles(2);
+        for slot_i in 0 to 15 loop
+            if slot_i = 2 then
+                write_v5_input(slot_i, 32760);
+            else
+                write_v5_input(slot_i, 0);
+            end if;
+        end loop;
+        v5_rst <= '0';
+        wait_cycles(100);
+
+        assert v5_illegal = '0' report "V5 FFT x1 program hit illegal instruction" severity failure;
+        assert v5_halted = '1' report "V5 FFT x1 program did not reach DONE self-loop" severity failure;
+        assert v5_pc = x"00000134" report "V5 FFT x1 PC should be at DONE" severity failure;
+        expect_v5_output(0, 4095);
+        expect_v5_output(1, 0);
+        expect_v5_output(2, -4095);
+        expect_v5_output(3, 0);
+        expect_v5_output(4, 0);
+        expect_v5_output(5, -4095);
+        expect_v5_output(6, 0);
+        expect_v5_output(7, 4095);
+        expect_v5_output(8, 2895);
+        expect_v5_output(9, -2896);
+        expect_v5_output(10, -2896);
+        expect_v5_output(11, 2896);
+        expect_v5_output(12, -2896);
+        expect_v5_output(13, -2896);
+        expect_v5_output(14, 2896);
+        expect_v5_output(15, 2895);
 
         report "mcu_v1_core_tb passed" severity note;
         sim_done <= '1';

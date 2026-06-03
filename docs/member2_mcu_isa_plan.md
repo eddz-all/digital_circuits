@@ -15,7 +15,7 @@
 3. 后续把机器码写入 instr_rom
 ```
 
-第一版目标不是完整 ARM，而是一个 ARM-like 裁剪版 MCU：32-bit 定长指令、保留 cond 条件字段、保留数据处理/访存/分支三大类。当前 GHDL baseline 已覆盖 PPT 最低指令集所需的 `ADD / SUB / AND / ORR / MOV / LDR / STR / B / BL`，并额外支持 FFT 第一版需要的 `CMP / BEQ / BNE / MUL / ASR`。DSP 加速分支还新增 `op=11` 扩展类 packed 指令，用于 V2 FFT 加速；V3 继续在该扩展类中加入 ARM 风格 `LDMIA/STRD`，用于架构层面的输入输出搬运优化；V4 再加入 ARM SIMD/DSP 风格 `SSAX/SSUB16`，用于 exact cycle 优化。
+第一版目标不是完整 ARM，而是一个 ARM-like 裁剪版 MCU：32-bit 定长指令、保留 cond 条件字段、保留数据处理/访存/分支三大类。当前 GHDL baseline 已覆盖 PPT 最低指令集所需的 `ADD / SUB / AND / ORR / MOV / LDR / STR / B / BL`，并额外支持 FFT 第一版需要的 `CMP / BEQ / BNE / MUL / ASR`。DSP 加速分支还新增 `op=11` 扩展类 packed 指令，用于 V2 FFT 加速；V3 继续在该扩展类中加入 ARM 风格 `LDMIA/STRD`，用于架构层面的输入输出搬运优化；V4 再加入 ARM SIMD/DSP 风格 `SSAX/SSUB16`，用于 exact cycle 优化；V5 加入 ARM `SMLAD/STMIA`，用于 59 timed_steps 优化。
 
 ## 1. 总体约定
 
@@ -224,6 +224,8 @@ STRD Rd, Rm, [Rn + imm]
 ```text
 SSAX
 SSUB16
+SMLAD
+STMIA
 ```
 
 V1 baseline 不要依赖：
@@ -460,9 +462,11 @@ funct：
 00111 = STRD
 01000 = SSAX
 01001 = SSUB16
+01010 = SMLAD
+01011 = STMIA
 ```
 
-其中 `SHADD16` 到 `PKHBT` 用于 `asm/fft8_v2_packed_dsp.s`；`LDMIA/STRD` 用于 `asm/fft8_v3_arch_dsp.s`；`SSAX/SSUB16` 用于 `asm/fft8_v4_arm_strict.s`，不会影响 V1 scalar baseline。
+其中 `SHADD16` 到 `PKHBT` 用于 `asm/fft8_v2_packed_dsp.s`；`LDMIA/STRD` 用于 `asm/fft8_v3_arch_dsp.s`；`SSAX/SSUB16` 用于 `asm/fft8_v4_arm_strict.s`；`SMLAD/STMIA` 用于 `asm/fft8_v5_arm_strict_59.s`，不会影响 V1 scalar baseline。
 
 V3 访存扩展格式：
 
@@ -492,7 +496,7 @@ LDMIA writeback 时，base register 不允许出现在 reglist 中。
 LDMIA 不使用 R15，按寄存器编号升序写入。
 STRD 写 base+imm 和 base+imm+4 两个连续 32-bit 程序槽位。
 V3 不实现 FFT8、fixed twiddle 复乘或自定义 complex load/store 指令。
-V4 也不实现 FFT8、fixed twiddle 复乘或自定义 complex load/store 指令，只新增 ARM 真实 SIMD/DSP 风格 `SSAX/SSUB16`。
+V4/V5 也不实现 FFT8、fixed twiddle 复乘或自定义 complex load/store 指令，只新增 ARM 真实 SIMD/DSP/访存风格 `SSAX/SSUB16/SMLAD/STMIA`。
 ```
 
 V4 packed lane 指令语义：
@@ -567,6 +571,7 @@ ASR #imm，至少支持 #1 和 #15
 DSP 加速分支额外支持 SHADD16 / SHSUB16 / SMUAD / SMUSD / SXTH / PKHBT
 V3 architecture DSP 分支额外支持 ARM 风格 LDMIA / STRD
 V4 ARM-strict exact 分支额外支持 ARM SIMD/DSP 风格 SSAX / SSUB16
+V5 ARM-strict 59 分支额外支持 ARM DSP/访存风格 SMLAD / STMIA
 ```
 
 最关键的最新变化：

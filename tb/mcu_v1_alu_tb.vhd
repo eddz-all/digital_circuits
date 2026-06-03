@@ -9,6 +9,7 @@ end entity mcu_v1_alu_tb;
 architecture sim of mcu_v1_alu_tb is
     signal a           : std_logic_vector(31 downto 0) := (others => '0');
     signal b           : std_logic_vector(31 downto 0) := (others => '0');
+    signal c           : std_logic_vector(31 downto 0) := (others => '0');
     signal alu_control : std_logic_vector(3 downto 0) := ALU_ADD;
     signal result      : std_logic_vector(31 downto 0);
     signal flag_z      : std_logic;
@@ -18,6 +19,7 @@ begin
         port map (
             a           => a,
             b           => b,
+            c           => c,
             alu_control => alu_control,
             result      => result,
             flag_z      => flag_z,
@@ -80,6 +82,21 @@ begin
         alu_control <= ALU_SSUB16;
         wait for 1 ns;
         assert result = x"FFFE0001" report "SSUB16 wraparound mismatch" severity failure;
+
+        -- SMLAD: 3*5 + (-4)*6 + 100 = 91.
+        a <= x"FFFC0003";
+        b <= x"00060005";
+        c <= x"00000064";
+        alu_control <= ALU_SMLAD;
+        wait for 1 ns;
+        assert result = x"0000005B" report "SMLAD result mismatch" severity failure;
+
+        a <= x"80007FFF";
+        b <= x"80007FFF";
+        c <= x"00007FFF";
+        alu_control <= ALU_SMLAD;
+        wait for 1 ns;
+        assert result = x"7FFF8000" report "SMLAD boundary mismatch" severity failure;
 
         report "mcu_v1_alu_tb passed" severity note;
         wait;

@@ -1,6 +1,6 @@
 # FFT8 实验数据汇总
 
-本文档集中记录当前 `dsp` 分支下 V1 scalar baseline、V2 packed DSP 加速版、V3 ARM-safe architecture DSP 优化版和 V4 ARM-strict exact 优化版的实验数据。当前阶段只做设计与 GHDL 仿真验证，不包含上板或 Vivado timing 数据。
+本文档集中记录当前 `dsp` 分支下 V1 scalar baseline、V2 packed DSP 加速版、V3 ARM-safe architecture DSP 优化版、V4 ARM-strict exact 优化版和 V5 ARM-strict 59 优化版的实验数据。当前阶段只做设计与 GHDL 仿真验证，不包含上板或 Vivado timing 数据。
 
 ## 1. 版本与口径
 
@@ -28,6 +28,12 @@ V4 ARM-strict exact:
   mem:     asm/fft8_v4_arm_strict.mem
   model:   packed complex Q15 FFT/8
   note:    ARM-real SSAX/SSUB16 exact cycle optimization
+
+V5 ARM-strict 59:
+  program: asm/fft8_v5_arm_strict_59.s
+  mem:     asm/fft8_v5_arm_strict_59.mem
+  model:   packed complex Q15 FFT/8
+  note:    ARM-real SMLAD/STMIA exact cycle optimization
 ```
 
 速度换算口径：
@@ -44,6 +50,7 @@ V1: 50 MHz / 276 = 18.12 万次/秒
 V2: 50 MHz / 109 = 45.87 万次/秒
 V3: 50 MHz / 88  = 56.82 万次/秒
 V4: 50 MHz / 78  = 64.10 万次/秒
+V5: 50 MHz / 59  = 84.75 万次/秒
 ```
 
 ## 2. 指令数与 timed steps
@@ -76,6 +83,13 @@ V4 ARM-strict exact:
   timed_steps from first input read through last output write: 78
   DONE PC: 0x015C
   DONE word: 0xE8FFFFFE
+
+V5 ARM-strict 59:
+  instructions before labels/comments: 78
+  instructions executed before DONE self-loop: 77
+  timed_steps from first input read through last output write: 59
+  DONE PC: 0x0134
+  DONE word: 0xE8FFFFFE
 ```
 
 ## 3. Assembler 实验数据
@@ -88,6 +102,7 @@ python3 tools/assemble_mcu_v1.py asm/test_mcu_v1_basic.s --mem-out asm/test_mcu_
 python3 tools/assemble_mcu_v1.py asm/fft8_v2_packed_dsp.s --mem-out asm/fft8_v2_packed_dsp.mem --lst-out asm/fft8_v2_packed_dsp.lst
 python3 tools/assemble_mcu_v1.py asm/fft8_v3_arch_dsp.s --mem-out asm/fft8_v3_arch_dsp.mem --lst-out asm/fft8_v3_arch_dsp.lst
 python3 tools/assemble_mcu_v1.py asm/fft8_v4_arm_strict.s --mem-out asm/fft8_v4_arm_strict.mem --lst-out asm/fft8_v4_arm_strict.lst
+python3 tools/assemble_mcu_v1.py asm/fft8_v5_arm_strict_59.s --mem-out asm/fft8_v5_arm_strict_59.mem --lst-out asm/fft8_v5_arm_strict_59.lst
 ```
 
 结果：
@@ -107,6 +122,9 @@ DONE at PC 0x0184, word 0xE8FFFFFE
 
 encoded 88 instructions from asm/fft8_v4_arm_strict.s
 DONE at PC 0x015C, word 0xE8FFFFFE
+
+encoded 78 instructions from asm/fft8_v5_arm_strict_59.s
+DONE at PC 0x0134, word 0xE8FFFFFE
 ```
 
 ## 4. Python 模型对拍实验数据
@@ -118,6 +136,7 @@ python3 tools/test_fft8_v1_mcu32_basic.py
 python3 tools/test_fft8_v2_packed_dsp.py
 python3 tools/test_fft8_v3_arch_dsp.py
 python3 tools/test_fft8_v4_arm_strict.py
+python3 tools/test_fft8_v5_arm_strict_59.py
 ```
 
 V1 scalar `x0` impulse：
@@ -299,6 +318,18 @@ V4 ARM-strict exact 随机与边界测试：
 V4 target timed_steps <= 78 passed.
 ```
 
+V5 ARM-strict 59 随机与边界测试：
+
+```text
+78 instructions before labels/comments.
+77 instructions executed before DONE self-loop.
+59 instructions from first input read through last output write.
+7 edge-case tests passed.
+1000 random moderate-amplitude tests passed.
+5000 random full-range packed-semantics tests passed.
+V5 target timed_steps <= 59 passed.
+```
+
 说明：
 
 ```text
@@ -306,6 +337,7 @@ V2/V3/V4 对常见边界样例和 1000 组中等幅度随机输入精确匹配 V
 完整 16-bit 随机输入按 packed DSP fixed model 对拍，因为 halfword lane 中间值可能按 16-bit 语义截断。
 V3 与 V2 的 FFT 计算主体一致，优化点只在 LDMIA 输入搬运和 STRD 输出写回。
 V4 继续保持 packed FFT exact 语义，只用 SSAX/SSUB16 缩短 -j 旋转和负 twiddle 模板。
+V5 继续保持 packed FFT exact 语义，只用 SMLAD/STMIA 缩短 W3 sign handling 和输出批量写回。
 ```
 
 ## 5. GHDL 回归实验数据
@@ -325,6 +357,11 @@ Testbench 通过结果：
 mcu_v1_alu_tb passed @10ns
 mcu_v1_decoder_tb passed @29ns
 mcu_v1_core_tb passed @15881ns
+
+V5 局部验证：
+  mcu_v1_alu_tb passed @12ns
+  mcu_v1_decoder_tb passed @37ns
+  mcu_v1_core_tb passed @18091ns
 ```
 
 GHDL core 仿真 0ms 处会打印若干 `NUMERIC_STD.TO_INTEGER: metavalue detected` warning，这是组合 RAM 初始 delta-cycle 中地址信号尚未稳定导致的提示；没有 assertion failure，最终 testbench 通过。

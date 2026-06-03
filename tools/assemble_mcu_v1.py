@@ -54,6 +54,8 @@ EXT_FUNCT = {
     "STRD": 0b00111,
     "SSAX": 0b01000,
     "SSUB16": 0b01001,
+    "SMLAD": 0b01010,
+    "STMIA": 0b01011,
 }
 EXT_OPS = set(EXT_FUNCT)
 SUPPORTED_OPS = DATA_OPS | MEM_OPS | BRANCH_OPS | EXT_OPS
@@ -97,7 +99,23 @@ def parse_source(path: Path) -> Program:
 
 
 def split_args(text: str) -> list[str]:
-    return [part.strip() for part in text.split(",")]
+    args: list[str] = []
+    start = 0
+    brace_depth = 0
+    for i, ch in enumerate(text):
+        if ch == "{":
+            brace_depth += 1
+        elif ch == "}":
+            brace_depth -= 1
+            if brace_depth < 0:
+                raise ValueError(f"unmatched register-list brace in {text!r}")
+        elif ch == "," and brace_depth == 0:
+            args.append(text[start:i].strip())
+            start = i + 1
+    if brace_depth != 0:
+        raise ValueError(f"unmatched register-list brace in {text!r}")
+    args.append(text[start:].strip())
+    return args
 
 
 def parse_reg(text: str) -> int:
@@ -164,7 +182,7 @@ def parse_reg_list(text: str) -> int:
     if mask == 0:
         raise ValueError("empty register mask")
     if mask & (1 << 15):
-        raise ValueError("R15 is not supported in LDMIA register lists")
+        raise ValueError("R15 is not supported in register lists")
     return mask
 
 
@@ -277,16 +295,18 @@ def encode_ext(op: str, args: list[str]) -> int:
     rm = 0
     imm = 0
 
-    if op == "LDMIA":
+    if op in {"LDMIA", "STMIA"}:
         if len(args) != 2:
-            raise ValueError("LDMIA expects Rn!, {reglist}")
+            raise ValueError(f"{op} expects Rn!, {{reglist}}")
         base_text = args[0].strip().upper()
         if not base_text.endswith("!"):
-            raise ValueError("first-version LDMIA requires writeback, e.g. R14!")
+            raise ValueError(f"first-version {op} requires writeback, e.g. R14!")
         rn = parse_reg(base_text[:-1])
+        if rn == 15:
+            raise ValueError(f"{op} base register cannot be R15")
         regmask = parse_reg_list(args[1])
         if regmask & (1 << rn):
-            raise ValueError("LDMIA writeback base register cannot be in reglist")
+            raise ValueError(f"{op} writeback base register cannot be in reglist")
         return (
             (cond << 28)
             | (0b11 << 26)
@@ -294,6 +314,24 @@ def encode_ext(op: str, args: list[str]) -> int:
             | (1 << 20)
             | (rn << 16)
             | regmask
+        )
+    elif op == "SMLAD":
+        if len(args) != 4:
+            raise ValueError("SMLAD expects Rd, Rn, Rm, Ra")
+        rd = parse_reg(args[0])
+        rn = parse_reg(args[1])
+        rm = parse_reg(args[2])
+        ra = parse_reg(args[3])
+        if any(reg == 15 for reg in (rd, rn, rm, ra)):
+            raise ValueError("SMLAD does not support R15 operands")
+        return (
+            (cond << 28)
+            | (0b11 << 26)
+            | (funct << 21)
+            | (rn << 16)
+            | (rd << 12)
+            | (ra << 8)
+            | rm
         )
     elif op == "STRD":
         if len(args) != 3:

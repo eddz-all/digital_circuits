@@ -12,6 +12,9 @@ entity mcu_v1_output_mem is
         slot2        : in  std_logic_vector(5 downto 0);
         write_data   : in  std_logic_vector(31 downto 0);
         write_data2  : in  std_logic_vector(31 downto 0);
+        bulk_store   : in  std_logic;
+        bulk_write_data : in std_logic_vector(511 downto 0);
+        bulk_regmask : in std_logic_vector(15 downto 0);
         output_raddr : in  std_logic_vector(5 downto 0);
         output_rdata : out std_logic_vector(15 downto 0);
         read_data    : out std_logic_vector(31 downto 0);
@@ -24,6 +27,9 @@ architecture rtl of mcu_v1_output_mem is
     signal mem : output_array_t := (others => (others => '0'));
 begin
     process(clk)
+        variable base_slot : integer;
+        variable data_index : natural range 0 to 16;
+        variable idx : integer;
     begin
         if rising_edge(clk) then
             if rst = '1' then
@@ -34,6 +40,19 @@ begin
                 end if;
                 if we2 = '1' then
                     mem(to_integer(unsigned(slot2))) <= write_data2(15 downto 0);
+                end if;
+                if bulk_store = '1' then
+                    base_slot := to_integer(unsigned(slot));
+                    data_index := 0;
+                    for reg_index in 0 to 15 loop
+                        if bulk_regmask(reg_index) = '1' then
+                            idx := base_slot + data_index;
+                            if idx <= 63 then
+                                mem(idx) <= bulk_write_data(32 * data_index + 15 downto 32 * data_index);
+                            end if;
+                            data_index := data_index + 1;
+                        end if;
+                    end loop;
                 end if;
             end if;
         end if;

@@ -18,7 +18,8 @@ entity mcu_v1_regfile is
 
         rd1 : out std_logic_vector(31 downto 0);
         rd2 : out std_logic_vector(31 downto 0);
-        rd3 : out std_logic_vector(31 downto 0)
+        rd3 : out std_logic_vector(31 downto 0);
+        bulk_rd : out std_logic_vector(511 downto 0)
     );
 end entity mcu_v1_regfile;
 
@@ -47,4 +48,14 @@ begin
     rd1 <= regs(to_integer(unsigned(ra1)));
     rd2 <= regs(to_integer(unsigned(ra2)));
     rd3 <= regs(to_integer(unsigned(ra3)));
+
+    process(regs)
+        variable data : std_logic_vector(511 downto 0);
+    begin
+        data := (others => '0');
+        for i in 0 to 15 loop
+            data(32 * i + 31 downto 32 * i) := regs(i);
+        end loop;
+        bulk_rd <= data;
+    end process;
 end architecture rtl;

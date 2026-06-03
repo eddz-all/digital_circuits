@@ -20,6 +20,7 @@ architecture sim of mcu_v1_decoder_tb is
     signal branch_taken  : std_logic;
     signal branch_link   : std_logic;
     signal bulk_load     : std_logic;
+    signal bulk_store    : std_logic;
     signal store_double  : std_logic;
     signal bulk_writeback : std_logic;
     signal alu_control   : std_logic_vector(3 downto 0);
@@ -47,6 +48,7 @@ begin
             branch_taken  => branch_taken,
             branch_link   => branch_link,
             bulk_load     => bulk_load,
+            bulk_store    => bulk_store,
             store_double  => store_double,
             bulk_writeback => bulk_writeback,
             alu_control   => alu_control,
@@ -163,6 +165,15 @@ begin
         assert ra1 = x"D" and ra2 = x"C" and wa = x"E"
             report "SSUB16 register fields mismatch" severity failure;
 
+        -- SMLAD R2, R7, R14, R11
+        instr <= x"ED472B0E";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "SMLAD should be legal" severity failure;
+        assert reg_write = '1' report "SMLAD should write register" severity failure;
+        assert alu_control = ALU_SMLAD report "SMLAD ALU control mismatch" severity failure;
+        assert ra1 = x"7" and ra2 = x"E" and ra3 = x"B" and wa = x"2"
+            report "SMLAD register fields mismatch" severity failure;
+
         -- LDMIA R14!, {R0-R7}
         instr <= x"ECDE00FF";
         wait for 1 ns;
@@ -175,6 +186,19 @@ begin
             report "LDMIA address should use zero offset" severity failure;
         assert ra1 = x"E" and wa = x"E" and bulk_regmask = x"00FF"
             report "LDMIA fields mismatch" severity failure;
+
+        -- STMIA R10!, {R0-R5,R11-R12}
+        instr <= x"ED7A183F";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "STMIA should be legal" severity failure;
+        assert bulk_store = '1' report "STMIA should request bulk store" severity failure;
+        assert bulk_writeback = '1' report "STMIA should request writeback" severity failure;
+        assert mem_write = '1' report "STMIA should write memory" severity failure;
+        assert reg_write = '1' report "STMIA should write back base" severity failure;
+        assert alu_src_imm = '1' and imm_ext = x"00000000"
+            report "STMIA address should use zero offset" severity failure;
+        assert ra1 = x"A" and wa = x"A" and bulk_regmask = x"183F"
+            report "STMIA fields mismatch" severity failure;
 
         -- STRD R0, R8, [R10 + 0]
         instr <= x"ECEA0008";
@@ -318,7 +342,7 @@ begin
         wait for 1 ns;
         assert illegal_instr = '1' report "Extension reserved bit should be illegal" severity failure;
         assert reg_write = '0' and mem_read = '0' and mem_write = '0'
-            and branch_taken = '0' and branch_link = '0'
+            and bulk_store = '0' and branch_taken = '0' and branch_link = '0'
             report "Illegal extension should have no side effects" severity failure;
 
         -- Illegal example: SSAX reserved bit 20 must be zero.
@@ -326,8 +350,23 @@ begin
         wait for 1 ns;
         assert illegal_instr = '1' report "SSAX reserved bit should be illegal" severity failure;
         assert reg_write = '0' and mem_read = '0' and mem_write = '0'
-            and branch_taken = '0' and branch_link = '0'
+            and bulk_store = '0' and branch_taken = '0' and branch_link = '0'
             report "Illegal SSAX should have no side effects" severity failure;
+
+        -- Illegal example: SMLAD bit 20 must be zero.
+        instr <= x"ED572B0E";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "SMLAD reserved bit should be illegal" severity failure;
+        assert reg_write = '0' and mem_read = '0' and mem_write = '0'
+            and bulk_store = '0' and branch_taken = '0' and branch_link = '0'
+            report "Illegal SMLAD should have no side effects" severity failure;
+
+        -- Illegal example: SMLAD bits 7:4 must be zero.
+        instr <= x"ED472B1E";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "SMLAD reserved low nibble should be illegal" severity failure;
+        assert reg_write = '0' and mem_read = '0' and mem_write = '0' and bulk_store = '0'
+            report "Illegal SMLAD low nibble should have no side effects" severity failure;
 
         -- Illegal example: LDMIA writeback base cannot appear in reglist.
         instr <= x"ECDE4000";
@@ -335,6 +374,34 @@ begin
         assert illegal_instr = '1' report "LDMIA base-in-reglist should be illegal" severity failure;
         assert reg_write = '0' and mem_read = '0' and bulk_load = '0' and bulk_writeback = '0'
             report "Illegal LDMIA should have no side effects" severity failure;
+
+        -- Illegal example: STMIA requires writeback.
+        instr <= x"ED6A183F";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "STMIA without writeback should be illegal" severity failure;
+        assert reg_write = '0' and mem_write = '0' and bulk_store = '0' and bulk_writeback = '0'
+            report "Illegal STMIA without writeback should have no side effects" severity failure;
+
+        -- Illegal example: STMIA register list cannot be empty.
+        instr <= x"ED7A0000";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "STMIA empty reglist should be illegal" severity failure;
+        assert reg_write = '0' and mem_write = '0' and bulk_store = '0' and bulk_writeback = '0'
+            report "Illegal STMIA empty reglist should have no side effects" severity failure;
+
+        -- Illegal example: STMIA register list cannot include R15.
+        instr <= x"ED7A8000";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "STMIA R15 reglist should be illegal" severity failure;
+        assert reg_write = '0' and mem_write = '0' and bulk_store = '0' and bulk_writeback = '0'
+            report "Illegal STMIA R15 reglist should have no side effects" severity failure;
+
+        -- Illegal example: STMIA writeback base cannot appear in reglist.
+        instr <= x"ED7A0400";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "STMIA base-in-reglist should be illegal" severity failure;
+        assert reg_write = '0' and mem_write = '0' and bulk_store = '0' and bulk_writeback = '0'
+            report "Illegal STMIA base-in-reglist should have no side effects" severity failure;
 
         report "mcu_v1_decoder_tb passed" severity note;
         wait;

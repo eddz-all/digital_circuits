@@ -7,6 +7,7 @@ entity mcu_v1_alu is
     port (
         a           : in  std_logic_vector(31 downto 0);
         b           : in  std_logic_vector(31 downto 0);
+        c           : in  std_logic_vector(31 downto 0);
         alu_control : in  std_logic_vector(3 downto 0);
         result      : out std_logic_vector(31 downto 0);
         flag_z      : out std_logic;
@@ -17,7 +18,7 @@ end entity mcu_v1_alu;
 architecture rtl of mcu_v1_alu is
     signal result_i : std_logic_vector(31 downto 0) := (others => '0');
 begin
-    process(a, b, alu_control)
+    process(a, b, c, alu_control)
         variable mul64 : signed(63 downto 0);
         variable shamt : natural range 0 to 31;
         variable a_lo17 : signed(16 downto 0);
@@ -88,6 +89,11 @@ begin
                 lo17 := a_lo17 - b_lo17;
                 hi17 := a_hi17 - b_hi17;
                 result_i <= std_logic_vector(hi17(15 downto 0)) & std_logic_vector(lo17(15 downto 0));
+            when ALU_SMLAD =>
+                prod_lo := signed(a(15 downto 0)) * signed(b(15 downto 0));
+                prod_hi := signed(a(31 downto 16)) * signed(b(31 downto 16));
+                sum32 := prod_lo + prod_hi + signed(c);
+                result_i <= std_logic_vector(sum32);
             when others =>
                 result_i <= (others => '0');
         end case;

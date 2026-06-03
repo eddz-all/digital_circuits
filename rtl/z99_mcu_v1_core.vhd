@@ -48,6 +48,7 @@ architecture rtl of mcu_v1_core is
     signal branch_taken  : std_logic := '0';
     signal branch_link   : std_logic := '0';
     signal bulk_load     : std_logic := '0';
+    signal bulk_store    : std_logic := '0';
     signal store_double  : std_logic := '0';
     signal bulk_writeback : std_logic := '0';
     signal alu_control   : std_logic_vector(3 downto 0) := ALU_ADD;
@@ -63,12 +64,14 @@ architecture rtl of mcu_v1_core is
     signal reg_rd1 : std_logic_vector(31 downto 0) := (others => '0');
     signal reg_rd2 : std_logic_vector(31 downto 0) := (others => '0');
     signal reg_rd3 : std_logic_vector(31 downto 0) := (others => '0');
+    signal reg_bulk_rd : std_logic_vector(511 downto 0) := (others => '0');
     signal alu_b   : std_logic_vector(31 downto 0) := (others => '0');
     signal alu_res : std_logic_vector(31 downto 0) := (others => '0');
     signal mem_rd  : std_logic_vector(31 downto 0) := (others => '0');
     signal bulk_mem_rd : std_logic_vector(511 downto 0) := (others => '0');
     signal bulk_we_mask : std_logic_vector(15 downto 0) := (others => '0');
     signal bulk_wd : std_logic_vector(511 downto 0) := (others => '0');
+    signal bulk_store_data : std_logic_vector(511 downto 0) := (others => '0');
     signal ldmia_wb_data : std_logic_vector(31 downto 0) := (others => '0');
     signal wb_data : std_logic_vector(31 downto 0) := (others => '0');
 
@@ -110,6 +113,7 @@ begin
             branch_taken  => branch_taken,
             branch_link   => branch_link,
             bulk_load     => bulk_load,
+            bulk_store    => bulk_store,
             store_double  => store_double,
             bulk_writeback => bulk_writeback,
             alu_control   => alu_control,
@@ -137,7 +141,8 @@ begin
             bulk_wd      => bulk_wd,
             rd1 => reg_rd1,
             rd2 => reg_rd2,
-            rd3 => reg_rd3
+            rd3 => reg_rd3,
+            bulk_rd => reg_bulk_rd
         );
 
     alu_b <= imm_ext when alu_src_imm = '1' else reg_rd2;
@@ -146,6 +151,7 @@ begin
         port map (
             a           => reg_rd1,
             b           => alu_b,
+            c           => reg_rd3,
             alu_control => alu_control,
             result      => alu_res,
             flag_z      => alu_z,
@@ -161,7 +167,10 @@ begin
             write_data2  => reg_rd3,
             mem_read     => mem_read,
             mem_write    => mem_write,
+            bulk_store   => bulk_store,
             store_double => store_double,
+            bulk_write_data => bulk_store_data,
+            bulk_regmask => bulk_regmask,
             read_data    => mem_rd,
             bulk_read_data => bulk_mem_rd,
             input_we     => input_we,
@@ -180,6 +189,20 @@ begin
             if bulk_regmask(reg_index) = '1' then
                 bulk_wd(32 * reg_index + 31 downto 32 * reg_index) <=
                     bulk_mem_rd(32 * data_index + 31 downto 32 * data_index);
+                data_index := data_index + 1;
+            end if;
+        end loop;
+    end process;
+
+    process(bulk_regmask, reg_bulk_rd)
+        variable data_index : natural range 0 to 16;
+    begin
+        bulk_store_data <= (others => '0');
+        data_index := 0;
+        for reg_index in 0 to 15 loop
+            if bulk_regmask(reg_index) = '1' then
+                bulk_store_data(32 * data_index + 31 downto 32 * data_index) <=
+                    reg_bulk_rd(32 * reg_index + 31 downto 32 * reg_index);
                 data_index := data_index + 1;
             end if;
         end loop;

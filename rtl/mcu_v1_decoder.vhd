@@ -20,6 +20,7 @@ entity mcu_v1_decoder is
         branch_taken  : out std_logic;
         branch_link   : out std_logic;
         bulk_load     : out std_logic;
+        bulk_store    : out std_logic;
         store_double  : out std_logic;
         bulk_writeback : out std_logic;
 
@@ -57,6 +58,7 @@ begin
         branch_taken  <= '0';
         branch_link   <= '0';
         bulk_load     <= '0';
+        bulk_store    <= '0';
         store_double  <= '0';
         bulk_writeback <= '0';
         alu_control   <= ALU_ADD;
@@ -223,6 +225,12 @@ begin
                         if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
                             illegal_v := '1';
                         end if;
+                    when EXT_SMLAD =>
+                        alu_control <= ALU_SMLAD;
+                        ra3 <= instr(11 downto 8);
+                        if instr(20) /= '0' or instr(7 downto 4) /= x"0" then
+                            illegal_v := '1';
+                        end if;
                     when EXT_LDMIA =>
                         alu_control <= ALU_ADD;
                         alu_src_imm <= '1';
@@ -252,6 +260,22 @@ begin
                         if instr(20) /= '0' or instr(5 downto 4) /= "00" then
                             illegal_v := '1';
                         end if;
+                    when EXT_STMIA =>
+                        alu_control <= ALU_ADD;
+                        alu_src_imm <= '1';
+                        imm_ext <= (others => '0');
+                        mem_write <= cond_ok_v;
+                        bulk_store <= cond_ok_v;
+                        reg_write <= cond_ok_v and instr(20);
+                        bulk_writeback <= cond_ok_v and instr(20);
+                        wa <= instr(19 downto 16);
+                        bulk_regmask <= instr(15 downto 0);
+                        if instr(20) /= '1'
+                            or instr(15 downto 0) = x"0000"
+                            or instr(15) = '1'
+                            or instr(rn_index) = '1' then
+                            illegal_v := '1';
+                        end if;
                     when others =>
                         illegal_v := '1';
                 end case;
@@ -269,6 +293,7 @@ begin
             branch_taken <= '0';
             branch_link  <= '0';
             bulk_load    <= '0';
+            bulk_store   <= '0';
             store_double <= '0';
             bulk_writeback <= '0';
         end if;

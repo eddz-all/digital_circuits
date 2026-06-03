@@ -86,6 +86,8 @@ LDMIA
 STRD
 SSAX
 SSUB16
+SMLAD
+STMIA
 ```
 
 不支持的格式会拉高：
@@ -116,6 +118,7 @@ illegal_instr = 1
 1100 = PKHBT
 1101 = SSAX
 1110 = SSUB16
+1111 = SMLAD
 ```
 
 这些编码集中定义在 `rtl/00_mcu_v1_pkg.vhd`，decoder 和 ALU 共用同一套常量。
@@ -145,11 +148,14 @@ operand2[11:0]
 00111 = STRD
 01000 = SSAX
 01001 = SSUB16
+01010 = SMLAD
+01011 = STMIA
 ```
 
 V3 使用同一个 `op = 11` 扩展类加入 ARM 风格访存指令。其中 `LDMIA` 使用 `W[20] = 1` 和 `regmask[15:0]`，`STRD` 使用 `Rd / Rm` 双源寄存器和 `imm8[11:4]` 字节偏移。
 
 V4 继续使用同一个扩展类加入 ARM SIMD/DSP 风格 `SSAX/SSUB16`，用于 exact cycle 优化。它们采用三寄存器 DSP 格式，要求 `instr(20) = 0` 且 `instr(11 downto 4) = x"00"`。
+V5 继续使用同一个扩展类加入 ARM DSP `SMLAD` 和 ARM store-multiple `STMIA`。`SMLAD` 采用四寄存器格式，`Ra = instr(11 downto 8)` 且 `instr(7 downto 4) = x"0"`；`STMIA` 使用 `W[20] = 1` 和 `regmask[15:0]`。
 
 ## 4. 关键语义
 
@@ -201,6 +207,17 @@ STRD Rd, Rm, [Rn + imm]:
   ra3 = Rm
   imm_ext = zero_extend(imm8)
   非法条件：reserved[20] != 0、imm 不是 4 字节对齐
+
+STMIA Rn!, {reglist}:
+  bulk_store = 1
+  bulk_writeback = 1
+  mem_write = 1
+  reg_write = 1
+  ra1 = Rn
+  wa = Rn
+  bulk_regmask = reglist
+  imm_ext = 0
+  非法条件：W != 1、reglist 为空、reglist 包含 R15、writeback base 在 reglist 中
 ```
 
 V4 packed lane 指令：
@@ -215,6 +232,12 @@ SSUB16 Rd, Rn, Rm:
   lo = signed16(Rn.low16) - signed16(Rm.low16)
   hi = signed16(Rn.high16) - signed16(Rm.high16)
   lane 结果截断为 16-bit，不饱和，不更新 flags
+
+SMLAD Rd, Rn, Rm, Ra:
+  Rd = signed16(Rn.low16) * signed16(Rm.low16)
+     + signed16(Rn.high16) * signed16(Rm.high16)
+     + Ra
+  32-bit signed 结果回绕，不实现 Q flag，不更新 flags
 ```
 
 分支：

@@ -13,7 +13,10 @@ entity mcu_v1_data_mem is
         write_data2 : in std_logic_vector(31 downto 0);
         mem_read   : in  std_logic;
         mem_write  : in  std_logic;
+        bulk_store : in std_logic;
         store_double : in std_logic;
+        bulk_write_data : in std_logic_vector(511 downto 0);
+        bulk_regmask : in std_logic_vector(15 downto 0);
         read_data  : out std_logic_vector(31 downto 0);
         bulk_read_data : out std_logic_vector(511 downto 0);
 
@@ -40,16 +43,20 @@ architecture rtl of mcu_v1_data_mem is
 
     signal work_we   : std_logic := '0';
     signal work_we2  : std_logic := '0';
+    signal work_bulk_store : std_logic := '0';
     signal output_we : std_logic := '0';
     signal output_we2 : std_logic := '0';
+    signal output_bulk_store : std_logic := '0';
 begin
     region <= addr(9 downto 8);
     slot <= addr(7 downto 2);
     slot2 <= std_logic_vector(unsigned(addr(7 downto 2)) + 1);
-    work_we <= mem_write when region = REGION_WORK else '0';
-    work_we2 <= mem_write and store_double when region = REGION_WORK else '0';
-    output_we <= mem_write when region = REGION_OUTPUT else '0';
-    output_we2 <= mem_write and store_double when region = REGION_OUTPUT else '0';
+    work_we <= mem_write and not bulk_store when region = REGION_WORK else '0';
+    work_we2 <= mem_write and store_double and not bulk_store when region = REGION_WORK else '0';
+    work_bulk_store <= mem_write and bulk_store when region = REGION_WORK else '0';
+    output_we <= mem_write and not bulk_store when region = REGION_OUTPUT else '0';
+    output_we2 <= mem_write and store_double and not bulk_store when region = REGION_OUTPUT else '0';
+    output_bulk_store <= mem_write and bulk_store when region = REGION_OUTPUT else '0';
 
     u_input_mem : entity work.mcu_v1_input_mem
         port map (
@@ -72,6 +79,9 @@ begin
             slot2      => slot2,
             write_data => write_data,
             write_data2 => write_data2,
+            bulk_store => work_bulk_store,
+            bulk_write_data => bulk_write_data,
+            bulk_regmask => bulk_regmask,
             read_data  => work_read,
             bulk_read_data => work_bulk
         );
@@ -86,6 +96,9 @@ begin
             slot2        => slot2,
             write_data   => write_data,
             write_data2  => write_data2,
+            bulk_store   => output_bulk_store,
+            bulk_write_data => bulk_write_data,
+            bulk_regmask => bulk_regmask,
             output_raddr => output_raddr,
             output_rdata => output_rdata,
             read_data    => output_read,
