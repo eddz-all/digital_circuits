@@ -84,6 +84,8 @@ SXTH
 PKHBT
 LDMIA
 STRD
+SSAX
+SSUB16
 ```
 
 不支持的格式会拉高：
@@ -112,6 +114,8 @@ illegal_instr = 1
 1010 = SMUSD
 1011 = SXTH
 1100 = PKHBT
+1101 = SSAX
+1110 = SSUB16
 ```
 
 这些编码集中定义在 `rtl/00_mcu_v1_pkg.vhd`，decoder 和 ALU 共用同一套常量。
@@ -139,9 +143,13 @@ operand2[11:0]
 00101 = PKHBT
 00110 = LDMIA
 00111 = STRD
+01000 = SSAX
+01001 = SSUB16
 ```
 
 V3 使用同一个 `op = 11` 扩展类加入 ARM 风格访存指令。其中 `LDMIA` 使用 `W[20] = 1` 和 `regmask[15:0]`，`STRD` 使用 `Rd / Rm` 双源寄存器和 `imm8[11:4]` 字节偏移。
+
+V4 继续使用同一个扩展类加入 ARM SIMD/DSP 风格 `SSAX/SSUB16`，用于 exact cycle 优化。它们采用三寄存器 DSP 格式，要求 `instr(20) = 0` 且 `instr(11 downto 4) = x"00"`。
 
 ## 4. 关键语义
 
@@ -193,6 +201,20 @@ STRD Rd, Rm, [Rn + imm]:
   ra3 = Rm
   imm_ext = zero_extend(imm8)
   非法条件：reserved[20] != 0、imm 不是 4 字节对齐
+```
+
+V4 packed lane 指令：
+
+```text
+SSAX Rd, Rn, Rm:
+  lo = signed16(Rn.low16) + signed16(Rm.high16)
+  hi = signed16(Rn.high16) - signed16(Rm.low16)
+  lane 结果截断为 16-bit，不饱和，不更新 flags
+
+SSUB16 Rd, Rn, Rm:
+  lo = signed16(Rn.low16) - signed16(Rm.low16)
+  hi = signed16(Rn.high16) - signed16(Rm.high16)
+  lane 结果截断为 16-bit，不饱和，不更新 flags
 ```
 
 分支：

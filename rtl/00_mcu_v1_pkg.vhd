@@ -15,6 +15,8 @@ package mcu_v1_pkg is
     constant ALU_SMUSD   : std_logic_vector(3 downto 0) := "1010";
     constant ALU_SXTH    : std_logic_vector(3 downto 0) := "1011";
     constant ALU_PKHBT   : std_logic_vector(3 downto 0) := "1100";
+    constant ALU_SSAX    : std_logic_vector(3 downto 0) := "1101";
+    constant ALU_SSUB16  : std_logic_vector(3 downto 0) := "1110";
 
     constant COND_EQ : std_logic_vector(3 downto 0) := "0000";
     constant COND_NE : std_logic_vector(3 downto 0) := "0001";
@@ -42,6 +44,8 @@ package mcu_v1_pkg is
     constant EXT_PKHBT   : std_logic_vector(4 downto 0) := "00101";
     constant EXT_LDMIA   : std_logic_vector(4 downto 0) := "00110";
     constant EXT_STRD    : std_logic_vector(4 downto 0) := "00111";
+    constant EXT_SSAX    : std_logic_vector(4 downto 0) := "01000";
+    constant EXT_SSUB16  : std_logic_vector(4 downto 0) := "01001";
 
     constant REGION_INPUT  : std_logic_vector(1 downto 0) := "00";
     constant REGION_WORK   : std_logic_vector(1 downto 0) := "01";

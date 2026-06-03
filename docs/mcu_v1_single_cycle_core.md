@@ -79,10 +79,10 @@ mcu_v1_regfile    16 个 32-bit 寄存器，组合读、同步写；V3 额外支
 mcu_v1_alu        AND / ORR / ADD / SUB / MUL / ASR / MOV，以及 packed DSP 操作
 mcu_v1_instr_rom  指令 ROM，按 PC[31:2] 组合读 .mem
 mcu_v1_pc_unit    顺序 PC+4、分支 PC+8+offset、自循环 halt 检测
-mcu_v1_data_mem   数据地址区路由器；V3 额外支持 bulk read 和 double write
-mcu_v1_input_mem  输入区，模拟 test_ROM，16-bit signed 读出符号扩展；V3 支持连续 bulk read
-mcu_v1_work_ram   工作区，内部 32-bit RAM；V3 支持连续 bulk read 和 double write
-mcu_v1_output_mem 输出区，模拟 verify_RAM，保存 16-bit 结果；V3 支持 double write
+mcu_v1_data_mem   数据地址区路由器；V3/V4 额外支持 bulk read 和 double write
+mcu_v1_input_mem  输入区，模拟 test_ROM，16-bit signed 读出符号扩展；V3/V4 支持连续 bulk read
+mcu_v1_work_ram   工作区，内部 32-bit RAM；V3/V4 支持连续 bulk read 和 double write
+mcu_v1_output_mem 输出区，模拟 verify_RAM，保存 16-bit 结果；V3/V4 支持 double write
 mcu_v1_core       顶层，把以上模块连接成单周期 MCU
 ```
 
@@ -125,9 +125,12 @@ SXTH
 PKHBT
 LDMIA
 STRD
+SSAX
+SSUB16
 ```
 
 V3 中 `LDMIA/STRD` 是 ARM 风格批量/双字访存，用于改善 FFT 输入输出搬运；它们仍是一条指令一个周期，不改变单核、单周期、单发射口径。
+V4 中 `SSAX/SSUB16` 是 ARM SIMD/DSP 风格 packed lane 指令，用于精确缩短 `-j` 旋转和负 twiddle 模板；它们也仍是一条指令一个周期。
 
 地址空间：
 
@@ -243,13 +246,14 @@ GHDL 在 core 仿真 0ns 处可能打印少量 `NUMERIC_STD.TO_INTEGER: metavalu
 
 ## 6. Core Testbench 覆盖
 
-`tb/mcu_v1_core_tb.vhd` 包含四个 core 实例：
+`tb/mcu_v1_core_tb.vhd` 包含五个 core 实例：
 
 ```text
 basic_core  加载基础指令小程序
 fft_core    加载 V1 scalar FFT
 fast_core   加载 V2 packed DSP FFT
 v3_core     加载 V3 arch DSP FFT
+v4_core     加载 V4 ARM-strict exact FFT
 ```
 
 ### 6.1 基础小程序
@@ -556,6 +560,109 @@ python3 tools/test_fft8_v3_arch_dsp.py
 中等幅度随机输入：V3 精确匹配 V1 scalar fixed model
 完整 16-bit 随机输入：V3 精确匹配 packed DSP fixed model
 目标 timed_steps <= 90，当前为 88
+```
+
+### 6.5 V4 ARM-strict exact 优化程序
+
+加载：
+
+```text
+asm/fft8_v4_arm_strict.mem
+```
+
+当前规模：
+
+```text
+88 条指令
+78 条 timed steps
+DONE PC = 0x015C
+```
+
+覆盖：
+
+```text
+SSAX / SSUB16
+LDMIA / STRD
+SHADD16 / SHSUB16 / SMUAD / SMUSD / SXTH / PKHBT
+```
+
+V4 在 V3 基础上保持 packed FFT exact 语义，优化计算阶段：
+
+```text
+SSUB16 生成 packed negative twiddle。
+SSAX 替换三处 -j 旋转模板。
+W1/W3 使用 negative twiddle 减少取负指令。
+不采用 77 cycles risky 近似方案。
+```
+
+GHDL core test 当前检查两组输入：
+
+```text
+x0.real = 32760，其余为 0
+  -> 8 个输出均为 real = 4095, imag = 0
+
+x1.real = 32760，其余为 0
+  -> bit-reversal 输出顺序 X0, X4, X2, X6, X1, X5, X3, X7
+```
+
+V4 GHDL 仿真数据：
+
+```text
+x0 impulse:
+  PC = 0x015C
+  halted_debug = 1
+  illegal_debug = 0
+  slot  0 = 4095
+  slot  1 = 0
+  slot  2 = 4095
+  slot  3 = 0
+  slot  4 = 4095
+  slot  5 = 0
+  slot  6 = 4095
+  slot  7 = 0
+  slot  8 = 4095
+  slot  9 = 0
+  slot 10 = 4095
+  slot 11 = 0
+  slot 12 = 4095
+  slot 13 = 0
+  slot 14 = 4095
+  slot 15 = 0
+
+x1 impulse:
+  PC = 0x015C
+  halted_debug = 1
+  illegal_debug = 0
+  slot  0 =  4095
+  slot  1 =     0
+  slot  2 = -4095
+  slot  3 =     0
+  slot  4 =     0
+  slot  5 = -4095
+  slot  6 =     0
+  slot  7 =  4095
+  slot  8 =  2895
+  slot  9 = -2896
+  slot 10 = -2896
+  slot 11 =  2896
+  slot 12 = -2896
+  slot 13 = -2896
+  slot 14 =  2896
+  slot 15 =  2895
+```
+
+Python host checker：
+
+```bash
+python3 tools/test_fft8_v4_arm_strict.py
+```
+
+验证口径：
+
+```text
+中等幅度随机输入：V4 精确匹配 V1 scalar fixed model
+完整 16-bit 随机输入：V4 精确匹配 packed DSP fixed model
+目标 timed_steps <= 78，当前为 78
 ```
 
 ## 7. Vivado 注意事项

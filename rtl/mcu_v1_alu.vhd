@@ -80,6 +80,14 @@ begin
                 result_i <= std_logic_vector(resize(signed(a(15 downto 0)), 32));
             when ALU_PKHBT =>
                 result_i <= b(15 downto 0) & a(15 downto 0);
+            when ALU_SSAX =>
+                lo17 := a_lo17 + b_hi17;
+                hi17 := a_hi17 - b_lo17;
+                result_i <= std_logic_vector(hi17(15 downto 0)) & std_logic_vector(lo17(15 downto 0));
+            when ALU_SSUB16 =>
+                lo17 := a_lo17 - b_lo17;
+                hi17 := a_hi17 - b_hi17;
+                result_i <= std_logic_vector(hi17(15 downto 0)) & std_logic_vector(lo17(15 downto 0));
             when others =>
                 result_i <= (others => '0');
         end case;

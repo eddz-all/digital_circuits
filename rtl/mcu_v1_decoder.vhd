@@ -213,6 +213,16 @@ begin
                         if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
                             illegal_v := '1';
                         end if;
+                    when EXT_SSAX =>
+                        alu_control <= ALU_SSAX;
+                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                            illegal_v := '1';
+                        end if;
+                    when EXT_SSUB16 =>
+                        alu_control <= ALU_SSUB16;
+                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                            illegal_v := '1';
+                        end if;
                     when EXT_LDMIA =>
                         alu_control <= ALU_ADD;
                         alu_src_imm <= '1';

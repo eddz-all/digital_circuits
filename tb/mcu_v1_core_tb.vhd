@@ -61,6 +61,19 @@ architecture sim of mcu_v1_core_tb is
     signal v3_z            : std_logic;
     signal v3_n            : std_logic;
 
+    signal v4_rst          : std_logic := '1';
+    signal v4_input_we     : std_logic := '0';
+    signal v4_input_waddr  : std_logic_vector(5 downto 0) := (others => '0');
+    signal v4_input_wdata  : std_logic_vector(15 downto 0) := (others => '0');
+    signal v4_output_raddr : std_logic_vector(5 downto 0) := (others => '0');
+    signal v4_output_rdata : std_logic_vector(15 downto 0);
+    signal v4_pc           : std_logic_vector(31 downto 0);
+    signal v4_instr        : std_logic_vector(31 downto 0);
+    signal v4_halted       : std_logic;
+    signal v4_illegal      : std_logic;
+    signal v4_z            : std_logic;
+    signal v4_n            : std_logic;
+
     function slv16(value : integer) return std_logic_vector is
     begin
         return std_logic_vector(to_signed(value, 16));
@@ -152,6 +165,27 @@ begin
             flag_n_debug => v3_n
         );
 
+    v4_core : entity work.mcu_v1_core
+        generic map (
+            MEM_FILE  => "asm/fft8_v4_arm_strict.mem",
+            ROM_DEPTH => 256
+        )
+        port map (
+            clk          => clk,
+            rst          => v4_rst,
+            input_we     => v4_input_we,
+            input_waddr  => v4_input_waddr,
+            input_wdata  => v4_input_wdata,
+            output_raddr => v4_output_raddr,
+            output_rdata => v4_output_rdata,
+            pc_debug     => v4_pc,
+            instr_debug  => v4_instr,
+            halted_debug => v4_halted,
+            illegal_debug => v4_illegal,
+            flag_z_debug => v4_z,
+            flag_n_debug => v4_n
+        );
+
     stim : process
         procedure wait_cycles(count : natural) is
         begin
@@ -200,6 +234,16 @@ begin
             v3_input_we <= '0';
         end procedure;
 
+        procedure write_v4_input(slot : natural; value : integer) is
+        begin
+            v4_input_waddr <= std_logic_vector(to_unsigned(slot, 6));
+            v4_input_wdata <= slv16(value);
+            v4_input_we <= '1';
+            wait until rising_edge(clk);
+            wait for 1 ns;
+            v4_input_we <= '0';
+        end procedure;
+
         procedure expect_basic_output(slot : natural; value : integer) is
         begin
             basic_output_raddr <= std_logic_vector(to_unsigned(slot, 6));
@@ -239,6 +283,17 @@ begin
                     & " expected " & integer'image(value)
                 severity failure;
         end procedure;
+
+        procedure expect_v4_output(slot : natural; value : integer) is
+        begin
+            v4_output_raddr <= std_logic_vector(to_unsigned(slot, 6));
+            wait for 1 ns;
+            assert v4_output_rdata = slv16(value)
+                report "v4 output slot " & integer'image(slot)
+                    & " expected " & integer'image(value)
+                severity failure;
+        end procedure;
+
     begin
         wait_cycles(2);
 
@@ -393,6 +448,51 @@ begin
         expect_v3_output(13, -2896);
         expect_v3_output(14, 2896);
         expect_v3_output(15, 2895);
+
+        write_v4_input(0, 32760);
+        v4_rst <= '0';
+        wait_cycles(120);
+
+        assert v4_illegal = '0' report "V4 FFT program hit illegal instruction" severity failure;
+        assert v4_halted = '1' report "V4 FFT program did not reach DONE self-loop" severity failure;
+        assert v4_pc = x"0000015C" report "V4 FFT PC should be at DONE" severity failure;
+
+        for complex_i in 0 to 7 loop
+            expect_v4_output(2 * complex_i, 4095);
+            expect_v4_output(2 * complex_i + 1, 0);
+        end loop;
+
+        v4_rst <= '1';
+        wait_cycles(2);
+        for slot_i in 0 to 15 loop
+            if slot_i = 2 then
+                write_v4_input(slot_i, 32760);
+            else
+                write_v4_input(slot_i, 0);
+            end if;
+        end loop;
+        v4_rst <= '0';
+        wait_cycles(120);
+
+        assert v4_illegal = '0' report "V4 FFT x1 program hit illegal instruction" severity failure;
+        assert v4_halted = '1' report "V4 FFT x1 program did not reach DONE self-loop" severity failure;
+        assert v4_pc = x"0000015C" report "V4 FFT x1 PC should be at DONE" severity failure;
+        expect_v4_output(0, 4095);
+        expect_v4_output(1, 0);
+        expect_v4_output(2, -4095);
+        expect_v4_output(3, 0);
+        expect_v4_output(4, 0);
+        expect_v4_output(5, -4095);
+        expect_v4_output(6, 0);
+        expect_v4_output(7, 4095);
+        expect_v4_output(8, 2895);
+        expect_v4_output(9, -2896);
+        expect_v4_output(10, -2896);
+        expect_v4_output(11, 2896);
+        expect_v4_output(12, -2896);
+        expect_v4_output(13, -2896);
+        expect_v4_output(14, 2896);
+        expect_v4_output(15, 2895);
 
         report "mcu_v1_core_tb passed" severity note;
         sim_done <= '1';

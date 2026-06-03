@@ -60,6 +60,27 @@ begin
         wait for 1 ns;
         assert result = x"F4B00B4F" report "PKHBT result mismatch" severity failure;
 
+        -- SSAX: lo = a.lo + b.hi, hi = a.hi - b.lo
+        a <= x"F83003E8";
+        b <= x"0BB8FE0C";
+        alu_control <= ALU_SSAX;
+        wait for 1 ns;
+        assert result = x"FA240FA0" report "SSAX result mismatch" severity failure;
+
+        alu_control <= ALU_SSUB16;
+        wait for 1 ns;
+        assert result = x"EC7805DC" report "SSUB16 result mismatch" severity failure;
+
+        a <= x"7FFF8000";
+        b <= x"80017FFF";
+        alu_control <= ALU_SSAX;
+        wait for 1 ns;
+        assert result = x"00000001" report "SSAX wraparound mismatch" severity failure;
+
+        alu_control <= ALU_SSUB16;
+        wait for 1 ns;
+        assert result = x"FFFE0001" report "SSUB16 wraparound mismatch" severity failure;
+
         report "mcu_v1_alu_tb passed" severity note;
         wait;
     end process;

@@ -145,6 +145,24 @@ begin
         assert ra1 = x"8" and ra2 = x"9" and wa = x"5"
             report "PKHBT register fields mismatch" severity failure;
 
+        -- SSAX R6, R13, R6
+        instr <= x"ED0D6006";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "SSAX should be legal" severity failure;
+        assert reg_write = '1' report "SSAX should write register" severity failure;
+        assert alu_control = ALU_SSAX report "SSAX ALU control mismatch" severity failure;
+        assert ra1 = x"D" and ra2 = x"6" and wa = x"6"
+            report "SSAX register fields mismatch" severity failure;
+
+        -- SSUB16 R14, R13, R12
+        instr <= x"ED2DE00C";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "SSUB16 should be legal" severity failure;
+        assert reg_write = '1' report "SSUB16 should write register" severity failure;
+        assert alu_control = ALU_SSUB16 report "SSUB16 ALU control mismatch" severity failure;
+        assert ra1 = x"D" and ra2 = x"C" and wa = x"E"
+            report "SSUB16 register fields mismatch" severity failure;
+
         -- LDMIA R14!, {R0-R7}
         instr <= x"ECDE00FF";
         wait for 1 ns;
@@ -299,8 +317,17 @@ begin
         instr <= x"EC100000";
         wait for 1 ns;
         assert illegal_instr = '1' report "Extension reserved bit should be illegal" severity failure;
-        assert reg_write = '0' and mem_read = '0' and mem_write = '0' and branch_taken = '0' and branch_link = '0'
+        assert reg_write = '0' and mem_read = '0' and mem_write = '0'
+            and branch_taken = '0' and branch_link = '0'
             report "Illegal extension should have no side effects" severity failure;
+
+        -- Illegal example: SSAX reserved bit 20 must be zero.
+        instr <= x"ED1D6006";
+        wait for 1 ns;
+        assert illegal_instr = '1' report "SSAX reserved bit should be illegal" severity failure;
+        assert reg_write = '0' and mem_read = '0' and mem_write = '0'
+            and branch_taken = '0' and branch_link = '0'
+            report "Illegal SSAX should have no side effects" severity failure;
 
         -- Illegal example: LDMIA writeback base cannot appear in reglist.
         instr <= x"ECDE4000";
