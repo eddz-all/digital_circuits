@@ -39,6 +39,7 @@ V5 代码已提交并推送：commit `644d857`，branch `dsp` / `origin/dsp`。
 当前 `dsp` / `origin/dsp` 已包含 V5 代码提交及后续 session memory 修正提交。
 用户明确要求：下一个 session 不要一开始反复跑 V1/V2/V3/V4 checker；旧版本已通过，只有在准备最终交付、commit/tag，或怀疑共享 RTL 破坏旧版本时才做完整回归。
 用户明确要求：后续全量/最终汇报默认按 50 MHz 计算速率，不要再默认用 150 MHz。
+用户明确要求：每次完成一次完整迭代后，都要提交并推送到远程 git 仓库，确保 `origin/dsp` 及时更新。
 Vivado/VHDL 兼容要求：不要使用 process(all)、use std.env.all 或 finish；RTL/TB 必须用显式敏感列表。testbench 末尾可 wait，但 core TB 必须用 sim_done 停止 clock，避免 Run All 一直跑。
 ```
 
@@ -340,6 +341,7 @@ V5 已在 ARM 真实 mnemonic 约束下完成：SMLAD/STMIA + packed DSP。
 3. V1/V2/V3/V4 tags 都已保留为回退点；V4 最新保存点是 v4-arm-strict-exact / 93db748。
 4. V5 当前已局部验证通过；如准备最终交付或 commit/tag，跑完整 V1-V5 回归一次。
 5. 不要把 77 cycles risky 近似方案混入 exact 主线；不要引入 FFT 硬件旁路或自创 FFT/complex/fixed-twiddle 指令。
+6. 每完成一次完整迭代，都要 `git commit` 并 `git push origin dsp`，不要只停留在本地修改。
 ```
 
 ## 0. 2026-06-02 最新接口覆盖说明
