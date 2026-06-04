@@ -4,7 +4,7 @@ use ieee.numeric_std.all;
 
 entity mcu_v1_instr_rom is
     generic (
-        MEM_FILE : string := "asm/fft8_v1_mcu32_basic.mem";
+        MEM_FILE : string := "asm/fft8_v5_arm_strict_59.mem";
         DEPTH    : positive := 1024
     );
     port (
@@ -15,12 +15,6 @@ end entity mcu_v1_instr_rom;
 
 architecture rtl of mcu_v1_instr_rom is
     type rom_t is array (0 to DEPTH - 1) of std_logic_vector(31 downto 0);
-
-    function blank_rom return rom_t is
-        variable rom : rom_t := (others => (others => '0'));
-    begin
-        return rom;
-    end function;
 
     function init_basic_rom return rom_t is
         variable rom : rom_t := (others => (others => '0'));
@@ -43,22 +37,18 @@ architecture rtl of mcu_v1_instr_rom is
         rom(15) := x"E120400C";
         rom(16) := x"E3E4400F";
         rom(17) := x"E50A4008";
-        rom(18) := x"E0006001";
-        rom(19) := x"E50A600C";
-        rom(20) := x"E1807001";
-        rom(21) := x"E50A7010";
-        rom(22) := x"E3520000";
-        rom(23) := x"08000002";
-        rom(24) := x"E3A0507B";
-        rom(25) := x"E50A5014";
-        rom(26) := x"E8000001";
-        rom(27) := x"E3A051C8";
-        rom(28) := x"E50A5014";
-        rom(29) := x"E8FFFFFE";
+        rom(18) := x"E3520000";
+        rom(19) := x"08000002";
+        rom(20) := x"E3A0507B";
+        rom(21) := x"E50A500C";
+        rom(22) := x"E8000001";
+        rom(23) := x"E3A051C8";
+        rom(24) := x"E50A500C";
+        rom(25) := x"E8FFFFFE";
         return rom;
     end function;
 
-    function init_fft_rom return rom_t is
+    function init_v1_rom return rom_t is
         variable rom : rom_t := (others => (others => '0'));
     begin
         rom(0) := x"E3A08000";
@@ -350,14 +340,98 @@ architecture rtl of mcu_v1_instr_rom is
         return rom;
     end function;
 
+    function init_v5_rom return rom_t is
+        variable rom : rom_t := (others => (others => '0'));
+    begin
+        rom(0) := x"E3A0E000";
+        rom(1) := x"E3A0D000";
+        rom(2) := x"E3A0CFFF";
+        rom(3) := x"E28CCFFF";
+        rom(4) := x"E28CCFFF";
+        rom(5) := x"E28CCFFF";
+        rom(6) := x"E28CCFFF";
+        rom(7) := x"E28CCA87";
+        rom(8) := x"ECACC00C";
+        rom(9) := x"E3A0BFFF";
+        rom(10) := x"E28BBFFF";
+        rom(11) := x"E28BBFFF";
+        rom(12) := x"E28BBFFF";
+        rom(13) := x"E28BBFFF";
+        rom(14) := x"E28BBFFF";
+        rom(15) := x"E28BBFFF";
+        rom(16) := x"E28BBFFF";
+        rom(17) := x"E28BB007";
+        rom(18) := x"ECDE07FF";
+        rom(19) := x"ECA00001";
+        rom(20) := x"ECA21003";
+        rom(21) := x"ECA42005";
+        rom(22) := x"ECA63007";
+        rom(23) := x"ECA84009";
+        rom(24) := x"ECDE03E0";
+        rom(25) := x"ECAA5005";
+        rom(26) := x"ECA66007";
+        rom(27) := x"ECA87009";
+        rom(28) := x"ED2DE00C";
+        rom(29) := x"EC008004";
+        rom(30) := x"EC204004";
+        rom(31) := x"EC019005";
+        rom(32) := x"EC215005";
+        rom(33) := x"EC45000C";
+        rom(34) := x"EC65A00E";
+        rom(35) := x"E3E0000F";
+        rom(36) := x"E3EAA00F";
+        rom(37) := x"ECA0500A";
+        rom(38) := x"EC020006";
+        rom(39) := x"EC226006";
+        rom(40) := x"ED0D6006";
+        rom(41) := x"EC031007";
+        rom(42) := x"EC237007";
+        rom(43) := x"ED472B0E";
+        rom(44) := x"EC67A00E";
+        rom(45) := x"E3EAA00F";
+        rom(46) := x"E3E2200F";
+        rom(47) := x"ECAA7002";
+        rom(48) := x"EC082000";
+        rom(49) := x"EC280000";
+        rom(50) := x"EC093001";
+        rom(51) := x"EC291001";
+        rom(52) := x"ED0D1001";
+        rom(53) := x"EC048006";
+        rom(54) := x"EC246006";
+        rom(55) := x"EC059007";
+        rom(56) := x"EC257007";
+        rom(57) := x"ED0D7007";
+        rom(58) := x"E3A0A200";
+        rom(59) := x"EC004001";
+        rom(60) := x"EC20B001";
+        rom(61) := x"E3E45010";
+        rom(62) := x"E3EBC010";
+        rom(63) := x"EC020003";
+        rom(64) := x"EC222003";
+        rom(65) := x"E3E01010";
+        rom(66) := x"E3E23010";
+        rom(67) := x"ED7A183F";
+        rom(68) := x"EC080009";
+        rom(69) := x"EC282009";
+        rom(70) := x"E3E01010";
+        rom(71) := x"E3E23010";
+        rom(72) := x"EC064007";
+        rom(73) := x"EC26B007";
+        rom(74) := x"E3E45010";
+        rom(75) := x"E3EBC010";
+        rom(76) := x"ED7A183F";
+        rom(77) := x"E8FFFFFE";
+        return rom;
+    end function;
+
     function init_rom(file_name : string) return rom_t is
     begin
         if file_name = "asm/test_mcu_v1_basic.mem" then
             return init_basic_rom;
         elsif file_name = "asm/fft8_v1_mcu32_basic.mem" then
-            return init_fft_rom;
+            return init_v1_rom;
         else
-            return blank_rom;
+            return init_v5_rom;
         end if;
     end function;
 

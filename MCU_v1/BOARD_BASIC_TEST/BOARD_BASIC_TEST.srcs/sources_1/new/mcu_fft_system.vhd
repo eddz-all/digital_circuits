@@ -4,8 +4,8 @@ use ieee.numeric_std.all;
 
 entity mcu_fft_system is
     generic (
-        MEM_FILE      : string := "asm/fft8_v1_mcu32_basic.mem";
-        CORE_ROM_DEPTH : positive := 1024;
+        MEM_FILE      : string := "asm/fft8_v5_arm_strict_59.mem";
+        CORE_ROM_DEPTH : positive := 256;
         SAMPLE_COUNT  : positive := 16
     );
     port (

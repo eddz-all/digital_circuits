@@ -1,11 +1,12 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use work.mcu_v1_pkg.all;
 
 entity mcu_v1_core is
     generic (
-        MEM_FILE  : string := "asm/fft8_v1_mcu32_basic.mem";
-        ROM_DEPTH : positive := 1024
+        MEM_FILE  : string := "asm/fft8_v5_arm_strict_59.mem";
+        ROM_DEPTH : positive := 256
     );
     port (
         clk : in std_logic;
@@ -45,22 +46,47 @@ architecture rtl of mcu_v1_core is
     signal mem_to_reg    : std_logic := '0';
     signal flag_write    : std_logic := '0';
     signal branch_taken  : std_logic := '0';
-    signal alu_control   : std_logic_vector(2 downto 0) := "010";
+    signal branch_link   : std_logic := '0';
+    signal bulk_load     : std_logic := '0';
+    signal bulk_store    : std_logic := '0';
+    signal store_double  : std_logic := '0';
+    signal bulk_writeback : std_logic := '0';
+    signal alu_control   : std_logic_vector(3 downto 0) := ALU_ADD;
     signal alu_src_imm   : std_logic := '0';
     signal ra1           : std_logic_vector(3 downto 0) := (others => '0');
     signal ra2           : std_logic_vector(3 downto 0) := (others => '0');
+    signal ra3           : std_logic_vector(3 downto 0) := (others => '0');
     signal wa            : std_logic_vector(3 downto 0) := (others => '0');
+    signal bulk_regmask  : std_logic_vector(15 downto 0) := (others => '0');
     signal imm_ext       : std_logic_vector(31 downto 0) := (others => '0');
     signal branch_offset : std_logic_vector(31 downto 0) := (others => '0');
 
     signal reg_rd1 : std_logic_vector(31 downto 0) := (others => '0');
     signal reg_rd2 : std_logic_vector(31 downto 0) := (others => '0');
+    signal reg_rd3 : std_logic_vector(31 downto 0) := (others => '0');
+    signal reg_bulk_rd : std_logic_vector(511 downto 0) := (others => '0');
     signal alu_b   : std_logic_vector(31 downto 0) := (others => '0');
     signal alu_res : std_logic_vector(31 downto 0) := (others => '0');
     signal mem_rd  : std_logic_vector(31 downto 0) := (others => '0');
+    signal bulk_mem_rd : std_logic_vector(511 downto 0) := (others => '0');
+    signal bulk_we_mask : std_logic_vector(15 downto 0) := (others => '0');
+    signal bulk_wd : std_logic_vector(511 downto 0) := (others => '0');
+    signal bulk_store_data : std_logic_vector(511 downto 0) := (others => '0');
+    signal ldmia_wb_data : std_logic_vector(31 downto 0) := (others => '0');
     signal wb_data : std_logic_vector(31 downto 0) := (others => '0');
 
     signal halted_i : std_logic;
+
+    function popcount(mask : std_logic_vector(15 downto 0)) return natural is
+        variable count : natural := 0;
+    begin
+        for i in mask'range loop
+            if mask(i) = '1' then
+                count := count + 1;
+            end if;
+        end loop;
+        return count;
+    end function;
 begin
     u_rom : entity work.mcu_v1_instr_rom
         generic map (
@@ -85,11 +111,18 @@ begin
             mem_to_reg    => mem_to_reg,
             flag_write    => flag_write,
             branch_taken  => branch_taken,
+            branch_link   => branch_link,
+            bulk_load     => bulk_load,
+            bulk_store    => bulk_store,
+            store_double  => store_double,
+            bulk_writeback => bulk_writeback,
             alu_control   => alu_control,
             alu_src_imm   => alu_src_imm,
             ra1           => ra1,
             ra2           => ra2,
+            ra3           => ra3,
             wa            => wa,
+            bulk_regmask  => bulk_regmask,
             imm_ext       => imm_ext,
             branch_offset => branch_offset
         );
@@ -101,10 +134,15 @@ begin
             we  => reg_write,
             ra1 => ra1,
             ra2 => ra2,
+            ra3 => ra3,
             wa  => wa,
             wd  => wb_data,
+            bulk_we_mask => bulk_we_mask,
+            bulk_wd      => bulk_wd,
             rd1 => reg_rd1,
-            rd2 => reg_rd2
+            rd2 => reg_rd2,
+            rd3 => reg_rd3,
+            bulk_rd => reg_bulk_rd
         );
 
     alu_b <= imm_ext when alu_src_imm = '1' else reg_rd2;
@@ -113,6 +151,7 @@ begin
         port map (
             a           => reg_rd1,
             b           => alu_b,
+            c           => reg_rd3,
             alu_control => alu_control,
             result      => alu_res,
             flag_z      => alu_z,
@@ -125,9 +164,15 @@ begin
             rst          => rst,
             addr         => alu_res,
             write_data   => reg_rd2,
+            write_data2  => reg_rd3,
             mem_read     => mem_read,
             mem_write    => mem_write,
+            bulk_store   => bulk_store,
+            store_double => store_double,
+            bulk_write_data => bulk_store_data,
+            bulk_regmask => bulk_regmask,
             read_data    => mem_rd,
+            bulk_read_data => bulk_mem_rd,
             input_we     => input_we,
             input_waddr  => input_waddr,
             input_wdata  => input_wdata,
@@ -135,13 +180,50 @@ begin
             output_rdata => output_rdata
         );
 
-    wb_data <= mem_rd when mem_to_reg = '1' else alu_res;
+    process(bulk_regmask, bulk_mem_rd)
+        variable data_index : natural range 0 to 16;
+    begin
+        bulk_wd <= (others => '0');
+        data_index := 0;
+        for reg_index in 0 to 15 loop
+            if bulk_regmask(reg_index) = '1' then
+                bulk_wd(32 * reg_index + 31 downto 32 * reg_index) <=
+                    bulk_mem_rd(32 * data_index + 31 downto 32 * data_index);
+                data_index := data_index + 1;
+            end if;
+        end loop;
+    end process;
 
-    pc_next <= std_logic_vector(signed(pc_reg) + to_signed(8, 32) + signed(branch_offset))
-        when branch_taken = '1'
-        else std_logic_vector(unsigned(pc_reg) + 4);
+    process(bulk_regmask, reg_bulk_rd)
+        variable data_index : natural range 0 to 16;
+    begin
+        bulk_store_data <= (others => '0');
+        data_index := 0;
+        for reg_index in 0 to 15 loop
+            if bulk_regmask(reg_index) = '1' then
+                bulk_store_data(32 * data_index + 31 downto 32 * data_index) <=
+                    reg_bulk_rd(32 * reg_index + 31 downto 32 * reg_index);
+                data_index := data_index + 1;
+            end if;
+        end loop;
+    end process;
 
-    halted_i <= '1' when branch_taken = '1' and pc_next = pc_reg else '0';
+    bulk_we_mask <= bulk_regmask when bulk_load = '1' else (others => '0');
+    ldmia_wb_data <= std_logic_vector(unsigned(reg_rd1) + to_unsigned(4 * popcount(bulk_regmask), 32));
+
+    wb_data <= std_logic_vector(unsigned(pc_reg) + 4) when branch_link = '1'
+        else ldmia_wb_data when bulk_writeback = '1'
+        else mem_rd when mem_to_reg = '1'
+        else alu_res;
+
+    u_pc_unit : entity work.mcu_v1_pc_unit
+        port map (
+            pc_current    => pc_reg,
+            branch_taken  => branch_taken,
+            branch_offset => branch_offset,
+            pc_next       => pc_next,
+            halted        => halted_i
+        );
 
     process(clk)
     begin
