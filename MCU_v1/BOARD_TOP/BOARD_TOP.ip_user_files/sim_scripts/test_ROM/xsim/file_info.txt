@@ -1,0 +1,2 @@
+test_ROM_sim_netlist.vhdl,vhdl,xil_defaultlib,../../../../BOARD_TOP.gen/sources_1/ip/test_ROM/test_ROM_sim_netlist.vhdl,
+glbl.v,Verilog,xil_defaultlib,glbl.v

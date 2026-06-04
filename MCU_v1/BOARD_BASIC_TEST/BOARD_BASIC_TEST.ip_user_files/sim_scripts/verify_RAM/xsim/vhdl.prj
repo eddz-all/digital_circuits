@@ -1,0 +1,4 @@
+vhdl xil_defaultlib  \
+"../../../../BOARD_BASIC_TEST.gen/sources_1/ip/verify_RAM/verify_RAM_sim_netlist.vhdl" \
+
+nosort

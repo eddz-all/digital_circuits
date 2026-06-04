@@ -1,0 +1,4 @@
+vhdl xil_defaultlib  \
+"../../../../BOARD_TOP.gen/sources_1/ip/test_ROM/test_ROM_sim_netlist.vhdl" \
+
+nosort
