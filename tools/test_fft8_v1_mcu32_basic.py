@@ -29,7 +29,10 @@ WORK_BYTES = 64
 IO_BYTES = 64
 INV_SQRT2_Q15 = 23170
 BIT_REVERSAL_ORDER = [0, 4, 2, 6, 1, 5, 3, 7]
-ALLOWED_OPS = {"MOV", "ADD", "SUB", "CMP", "LDR", "STR", "B", "BEQ", "BNE", "MUL", "ASR"}
+ALLOWED_OPS = {
+    "MOV", "ADD", "SUB", "AND", "ORR", "CMP",
+    "LDR", "STR", "B", "BEQ", "BNE", "MUL", "ASR"
+}
 
 
 @dataclass
@@ -196,7 +199,7 @@ def run_program(program: Program, input_values: list[int]) -> RunResult:
             if op == "MOV":
                 rd_text, src_text = split_args(arg_text)
                 regs[parse_reg(rd_text)] = s32(operand_value(src_text, regs))
-            elif op in {"ADD", "SUB", "MUL"}:
+            elif op in {"ADD", "SUB", "AND", "ORR", "MUL"}:
                 rd_text, ra_text, rb_text = split_args(arg_text)
                 rd = parse_reg(rd_text)
                 a = operand_value(ra_text, regs)
@@ -205,6 +208,10 @@ def run_program(program: Program, input_values: list[int]) -> RunResult:
                     regs[rd] = add32(a, b)
                 elif op == "SUB":
                     regs[rd] = sub32(a, b)
+                elif op == "AND":
+                    regs[rd] = s32(a & b)
+                elif op == "ORR":
+                    regs[rd] = s32(a | b)
                 else:
                     regs[rd] = mul32(a, b)
             elif op == "ASR":
