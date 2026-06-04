@@ -47,8 +47,10 @@ architecture rtl of mcu_v1_decoder is
     constant OP_MEM    : std_logic_vector(1 downto 0) := "01";
     constant OP_BRANCH : std_logic_vector(1 downto 0) := "10";
 
+    constant OPC_AND : std_logic_vector(3 downto 0) := "0000";
     constant OPC_ADD : std_logic_vector(3 downto 0) := "0100";
     constant OPC_SUB : std_logic_vector(3 downto 0) := "0010";
+    constant OPC_ORR : std_logic_vector(3 downto 0) := "1100";
     constant OPC_MOV : std_logic_vector(3 downto 0) := "1101";
     constant OPC_CMP : std_logic_vector(3 downto 0) := "1010";
     constant OPC_MUL : std_logic_vector(3 downto 0) := "1001";
@@ -105,11 +107,17 @@ begin
                 end if;
 
                 case instr(24 downto 21) is
+                    when OPC_AND =>
+                        alu_control <= ALU_AND;
+                        reg_write <= cond_ok_v;
                     when OPC_ADD =>
                         alu_control <= ALU_ADD;
                         reg_write <= cond_ok_v;
                     when OPC_SUB =>
                         alu_control <= ALU_SUB;
+                        reg_write <= cond_ok_v;
+                    when OPC_ORR =>
+                        alu_control <= ALU_ORR;
                         reg_write <= cond_ok_v;
                     when OPC_MOV =>
                         alu_control <= ALU_MOV;

@@ -140,11 +140,13 @@ begin
 
         assert basic_illegal = '0' report "basic program hit illegal instruction" severity failure;
         assert basic_halted = '1' report "basic program did not reach DONE self-loop" severity failure;
-        assert basic_pc = x"00000064" report "basic PC should be at DONE" severity failure;
+        assert basic_pc = x"00000074" report "basic PC should be at DONE" severity failure;
         expect_basic_output(0, 500);
         expect_basic_output(1, 1500);
         expect_basic_output(2, 707);
-        expect_basic_output(3, 123);
+        expect_basic_output(3, 520);
+        expect_basic_output(4, -20);
+        expect_basic_output(5, 123);
 
         write_fft_input(0, 32760);
         fft_rst <= '0';

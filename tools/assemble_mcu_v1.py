@@ -26,8 +26,10 @@ COND = {
 }
 
 DATA_OPCODE = {
+    "AND": 0b0000,
     "ADD": 0b0100,
     "SUB": 0b0010,
+    "ORR": 0b1100,
     "MOV": 0b1101,
     "CMP": 0b1010,
     "MUL": 0b1001,

@@ -7,7 +7,9 @@
 ;   output slot 0 = 500
 ;   output slot 1 = 1500
 ;   output slot 2 = floor(1000 * 23170 / 32768) = 707
-;   output slot 3 = 123
+;   output slot 3 = 1000 AND -500 = 520
+;   output slot 4 = 1000 ORR -500 = -20
+;   output slot 5 = 123
 
 START:
     MOV R8, #0
@@ -34,16 +36,22 @@ START:
     ASR R4, R4, #15
     STR R4, [R10 + 8]
 
+    AND R6, R0, R1
+    STR R6, [R10 + 12]
+
+    ORR R7, R0, R1
+    STR R7, [R10 + 16]
+
     CMP R2, #0
     BEQ ZERO
 
     MOV R5, #123
-    STR R5, [R10 + 12]
+    STR R5, [R10 + 20]
     B DONE
 
 ZERO:
     MOV R5, #456
-    STR R5, [R10 + 12]
+    STR R5, [R10 + 20]
 
 DONE:
     B DONE
