@@ -1,6 +1,6 @@
 # MCU FFT 项目接力记忆
 
-更新时间：2026-06-03
+更新时间：2026-06-04
 
 本文档用于在后续会话中快速恢复上下文，继续完成数字电路课程设计中的 8 点 FFT 速度榜任务。
 
@@ -38,6 +38,7 @@ V5 原计划文档仍保留：docs/fft8_v5_arm_strict_59_plan.md。
 V5 代码已提交并推送：commit `644d857`，branch `dsp` / `origin/dsp`。
 当前 `dsp` / `origin/dsp` 已包含 V5 代码提交及后续 session memory 修正提交。
 新增 V1/V5 随机 RTL scoreboard：`tb/mcu_v1_core_v1_random_tb.vhd` 和 `tb/mcu_v1_core_v5_random_tb.vhd` 各自读取 100 组固定随机输入/expected 文件，逐组 reset core、写 input_mem、运行到 DONE、比较 16 个 output slots；GHDL `--std=08` 与 `--std=93 -fsynopsys` 均已通过。
+当前正确性结论：按现有验证口径，V1 和 V5 都正确。V1/V5 已通过 Python golden checker 的大规模随机对拍，且新增 RTL random scoreboard 各通过 100 组固定随机输入；这不是全输入空间穷举证明，但足以作为当前工程正确性证据。若后续需要更强证明，可把 RTL random scoreboard 扩到 1000 组并补边界用例。
 用户明确要求：下一个 session 不要一开始反复跑 V1/V2/V3/V4 checker；旧版本已通过，只有在准备最终交付、commit/tag，或怀疑共享 RTL 破坏旧版本时才做完整回归。
 用户明确要求：后续全量/最终汇报默认按 50 MHz 计算速率，不要再默认用 150 MHz。
 用户明确要求：每次完成一次完整迭代后，都要提交并推送到远程 git 仓库，确保 `origin/dsp` 及时更新。
@@ -812,6 +813,85 @@ ghdl --std=93 -fsynopsys 完整回归通过。
 GHDL 的 --std=93 下 rtl/mcu_v1_instr_rom.vhd 使用 ieee.std_logic_textio 需要 -fsynopsys。
 Vivado 通常可接受 std_logic_textio；若后续仍遇到 ROM init 兼容性问题，再单独处理 .mem 读取方式。
 0ms numeric_std metavalue warning 仍存在，来源是组合读地址初始未稳定；testbench 无 assertion failure。
+```
+
+## 0.12 2026-06-04 V1/V5 random RTL scoreboard 正确性记录
+
+用户追问：
+
+```text
+V1 和 V5 都正确吗？
+```
+
+当前结论：
+
+```text
+按当前验证口径，V1 和 V5 都正确。
+这不是数学穷举证明；16-bit 输入空间过大，100 组随机 RTL scoreboard 只能证明这些固定样本与 golden model 一致。
+工程上当前证据足够可信：V1/V5 已有 Python checker 的大规模随机对拍，加上 RTL 级随机 scoreboard。
+```
+
+新增文件：
+
+```text
+tools/generate_fft8_random_vectors.py
+tb/fft8_v1_random_vectors.txt
+tb/fft8_v5_random_vectors.txt
+tb/mcu_v1_core_v1_random_tb.vhd
+tb/mcu_v1_core_v5_random_tb.vhd
+```
+
+随机向量口径：
+
+```text
+固定 seed: 20260603
+case 数: 100
+每个 case 包含 8 个 complex Q15 输入，即 16 个 16-bit slots。
+V1 expected 来自 direct_fixed_model。
+V5 expected 来自 packed_fixed_model。
+```
+
+RTL scoreboard 流程：
+
+```text
+每个 case 单独 reset core。
+testbench 写 input_mem 16 个输入 slots。
+core 从 MEM_FILE 执行对应 V1 或 V5 FFT 程序，运行到 DONE。
+testbench 读取 verify_RAM/output slots。
+逐 slot 比较 expected output；任一 mismatch 触发 assertion failure。
+```
+
+已验证命令：
+
+```text
+python3 tools/generate_fft8_random_vectors.py
+
+ghdl -a --std=08 --workdir=/tmp/digital_circuits_ghdl_random rtl/*.vhd tb/*.vhd
+ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_random -o /tmp/mcu_v1_core_v1_random_tb mcu_v1_core_v1_random_tb
+/tmp/mcu_v1_core_v1_random_tb
+ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_random -o /tmp/mcu_v1_core_v5_random_tb mcu_v1_core_v5_random_tb
+/tmp/mcu_v1_core_v5_random_tb
+
+ghdl -a --std=93 -fsynopsys --workdir=/tmp/digital_circuits_ghdl_random93 rtl/*.vhd tb/*.vhd
+ghdl -e --std=93 -fsynopsys --workdir=/tmp/digital_circuits_ghdl_random93 -o /tmp/mcu_v1_core_v1_random_tb_93 mcu_v1_core_v1_random_tb
+/tmp/mcu_v1_core_v1_random_tb_93
+ghdl -e --std=93 -fsynopsys --workdir=/tmp/digital_circuits_ghdl_random93 -o /tmp/mcu_v1_core_v5_random_tb_93 mcu_v1_core_v5_random_tb
+/tmp/mcu_v1_core_v5_random_tb_93
+```
+
+通过结果：
+
+```text
+mcu_v1_core_v1_random_tb passed 100 random cases
+mcu_v1_core_v5_random_tb passed 100 random cases
+```
+
+注意：
+
+```text
+0ms NUMERIC_STD.TO_INTEGER metavalue warning 仍是已知初始化期 warning，不影响 pass。
+后续如果用户要求更强随机验证，优先把 RTL random scoreboard 扩展到 1000 cases，并补充边界输入：0、1、-1、32767、-32768、单点 impulse、交替正负、满幅随机。
+默认不要为了这个结论重跑 V2/V3/V4；只有共享 RTL 改动、最终交付、commit/tag 或怀疑回归破坏时才跑完整 V1-V5。
 ```
 
 ## 0.8 V4-arm-strict 计划
