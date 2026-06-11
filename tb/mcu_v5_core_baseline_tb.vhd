@@ -2,10 +2,10 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity mcu_v1_core_tb is
-end entity mcu_v1_core_tb;
+entity mcu_v5_core_baseline_tb is
+end entity mcu_v5_core_baseline_tb;
 
-architecture sim of mcu_v1_core_tb is
+architecture sim of mcu_v5_core_baseline_tb is
     signal clk : std_logic := '0';
 
     signal basic_rst          : std_logic := '1';
@@ -41,7 +41,7 @@ architecture sim of mcu_v1_core_tb is
 begin
     clk <= not clk after 5 ns;
 
-    basic_core : entity work.mcu_v1_core
+    basic_core : entity work.mcu_v5_core
         generic map (
             MEM_FILE  => "asm/test_mcu_v1_basic.mem",
             ROM_DEPTH => 256
@@ -62,7 +62,7 @@ begin
             flag_n_debug => basic_n
         );
 
-    fft_core : entity work.mcu_v1_core
+    fft_core : entity work.mcu_v5_core
         generic map (
             MEM_FILE  => "asm/fft8_v1_mcu32_basic.mem",
             ROM_DEPTH => 1024
@@ -159,7 +159,7 @@ begin
             expect_fft_output(2 * complex_i + 1, 0);
         end loop;
 
-        report "mcu_v1_core_tb passed" severity note;
+        report "mcu_v5_core_baseline_tb passed" severity note;
         wait;
     end process;
 end architecture sim;

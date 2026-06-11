@@ -3,10 +3,10 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use std.textio.all;
 
-entity mcu_v1_core_v5_random_tb is
-end entity mcu_v1_core_v5_random_tb;
+entity mcu_v5_core_random_tb is
+end entity mcu_v5_core_random_tb;
 
-architecture sim of mcu_v1_core_v5_random_tb is
+architecture sim of mcu_v5_core_random_tb is
     constant CASE_COUNT : natural := 100;
     constant SLOT_COUNT : natural := 16;
     constant MAX_RUN_CYCLES : natural := 140;
@@ -36,7 +36,7 @@ architecture sim of mcu_v1_core_v5_random_tb is
 begin
     clk <= not clk after 5 ns when sim_done = '0' else '0';
 
-    dut : entity work.mcu_v1_core
+    dut : entity work.mcu_v5_core
         generic map (
             MEM_FILE  => "asm/fft8_v5_arm_strict_59.mem",
             ROM_DEPTH => 256
@@ -149,7 +149,7 @@ begin
             report "V5 random vector file has extra cases"
             severity failure;
 
-        report "mcu_v1_core_v5_random_tb passed 100 random cases" severity note;
+        report "mcu_v5_core_random_tb passed 100 random cases" severity note;
         sim_done <= '1';
         wait;
     end process;

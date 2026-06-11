@@ -1,9 +1,9 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.mcu_v1_pkg.all;
+use work.mcu_v5_pkg.all;
 
-entity mcu_v1_decoder is
+entity mcu_v5_decoder is
     port (
         instr         : in  std_logic_vector(31 downto 0);
         flag_z        : in  std_logic;
@@ -36,9 +36,9 @@ entity mcu_v1_decoder is
         imm_ext       : out std_logic_vector(31 downto 0);
         branch_offset : out std_logic_vector(31 downto 0)
     );
-end entity mcu_v1_decoder;
+end entity mcu_v5_decoder;
 
-architecture rtl of mcu_v1_decoder is
+architecture rtl of mcu_v5_decoder is
 begin
     process(instr, flag_z, flag_n)
         variable cond_ok_v : std_logic;

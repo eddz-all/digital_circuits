@@ -1,7 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 
-package mcu_v1_pkg is
+package mcu_v5_pkg is
     constant ALU_AND     : std_logic_vector(3 downto 0) := "0000";
     constant ALU_ORR     : std_logic_vector(3 downto 0) := "0001";
     constant ALU_ADD     : std_logic_vector(3 downto 0) := "0010";
@@ -53,4 +53,4 @@ package mcu_v1_pkg is
     constant REGION_INPUT  : std_logic_vector(1 downto 0) := "00";
     constant REGION_WORK   : std_logic_vector(1 downto 0) := "01";
     constant REGION_OUTPUT : std_logic_vector(1 downto 0) := "10";
-end package mcu_v1_pkg;
+end package mcu_v5_pkg;

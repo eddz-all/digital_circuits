@@ -1,36 +1,11 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use work.mcu_v5_pkg.all;
 
-entity mcu_v1_pc_unit is
-    port (
-        pc_current    : in  std_logic_vector(31 downto 0);
-        branch_taken  : in  std_logic;
-        branch_offset : in  std_logic_vector(31 downto 0);
-        pc_next       : out std_logic_vector(31 downto 0);
-        halted        : out std_logic
-    );
-end entity mcu_v1_pc_unit;
-
-architecture rtl of mcu_v1_pc_unit is
-    signal pc_next_i : std_logic_vector(31 downto 0) := (others => '0');
-begin
-    pc_next_i <= std_logic_vector(signed(pc_current) + to_signed(8, 32) + signed(branch_offset))
-        when branch_taken = '1'
-        else std_logic_vector(unsigned(pc_current) + 4);
-
-    pc_next <= pc_next_i;
-    halted <= '1' when branch_taken = '1' and pc_next_i = pc_current else '0';
-end architecture rtl;
-
-library ieee;
-use ieee.std_logic_1164.all;
-use ieee.numeric_std.all;
-use work.mcu_v1_pkg.all;
-
-entity mcu_v1_core is
+entity mcu_v5_core is
     generic (
-        MEM_FILE  : string := "asm/fft8_v5_arm_strict_59.mem";
+        MEM_FILE  : string := "E:/Digital_Exp/MCU_v5/BOARD_TOP/asm/fft8_v5_arm_strict_59.mem";
         ROM_DEPTH : positive := 256
     );
     port (
@@ -51,9 +26,9 @@ entity mcu_v1_core is
         flag_z_debug  : out std_logic;
         flag_n_debug  : out std_logic
     );
-end entity mcu_v1_core;
+end entity mcu_v5_core;
 
-architecture rtl of mcu_v1_core is
+architecture rtl of mcu_v5_core is
     signal pc_reg  : std_logic_vector(31 downto 0) := (others => '0');
     signal pc_next : std_logic_vector(31 downto 0);
     signal instr   : std_logic_vector(31 downto 0) := (others => '0');
@@ -113,7 +88,7 @@ architecture rtl of mcu_v1_core is
         return count;
     end function;
 begin
-    u_rom : entity work.mcu_v1_instr_rom
+    u_rom : entity work.mcu_v5_instr_rom
         generic map (
             MEM_FILE => MEM_FILE,
             DEPTH    => ROM_DEPTH
@@ -123,7 +98,7 @@ begin
             instr => instr
         );
 
-    u_decoder : entity work.mcu_v1_decoder
+    u_decoder : entity work.mcu_v5_decoder
         port map (
             instr         => instr,
             flag_z        => flag_z_reg,
@@ -152,7 +127,7 @@ begin
             branch_offset => branch_offset
         );
 
-    u_regfile : entity work.mcu_v1_regfile
+    u_regfile : entity work.mcu_v5_regfile
         port map (
             clk => clk,
             rst => rst,
@@ -172,7 +147,7 @@ begin
 
     alu_b <= imm_ext when alu_src_imm = '1' else reg_rd2;
 
-    u_alu : entity work.mcu_v1_alu
+    u_alu : entity work.mcu_v5_alu
         port map (
             a           => reg_rd1,
             b           => alu_b,
@@ -183,7 +158,7 @@ begin
             flag_n      => alu_n
         );
 
-    u_data_mem : entity work.mcu_v1_data_mem
+    u_data_mem : entity work.mcu_v5_data_mem
         port map (
             clk          => clk,
             rst          => rst,
@@ -241,7 +216,7 @@ begin
         else mem_rd when mem_to_reg = '1'
         else alu_res;
 
-    u_pc_unit : entity work.mcu_v1_pc_unit
+    u_pc_unit : entity work.mcu_v5_pc_unit
         port map (
             pc_current    => pc_reg,
             branch_taken  => branch_taken,

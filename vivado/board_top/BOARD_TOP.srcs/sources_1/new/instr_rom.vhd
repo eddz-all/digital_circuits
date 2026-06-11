@@ -4,7 +4,7 @@ use ieee.numeric_std.all;
 
 entity mcu_v1_instr_rom is
     generic (
-        MEM_FILE : string := "asm/fft8_v5_arm_strict_59.mem";
+        MEM_FILE : string := "E:/Digital_Exp/MCU_v5/BOARD_TOP/asm/fft8_v5_arm_strict_59.mem";
         DEPTH    : positive := 1024
     );
     port (

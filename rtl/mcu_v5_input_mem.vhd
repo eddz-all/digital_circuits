@@ -2,7 +2,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity mcu_v1_input_mem is
+entity mcu_v5_input_mem is
     port (
         clk         : in  std_logic;
         input_we    : in  std_logic;
@@ -12,9 +12,9 @@ entity mcu_v1_input_mem is
         read_data   : out std_logic_vector(31 downto 0);
         bulk_read_data : out std_logic_vector(511 downto 0)
     );
-end entity mcu_v1_input_mem;
+end entity mcu_v5_input_mem;
 
-architecture rtl of mcu_v1_input_mem is
+architecture rtl of mcu_v5_input_mem is
     type input_array_t is array (0 to 63) of std_logic_vector(15 downto 0);
     signal mem : input_array_t := (others => (others => '0'));
 begin

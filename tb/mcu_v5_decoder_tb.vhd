@@ -2,10 +2,10 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity mcu_v1_decoder_tb is
-end entity mcu_v1_decoder_tb;
+entity mcu_v5_decoder_tb is
+end entity mcu_v5_decoder_tb;
 
-architecture sim of mcu_v1_decoder_tb is
+architecture sim of mcu_v5_decoder_tb is
     constant ALU_ADD : std_logic_vector(2 downto 0) := "010";
     constant ALU_SUB : std_logic_vector(2 downto 0) := "011";
     constant ALU_MUL : std_logic_vector(2 downto 0) := "100";
@@ -31,7 +31,7 @@ architecture sim of mcu_v1_decoder_tb is
     signal imm_ext       : std_logic_vector(31 downto 0);
     signal branch_offset : std_logic_vector(31 downto 0);
 begin
-    dut : entity work.mcu_v1_decoder
+    dut : entity work.mcu_v5_decoder
         port map (
             instr         => instr,
             flag_z        => flag_z,
@@ -180,7 +180,7 @@ begin
         assert reg_write = '0' and mem_read = '0' and mem_write = '0' and branch_taken = '0'
             report "Illegal instruction should have no side effects" severity failure;
 
-        report "mcu_v1_decoder_tb passed" severity note;
+        report "mcu_v5_decoder_tb passed" severity note;
         wait;
     end process;
 end architecture sim;

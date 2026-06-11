@@ -1,9 +1,9 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.mcu_v1_pkg.all;
+use work.mcu_v5_pkg.all;
 
-entity mcu_v1_data_mem is
+entity mcu_v5_data_mem is
     port (
         clk        : in  std_logic;
         rst        : in  std_logic;
@@ -27,9 +27,9 @@ entity mcu_v1_data_mem is
         output_raddr : in  std_logic_vector(5 downto 0);
         output_rdata : out std_logic_vector(15 downto 0)
     );
-end entity mcu_v1_data_mem;
+end entity mcu_v5_data_mem;
 
-architecture rtl of mcu_v1_data_mem is
+architecture rtl of mcu_v5_data_mem is
     signal region : std_logic_vector(1 downto 0) := (others => '0');
     signal slot   : std_logic_vector(5 downto 0) := (others => '0');
     signal slot2  : std_logic_vector(5 downto 0) := (others => '0');
@@ -58,7 +58,7 @@ begin
     output_we2 <= mem_write and store_double and not bulk_store when region = REGION_OUTPUT else '0';
     output_bulk_store <= mem_write and bulk_store when region = REGION_OUTPUT else '0';
 
-    u_input_mem : entity work.mcu_v1_input_mem
+    u_input_mem : entity work.mcu_v5_input_mem
         port map (
             clk         => clk,
             input_we    => input_we,
@@ -69,7 +69,7 @@ begin
             bulk_read_data => input_bulk
         );
 
-    u_work_ram : entity work.mcu_v1_work_ram
+    u_work_ram : entity work.mcu_v5_work_ram
         port map (
             clk        => clk,
             rst        => rst,
@@ -86,7 +86,7 @@ begin
             bulk_read_data => work_bulk
         );
 
-    u_output_mem : entity work.mcu_v1_output_mem
+    u_output_mem : entity work.mcu_v5_output_mem
         port map (
             clk          => clk,
             rst          => rst,

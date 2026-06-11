@@ -2,7 +2,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity mcu_v1_pc_unit is
+entity mcu_v5_pc_unit is
     port (
         pc_current    : in  std_logic_vector(31 downto 0);
         branch_taken  : in  std_logic;
@@ -10,9 +10,9 @@ entity mcu_v1_pc_unit is
         pc_next       : out std_logic_vector(31 downto 0);
         halted        : out std_logic
     );
-end entity mcu_v1_pc_unit;
+end entity mcu_v5_pc_unit;
 
-architecture rtl of mcu_v1_pc_unit is
+architecture rtl of mcu_v5_pc_unit is
     signal pc_next_i : std_logic_vector(31 downto 0) := (others => '0');
 begin
     pc_next_i <= std_logic_vector(signed(pc_current) + to_signed(8, 32) + signed(branch_offset))

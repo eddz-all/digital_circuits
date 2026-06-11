@@ -4,18 +4,18 @@ use ieee.numeric_std.all;
 use std.textio.all;
 use ieee.std_logic_textio.all;
 
-entity mcu_v1_instr_rom is
+entity mcu_v5_instr_rom is
     generic (
-        MEM_FILE : string := "asm/fft8_v1_mcu32_basic.mem";
+        MEM_FILE : string := "E:/Digital_Exp/MCU_v5/BOARD_TOP/asm/fft8_v5_arm_strict_59.mem";
         DEPTH    : positive := 1024
     );
     port (
         pc    : in  std_logic_vector(31 downto 0);
         instr : out std_logic_vector(31 downto 0)
     );
-end entity mcu_v1_instr_rom;
+end entity mcu_v5_instr_rom;
 
-architecture rtl of mcu_v1_instr_rom is
+architecture rtl of mcu_v5_instr_rom is
     type rom_t is array (0 to DEPTH - 1) of std_logic_vector(31 downto 0);
 
     impure function init_rom(file_name : string) return rom_t is

@@ -1,9 +1,9 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.mcu_v1_pkg.all;
+use work.mcu_v5_pkg.all;
 
-entity mcu_v1_alu is
+entity mcu_v5_alu is
     port (
         a           : in  std_logic_vector(31 downto 0);
         b           : in  std_logic_vector(31 downto 0);
@@ -13,9 +13,9 @@ entity mcu_v1_alu is
         flag_z      : out std_logic;
         flag_n      : out std_logic
     );
-end entity mcu_v1_alu;
+end entity mcu_v5_alu;
 
-architecture rtl of mcu_v1_alu is
+architecture rtl of mcu_v5_alu is
     signal result_i : std_logic_vector(31 downto 0) := (others => '0');
 begin
     process(a, b, c, alu_control)
