@@ -2,33 +2,31 @@
 """
 Host-side checker for asm/fft8_v1_mcu32_basic.s.
 
-This script directly interprets the small ARM-like instruction subset used by
-the first MCU32 FFT program. It checks:
+The checker interprets the first-version ARM-like MCU instruction subset and
+verifies the program against the teacher-provided 2026 DFT/FFT COE layout:
 
-1. The assembly only uses the intended first-version instruction subset.
-2. The input program-view stride is +4 and sign-extends 16-bit data into registers.
-3. The work RAM stride is +4 and stores 32-bit signed intermediate values.
-4. The output program-view stride is +4 and produces bit-reversal FFT/8 results.
-5. Immediates used by data-processing and memory instructions fit imm12.
+* input slots   0..63   DFT matrix real coefficients, Q7
+* input slots  64..127  DFT matrix imaginary coefficients, Q7
+* input slots 128..135  signal real samples, Q5
+* input slots 136..143  signal imaginary samples, Q5
+* output slots 0..7     DFT result real parts, Q12
+* output slots 8..15    DFT result imaginary parts, Q12
 """
 
 from __future__ import annotations
 
-import cmath
-import math
 import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 N = 8
-INPUT_BASE = 0
-WORK_BASE = 0x100
-OUTPUT_BASE = 0x200
-WORK_BYTES = 64
-IO_BYTES = 64
-INV_SQRT2_Q15 = 23170
-BIT_REVERSAL_ORDER = [0, 4, 2, 6, 1, 5, 3, 7]
+INPUT_SLOTS = 144
+OUTPUT_SLOTS = 16
+SIGNAL_REAL_BASE_SLOT = 128
+SIGNAL_IMAG_BASE_SLOT = 136
+MATRIX_IMAG_BASE_SLOT = 64
+TEACHER_OUTPUT_BASE = 0x800
 ALLOWED_OPS = {"MOV", "ADD", "SUB", "CMP", "LDR", "STR", "B", "BEQ", "BNE", "MUL", "ASR"}
 
 
@@ -55,10 +53,6 @@ def s32(value: int) -> int:
     return value - 0x100000000 if value & 0x80000000 else value
 
 
-def asr(value: int, bits: int) -> int:
-    return s32(value) >> bits
-
-
 def add32(a: int, b: int) -> int:
     return s32(s32(a) + s32(b))
 
@@ -69,6 +63,10 @@ def sub32(a: int, b: int) -> int:
 
 def mul32(a: int, b: int) -> int:
     return s32(s32(a) * s32(b))
+
+
+def asr(value: int, bits: int) -> int:
+    return s32(value) >> bits
 
 
 def load_program(path: Path) -> Program:
@@ -135,25 +133,20 @@ def split_args(text: str) -> list[str]:
 
 
 def is_input_addr(addr: int) -> bool:
-    return INPUT_BASE <= addr < INPUT_BASE + IO_BYTES and (addr - INPUT_BASE) % 4 == 0
-
-
-def is_work_addr(addr: int) -> bool:
-    return WORK_BASE <= addr < WORK_BASE + WORK_BYTES and (addr - WORK_BASE) % 4 == 0
+    return 0 <= addr < INPUT_SLOTS * 4 and addr % 4 == 0
 
 
 def is_output_addr(addr: int) -> bool:
-    return OUTPUT_BASE <= addr < OUTPUT_BASE + IO_BYTES and (addr - OUTPUT_BASE) % 4 == 0
+    return TEACHER_OUTPUT_BASE <= addr < TEACHER_OUTPUT_BASE + OUTPUT_SLOTS * 4 and addr % 4 == 0
 
 
 def run_program(program: Program, input_values: list[int]) -> RunResult:
-    if len(input_values) != 2 * N:
-        raise ValueError("expected 16 signed input values: re0, im0, ..., re7, im7")
+    if len(input_values) != INPUT_SLOTS:
+        raise ValueError(f"expected {INPUT_SLOTS} signed input values")
 
     regs = [0] * 16
     flags = {"Z": False, "N": False}
-    input_mem = {INPUT_BASE + 4 * i: s16(value) for i, value in enumerate(input_values)}
-    work_mem: dict[int, int] = {}
+    input_mem = {4 * i: s16(value) for i, value in enumerate(input_values)}
     output_mem: dict[int, int] = {}
 
     pc = program.labels.get("START", 0)
@@ -165,14 +158,9 @@ def run_program(program: Program, input_values: list[int]) -> RunResult:
     def read_mem(addr: int) -> int:
         if is_input_addr(addr):
             return input_mem[addr]
-        if is_work_addr(addr):
-            return work_mem.get(addr, 0)
         raise AssertionError(f"read from unmapped address {addr}")
 
     def write_mem(addr: int, value: int) -> None:
-        if is_work_addr(addr):
-            work_mem[addr] = s32(value)
-            return
         if is_output_addr(addr):
             output_mem[addr] = s16(value)
             return
@@ -247,163 +235,96 @@ def run_program(program: Program, input_values: list[int]) -> RunResult:
             last_output_timed_steps = timed_steps
         pc = next_pc
 
-    output = [output_mem[OUTPUT_BASE + 4 * i] for i in range(2 * N)]
+    output = [output_mem[TEACHER_OUTPUT_BASE + 4 * i] for i in range(OUTPUT_SLOTS)]
     return RunResult(output=output, steps_before_done=steps, timed_steps=last_output_timed_steps)
 
 
-def mul_inv_sqrt2(value: int) -> int:
-    return asr(mul32(value, INV_SQRT2_Q15), 15)
-
-
-def butterfly_w0(values: list[tuple[int, int]], a: int, b: int) -> None:
-    ar, ai = values[a]
-    br, bi = values[b]
-    values[a] = (asr(add32(ar, br), 1), asr(add32(ai, bi), 1))
-    values[b] = (asr(sub32(ar, br), 1), asr(sub32(ai, bi), 1))
-
-
-def butterfly_neg_j(values: list[tuple[int, int]], a: int, b: int) -> None:
-    ar, ai = values[a]
-    br, bi = values[b]
-    sr = asr(add32(ar, br), 1)
-    si = asr(add32(ai, bi), 1)
-    dr = asr(sub32(ar, br), 1)
-    di = asr(sub32(ai, bi), 1)
-    values[a] = (sr, si)
-    values[b] = (di, sub32(0, dr))
-
-
-def butterfly_w1(values: list[tuple[int, int]], a: int, b: int) -> None:
-    ar, ai = values[a]
-    br, bi = values[b]
-    sr = asr(add32(ar, br), 1)
-    si = asr(add32(ai, bi), 1)
-    dr = asr(sub32(ar, br), 1)
-    di = asr(sub32(ai, bi), 1)
-    values[a] = (sr, si)
-    values[b] = (mul_inv_sqrt2(add32(dr, di)), mul_inv_sqrt2(sub32(di, dr)))
-
-
-def butterfly_w3(values: list[tuple[int, int]], a: int, b: int) -> None:
-    ar, ai = values[a]
-    br, bi = values[b]
-    sr = asr(add32(ar, br), 1)
-    si = asr(add32(ai, bi), 1)
-    dr = asr(sub32(ar, br), 1)
-    di = asr(sub32(ai, bi), 1)
-    values[a] = (sr, si)
-    values[b] = (mul_inv_sqrt2(sub32(di, dr)), sub32(0, mul_inv_sqrt2(add32(dr, di))))
-
-
-def direct_fixed_model(input_values: list[int]) -> list[int]:
-    values = [(s16(input_values[2 * i]), s16(input_values[2 * i + 1])) for i in range(N)]
-
-    butterfly_w0(values, 0, 4)
-    butterfly_w1(values, 1, 5)
-    butterfly_neg_j(values, 2, 6)
-    butterfly_w3(values, 3, 7)
-
-    butterfly_w0(values, 0, 2)
-    butterfly_neg_j(values, 1, 3)
-    butterfly_w0(values, 4, 6)
-    butterfly_neg_j(values, 5, 7)
-
-    butterfly_w0(values, 0, 1)
-    butterfly_w0(values, 2, 3)
-    butterfly_w0(values, 4, 5)
-    butterfly_w0(values, 6, 7)
-
+def direct_dft_model(input_values: list[int]) -> list[int]:
     output: list[int] = []
-    for real, imag in values:
-        output.extend([s16(real), s16(imag)])
+    real_results: list[int] = []
+    imag_results: list[int] = []
+
+    for k in range(N):
+        real_acc = 0
+        imag_acc = 0
+        for n in range(N):
+            xr = s16(input_values[SIGNAL_REAL_BASE_SLOT + n])
+            xi = s16(input_values[SIGNAL_IMAG_BASE_SLOT + n])
+            wr = s16(input_values[k * N + n])
+            wi = s16(input_values[MATRIX_IMAG_BASE_SLOT + k * N + n])
+            real_acc = add32(real_acc, mul32(xr, wr))
+            real_acc = sub32(real_acc, mul32(xi, wi))
+            imag_acc = add32(imag_acc, mul32(xr, wi))
+            imag_acc = add32(imag_acc, mul32(xi, wr))
+        real_results.append(s16(real_acc))
+        imag_results.append(s16(imag_acc))
+
+    output.extend(real_results)
+    output.extend(imag_results)
     return output
 
 
-def dft_reference_scaled_br(input_values: list[int]) -> list[complex]:
-    samples = [complex(s16(input_values[2 * i]), s16(input_values[2 * i + 1])) for i in range(N)]
-    natural: list[complex] = []
-    for k in range(N):
-        acc = 0j
-        for n, sample in enumerate(samples):
-            acc += sample * cmath.exp(-2j * math.pi * k * n / N)
-        natural.append(acc / N)
-    return [natural[index] for index in BIT_REVERSAL_ORDER]
+def parse_coe_values(path: Path) -> list[int]:
+    values = [s16(int(token, 16)) for token in re.findall(r"\b[0-9a-fA-F]{4}\b", path.read_text())]
+    if not values:
+        raise ValueError(f"no 16-bit hex values found in {path}")
+    return values
+
+
+def find_sample_dir(root: Path) -> Path:
+    for path in root.iterdir():
+        if path.is_dir() and (path / "FFT_input.coe").exists() and (path / "FFT_output.coe").exists():
+            return path
+    raise FileNotFoundError("could not find a sample directory with FFT_input.coe and FFT_output.coe")
 
 
 def print_flat_vector(label: str, values: list[int]) -> None:
     print(label)
-    for i in range(N):
-        print(f"  [{i}] real={values[2 * i]:7d}, imag={values[2 * i + 1]:7d}")
+    for i, value in enumerate(values):
+        print(f"  [{i:02d}] {value:7d}  0x{value & 0xFFFF:04X}")
 
 
-def check_float_tolerance(input_values: list[int], output_values: list[int], tolerance: float) -> None:
-    reference = dft_reference_scaled_br(input_values)
-    worst = 0.0
-    for i, expected in enumerate(reference):
-        worst = max(
-            worst,
-            abs(output_values[2 * i] - expected.real),
-            abs(output_values[2 * i + 1] - expected.imag),
-        )
-    if worst > tolerance:
-        print_flat_vector("input:", input_values)
-        print_flat_vector("fixed output:", output_values)
-        print("floating DFT / 8 in bit-reversal order:")
-        for i, value in enumerate(reference):
-            print(f"  [{i}] real={value.real:10.3f}, imag={value.imag:10.3f}")
-        raise AssertionError(f"worst fixed-point error {worst:.3f} exceeds tolerance {tolerance}")
-
-
-def run_case(program: Program, input_values: list[int], tolerance: float = 8.0) -> RunResult:
+def run_case(program: Program, input_values: list[int], expected_output: list[int] | None = None) -> RunResult:
     interpreted = run_program(program, input_values)
-    direct = direct_fixed_model(input_values)
+    direct = direct_dft_model(input_values)
     if interpreted.output != direct:
-        print_flat_vector("input:", input_values)
         print_flat_vector("interpreted assembly output:", interpreted.output)
-        print_flat_vector("direct fixed model output:", direct)
-        raise AssertionError("interpreted assembly does not match direct fixed model")
-    check_float_tolerance(input_values, interpreted.output, tolerance)
+        print_flat_vector("direct fixed DFT output:", direct)
+        raise AssertionError("interpreted assembly does not match direct fixed DFT model")
+    if expected_output is not None and interpreted.output != expected_output:
+        print_flat_vector("interpreted assembly output:", interpreted.output)
+        print_flat_vector("teacher expected output:", expected_output)
+        raise AssertionError("interpreted assembly does not match teacher FFT_output.coe")
     return interpreted
 
 
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
+    sample_dir = find_sample_dir(root)
+    sample_input = parse_coe_values(sample_dir / "FFT_input.coe")
+    sample_output = parse_coe_values(sample_dir / "FFT_output.coe")
+    if len(sample_input) != INPUT_SLOTS:
+        raise AssertionError(f"expected {INPUT_SLOTS} FFT input values, got {len(sample_input)}")
+    if len(sample_output) != OUTPUT_SLOTS:
+        raise AssertionError(f"expected {OUTPUT_SLOTS} FFT output values, got {len(sample_output)}")
+
     program = load_program(root / "asm" / "fft8_v1_mcu32_basic.s")
+    result = run_case(program, sample_input, sample_output)
+    print_flat_vector("teacher sample output:", result.output)
 
-    impulse_x0 = [32760, 0] + [0, 0] * 7
-    result = run_case(program, impulse_x0)
-    print_flat_vector("impulse x0 output:", result.output)
-
-    impulse_x1 = [0, 0, 32760, 0] + [0, 0] * 6
-    print_flat_vector("impulse x1 output:", run_case(program, impulse_x1).output)
-
-    edge_cases = [
-        [0] * (2 * N),
-        [32767, 0] + [0, 0] * 7,
-        [-32768, 0] + [0, 0] * 7,
-        [32767] * (2 * N),
-        [-32768] * (2 * N),
-        [32767 if i % 2 == 0 else -32768 for i in range(2 * N)],
-        [-32768 + i * 4096 for i in range(2 * N)],
-    ]
-    for values in edge_cases:
-        result = run_case(program, values)
-
-    rng = random.Random(0)
-    for _ in range(1000):
-        values = [rng.randint(-20000, 20000) for _ in range(2 * N)]
-        result = run_case(program, values)
-
-    for _ in range(5000):
-        values = [rng.randint(-32768, 32767) for _ in range(2 * N)]
+    rng = random.Random(20260615)
+    matrix_values = sample_input[:SIGNAL_REAL_BASE_SLOT]
+    for _ in range(100):
+        signal_real = [rng.randint(-32, 31) for _ in range(N)]
+        signal_imag = [rng.randint(-32, 31) for _ in range(N)]
+        values = matrix_values + signal_real + signal_imag
         result = run_case(program, values)
 
     print(f"{len(program.instructions)} instructions before labels/comments.")
     print(f"{result.steps_before_done} instructions executed before DONE self-loop.")
     print(f"{result.timed_steps} instructions from first input read through last output write.")
-    print(f"{len(edge_cases)} edge-case tests passed.")
-    print("1000 random moderate-amplitude tests passed.")
-    print("5000 random full-range tests passed.")
+    print("teacher sample passed.")
+    print("100 random Q5 signal tests passed against the sample DFT matrix.")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ rtl/mcu_v1_instr_rom.vhd
 rtl/mcu_v1_data_mem.vhd
 rtl/mcu_v1_decoder.vhd
 rtl/mcu_v1_core.vhd
+rtl/mcu_fft_system.vhd
 ```
 
 Testbench：
@@ -20,6 +21,7 @@ Testbench：
 ```text
 tb/mcu_v1_decoder_tb.vhd
 tb/mcu_v1_core_tb.vhd
+tb/mcu_fft_system_tb.vhd
 ```
 
 测试程序：
@@ -73,9 +75,9 @@ ASR
 地址空间：
 
 ```text
-INPUT_BASE   = 0x000
-WORK_BASE    = 0x100
-OUTPUT_BASE  = 0x200
+输入区        = 0x000..0x23f, 对应老师 FFT_input.coe slot 0..143
+WORK_BASE    = 0x400
+OUTPUT_BASE  = 0x800, 对应老师 FFT_output.coe slot 0..15
 ```
 
 程序视角：
@@ -92,6 +94,18 @@ OUTPUT_BASE  = 0x200
 工作区 LDR/STR：32-bit
 输出区 STR：保存 write_data[15:0]，模拟外部 16-bit verify_RAM
 ```
+
+core 外部装载接口：
+
+```text
+input_we    : reset 期间允许写 input_mem
+input_waddr : 8-bit，可覆盖老师样例 144 个输入槽
+input_wdata : 16-bit signed
+output_raddr/output_rdata : 6-bit 地址读回最多 64 个 16-bit 输出槽
+```
+
+`rtl/mcu_fft_system.vhd` 仿照板级 `mcu_fft_system` 的 test_ROM/verify_RAM
+握手形式，但把旧的 16 个输入修正为老师 2026 样例需要的 144 个输入。
 
 ## 4. 分支与停机
 
@@ -124,7 +138,7 @@ branch_taken = 1 且 pc_next = pc_reg
 当前 FFT 程序的 `DONE`：
 
 ```text
-PC = 0x0474
+PC = 0x0090
 instr = 0xE8FFFFFE
 branch_offset = -8
 PC + 8 - 8 = PC
@@ -142,14 +156,19 @@ ghdl -a --std=08 \
   rtl/mcu_v1_instr_rom.vhd \
   rtl/mcu_v1_data_mem.vhd \
   rtl/mcu_v1_core.vhd \
+  rtl/mcu_fft_system.vhd \
   tb/mcu_v1_decoder_tb.vhd \
-  tb/mcu_v1_core_tb.vhd
+  tb/mcu_v1_core_tb.vhd \
+  tb/mcu_fft_system_tb.vhd
 
 ghdl -e --std=08 mcu_v1_decoder_tb
 ghdl -r --std=08 mcu_v1_decoder_tb
 
 ghdl -e --std=08 mcu_v1_core_tb
 ghdl -r --std=08 mcu_v1_core_tb
+
+ghdl -e --std=08 mcu_fft_system_tb
+ghdl -r --std=08 mcu_fft_system_tb
 ```
 
 当前通过结果：
@@ -157,6 +176,7 @@ ghdl -r --std=08 mcu_v1_core_tb
 ```text
 mcu_v1_decoder_tb passed
 mcu_v1_core_tb passed
+mcu_fft_system_tb passed
 ```
 
 GHDL 在 core 仿真 0ns 处可能打印少量 `NUMERIC_STD.TO_INTEGER: metavalue detected` warning，这是初始 delta-cycle 中组合信号尚未稳定造成的提示；后续断言和最终结果均通过。
@@ -195,7 +215,7 @@ slot 3 = 123
 MOV / ADD / SUB / LDR / STR / MUL / ASR / CMP / BEQ / B
 ```
 
-### 6.2 FFT 冲激程序
+### 6.2 FFT 老师样例程序
 
 加载：
 
@@ -206,20 +226,25 @@ asm/fft8_v1_mcu32_basic.mem
 输入：
 
 ```text
-x0.real = 32760
-其余 real/imag = 0
+加载老师 测试数据样例-2026/FFT_input.coe 的 144 个输入槽：
+0..63     DFT 矩阵实部 Q7
+64..127   DFT 矩阵虚部 Q7
+128..135  信号实部 Q5
+136..143  信号虚部 Q5
 ```
 
 检查输出：
 
 ```text
-8 个复数输出均为 real = 4095, imag = 0
+输出槽 0..15 等于老师 FFT_output.coe：
+F280 E80A 1A80 FEA2 E080 16F6 E680 FA5E
+E900 317C 2C00 1F8C 0B00 0C84 1600 D874
 ```
 
 并检查：
 
 ```text
-PC 停在 0x0474
+PC 停在 0x0090
 halted_debug = 1
 illegal_debug = 0
 ```

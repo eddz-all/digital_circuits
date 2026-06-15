@@ -1,5 +1,33 @@
 # 成员 2 第一版 MCU 指令集与接口方案
 
+## 0. 2026 老师样例接口覆盖说明
+
+当前 `codex/v1-clean` 分支已经按老师 `测试数据样例-2026` 修正 FFT I/O。
+本文后续历史章节里的 16 个 `real/imag` 交错输入和 `OUTPUT_BASE=0x200`
+只能作为旧第一版接口背景，不再作为当前 FFT 样例的最终接口。
+
+当前样例口径：
+
+```text
+FFT_input.coe slot 0..63     DFT 矩阵实部 Q7
+FFT_input.coe slot 64..127   DFT 矩阵虚部 Q7
+FFT_input.coe slot 128..135  原始信号实部 Q5
+FFT_input.coe slot 136..143  原始信号虚部 Q5
+
+FFT_output.coe slot 0..7     输出实部 Q12，自然序
+FFT_output.coe slot 8..15    输出虚部 Q12，自然序
+```
+
+当前本地接口文件：
+
+```text
+rtl/mcu_v1_core.vhd      input_waddr 为 8-bit，可装载 144 个输入槽
+rtl/mcu_v1_data_mem.vhd  输入区覆盖 0..143，输出写入 0x800..0x83c 并映射到 output_mem[0..15]
+rtl/mcu_fft_system.vhd   仿照板级 test_ROM/verify_RAM 接口，test_rom_addr 修正为 8-bit
+```
+
+这些规则以老师样例和当前 GHDL 验证为准。
+
 本文档按 2026-06-02 最新两份要求整理：
 
 ```text

@@ -12,7 +12,7 @@ entity mcu_v1_core is
         rst : in std_logic;
 
         input_we    : in  std_logic;
-        input_waddr : in  std_logic_vector(5 downto 0);
+        input_waddr : in  std_logic_vector(7 downto 0);
         input_wdata : in  std_logic_vector(15 downto 0);
 
         output_raddr : in  std_logic_vector(5 downto 0);

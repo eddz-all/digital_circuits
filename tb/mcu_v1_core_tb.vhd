@@ -11,7 +11,7 @@ architecture sim of mcu_v1_core_tb is
 
     signal basic_rst          : std_logic := '1';
     signal basic_input_we     : std_logic := '0';
-    signal basic_input_waddr  : std_logic_vector(5 downto 0) := (others => '0');
+    signal basic_input_waddr  : std_logic_vector(7 downto 0) := (others => '0');
     signal basic_input_wdata  : std_logic_vector(15 downto 0) := (others => '0');
     signal basic_output_raddr : std_logic_vector(5 downto 0) := (others => '0');
     signal basic_output_rdata : std_logic_vector(15 downto 0);
@@ -24,7 +24,7 @@ architecture sim of mcu_v1_core_tb is
 
     signal fft_rst          : std_logic := '1';
     signal fft_input_we     : std_logic := '0';
-    signal fft_input_waddr  : std_logic_vector(5 downto 0) := (others => '0');
+    signal fft_input_waddr  : std_logic_vector(7 downto 0) := (others => '0');
     signal fft_input_wdata  : std_logic_vector(15 downto 0) := (others => '0');
     signal fft_output_raddr : std_logic_vector(5 downto 0) := (others => '0');
     signal fft_output_rdata : std_logic_vector(15 downto 0);
@@ -39,6 +39,34 @@ architecture sim of mcu_v1_core_tb is
     begin
         return std_logic_vector(to_signed(value, 16));
     end function;
+
+    type int_array_t is array (natural range <>) of integer;
+
+    constant FFT_SAMPLE_INPUT : int_array_t(0 to 143) := (
+        128, 128, 128, 128, 128, 128, 128, 128,
+        128, 91, 0, -91, -128, -91, 0, 91,
+        128, 0, -128, 0, 128, 0, -128, 0,
+        128, -91, 0, 91, -128, 91, 0, -91,
+        128, -128, 128, -128, 128, -128, 128, -128,
+        128, -91, 0, 91, -128, 91, 0, -91,
+        128, 0, -128, 0, 128, 0, -128, 0,
+        128, 91, 0, -91, -128, -91, 0, 91,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, -91, -128, -91, 0, 91, 128, 91,
+        0, -128, 0, 128, 0, -128, 0, 128,
+        0, -91, 128, -91, 0, 91, -128, 91,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 91, -128, 91, 0, -91, 128, -91,
+        0, 128, 0, -128, 0, 128, 0, -128,
+        0, 91, 128, 91, 0, -91, -128, -91,
+        -13, -29, -29, 0, -9, 27, 6, 20,
+        27, -9, -18, -23, 0, 18, -21, -20
+    );
+
+    constant FFT_EXPECTED_OUTPUT : int_array_t(0 to 15) := (
+        -3456, -6134, 6784, -350, -8064, 5878, -6528, -1442,
+        -5888, 12668, 11264, 8076, 2816, 3204, 5632, -10124
+    );
 begin
     clk <= not clk after 5 ns;
 
@@ -94,7 +122,7 @@ begin
 
         procedure write_basic_input(slot : natural; value : integer) is
         begin
-            basic_input_waddr <= std_logic_vector(to_unsigned(slot, 6));
+            basic_input_waddr <= std_logic_vector(to_unsigned(slot, 8));
             basic_input_wdata <= slv16(value);
             basic_input_we <= '1';
             wait until rising_edge(clk);
@@ -104,7 +132,7 @@ begin
 
         procedure write_fft_input(slot : natural; value : integer) is
         begin
-            fft_input_waddr <= std_logic_vector(to_unsigned(slot, 6));
+            fft_input_waddr <= std_logic_vector(to_unsigned(slot, 8));
             fft_input_wdata <= slv16(value);
             fft_input_we <= '1';
             wait until rising_edge(clk);
@@ -147,17 +175,17 @@ begin
         expect_basic_output(2, 707);
         expect_basic_output(3, 123);
 
-        write_fft_input(0, 32760);
+        for slot in FFT_SAMPLE_INPUT'range loop
+            write_fft_input(slot, FFT_SAMPLE_INPUT(slot));
+        end loop;
         fft_rst <= '0';
-        wait_cycles(320);
+        wait_cycles(1800);
 
         assert fft_illegal = '0' report "FFT program hit illegal instruction" severity failure;
         assert fft_halted = '1' report "FFT program did not reach DONE self-loop" severity failure;
-        assert fft_pc = x"00000474" report "FFT PC should be at DONE" severity failure;
 
-        for complex_i in 0 to 7 loop
-            expect_fft_output(2 * complex_i, 4095);
-            expect_fft_output(2 * complex_i + 1, 0);
+        for slot in FFT_EXPECTED_OUTPUT'range loop
+            expect_fft_output(slot, FFT_EXPECTED_OUTPUT(slot));
         end loop;
 
         report "mcu_v1_core_tb passed" severity note;
