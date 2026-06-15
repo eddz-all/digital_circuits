@@ -272,6 +272,8 @@ def parse_coe_values(path: Path) -> list[int]:
 
 
 def find_sample_dir(root: Path) -> Path:
+    if (root / "FFT_input.coe").exists() and (root / "FFT_output.coe").exists():
+        return root
     for path in root.iterdir():
         if path.is_dir() and (path / "FFT_input.coe").exists() and (path / "FFT_output.coe").exists():
             return path
