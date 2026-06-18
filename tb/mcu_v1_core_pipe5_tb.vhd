@@ -21,10 +21,30 @@ architecture sim of mcu_v1_core_pipe5_tb is
     signal illegal_debug : std_logic;
     signal flag_z_debug : std_logic;
     signal flag_n_debug : std_logic;
+    signal stat_core_cycles : std_logic_vector(31 downto 0);
+    signal stat_issue_count : std_logic_vector(31 downto 0);
+    signal stat_load_use_stalls : std_logic_vector(31 downto 0);
+    signal stat_bulk_load_stalls : std_logic_vector(31 downto 0);
+    signal stat_flag_stalls : std_logic_vector(31 downto 0);
+    signal stat_branch_flushes : std_logic_vector(31 downto 0);
+    signal stat_halt_events : std_logic_vector(31 downto 0);
+    signal stat_seg_prologue : std_logic_vector(31 downto 0);
+    signal stat_seg_input_load : std_logic_vector(31 downto 0);
+    signal stat_seg_stage1 : std_logic_vector(31 downto 0);
+    signal stat_seg_stage2 : std_logic_vector(31 downto 0);
+    signal stat_seg_stage3 : std_logic_vector(31 downto 0);
+    signal stat_seg_twiddle : std_logic_vector(31 downto 0);
+    signal stat_seg_output : std_logic_vector(31 downto 0);
+    signal stat_seg_done : std_logic_vector(31 downto 0);
 
     function slv16(value : integer) return std_logic_vector is
     begin
         return std_logic_vector(to_signed(value, 16));
+    end function;
+
+    function slv_to_nat(value : std_logic_vector) return natural is
+    begin
+        return to_integer(unsigned(value));
     end function;
 
     type int_array_t is array (natural range <>) of integer;
@@ -75,7 +95,22 @@ begin
             halted_debug => halted_debug,
             illegal_debug => illegal_debug,
             flag_z_debug => flag_z_debug,
-            flag_n_debug => flag_n_debug
+            flag_n_debug => flag_n_debug,
+            stat_core_cycles => stat_core_cycles,
+            stat_issue_count => stat_issue_count,
+            stat_load_use_stalls => stat_load_use_stalls,
+            stat_bulk_load_stalls => stat_bulk_load_stalls,
+            stat_flag_stalls => stat_flag_stalls,
+            stat_branch_flushes => stat_branch_flushes,
+            stat_halt_events => stat_halt_events,
+            stat_seg_prologue => stat_seg_prologue,
+            stat_seg_input_load => stat_seg_input_load,
+            stat_seg_stage1 => stat_seg_stage1,
+            stat_seg_stage2 => stat_seg_stage2,
+            stat_seg_stage3 => stat_seg_stage3,
+            stat_seg_twiddle => stat_seg_twiddle,
+            stat_seg_output => stat_seg_output,
+            stat_seg_done => stat_seg_done
         );
 
     stim : process
@@ -125,7 +160,7 @@ begin
 
         assert halted_debug = '1' report "pipe5 FFT did not reach DONE self-loop" severity failure;
         assert illegal_debug = '0' report "pipe5 FFT hit illegal instruction" severity failure;
-        assert pc_debug = x"000001A8" report "pipe5 FFT PC should be at DONE" severity failure;
+        assert pc_debug = x"000001A4" report "pipe5 FFT PC should be at DONE" severity failure;
         assert instr_debug = x"E8FFFFFE" report "pipe5 FFT DONE instruction mismatch" severity failure;
 
         for slot in FFT_EXPECTED_OUTPUT'range loop
@@ -133,6 +168,38 @@ begin
         end loop;
 
         report "mcu_v1_core_pipe5_tb cycles_to_halt " & integer'image(cycles_to_halt) severity note;
+        report "mcu_v1_core_pipe5_tb stats core_cycles="
+            & integer'image(slv_to_nat(stat_core_cycles))
+            & " issued="
+            & integer'image(slv_to_nat(stat_issue_count))
+            & " load_use_stalls="
+            & integer'image(slv_to_nat(stat_load_use_stalls))
+            & " bulk_load_stalls="
+            & integer'image(slv_to_nat(stat_bulk_load_stalls))
+            & " flag_stalls="
+            & integer'image(slv_to_nat(stat_flag_stalls))
+            & " branch_flushes="
+            & integer'image(slv_to_nat(stat_branch_flushes))
+            & " halt_events="
+            & integer'image(slv_to_nat(stat_halt_events))
+            severity note;
+        report "mcu_v1_core_pipe5_tb segment_stats prologue="
+            & integer'image(slv_to_nat(stat_seg_prologue))
+            & " input_load_scale="
+            & integer'image(slv_to_nat(stat_seg_input_load))
+            & " stage1="
+            & integer'image(slv_to_nat(stat_seg_stage1))
+            & " stage2="
+            & integer'image(slv_to_nat(stat_seg_stage2))
+            & " stage3_butterfly="
+            & integer'image(slv_to_nat(stat_seg_stage3))
+            & " twiddle_multiply="
+            & integer'image(slv_to_nat(stat_seg_twiddle))
+            & " output_store="
+            & integer'image(slv_to_nat(stat_seg_output))
+            & " done_halt="
+            & integer'image(slv_to_nat(stat_seg_done))
+            severity note;
         report "mcu_v1_core_pipe5_tb passed" severity note;
         finish;
     end process;

@@ -23,9 +23,10 @@ FFT_input.coe 以 144-slot 老师样例为准
 运行时只读取 signal slots 128..143
 输入按 bit-reversed 顺序加载为 packed complex Q12
 DFT 矩阵 dftmtx(8) Q7 系数等价分解进 radix-2 butterfly
-DSP 指令：PKHBT, SADD16, SSUB16, SSAX, SMUAD, SMUSD, STMIA
+ARM-like 指令扩展/快路径：LSL, PKHBT, SADD16, SSUB16, SSAX, SMUAD, SMUSD, STMIA
 host timed_steps = 100
-GHDL/system cnt_cycles = 139
+GHDL/single-cycle system cnt_cycles = 138
+GHDL/pipe5 system cnt_cycles = 124
 wrapper 输入装载已改为连续流，输出使用 STMIA 批量写回
 ```
 
@@ -36,7 +37,7 @@ P1 registered-fetch prototype: rtl/mcu_v1_core_pipe2.vhd
 P1 testbench: tb/mcu_v1_core_pipe2_tb.vhd
 P1 结构：IF 取指寄存 + EX 单周期执行
 当前不替换 rtl/mcu_fft_system.vhd 内的默认 mcu_v1_core
-pipe2 独立 TB 口径 cycles_to_halt = 108
+pipe2 独立 TB 口径 cycles_to_halt = 107
 ```
 
 `cycles_to_halt` 不是上板 `cnt_test`，也不是 system wrapper `cnt_cycles`。后续判断流水线收益仍然
@@ -47,16 +48,22 @@ pipe2 独立 TB 口径 cycles_to_halt = 108
 ```text
 pipe5 prototype: rtl/mcu_v1_core_pipe5.vhd
 pipe5 testbench: tb/mcu_v1_core_pipe5_tb.vhd
+pipe5 system wrapper: rtl/mcu_fft_system_pipe5.vhd
+pipe5 system testbench: tb/mcu_fft_system_pipe5_tb.vhd
 pipe5 结构：IF / ID / EX / MEM / WB
 普通 RAW：EX/MEM 和 MEM/WB forwarding
 LDR load-use：stall
-STMIA bulk-store 数据依赖：保守 stall，不做 512-bit bulk forwarding
+STMIA bulk-store 数据依赖：ID/EX、EX/MEM、MEM/WB ALU 写回旁路
 当前不替换 rtl/mcu_fft_system.vhd 内的默认 mcu_v1_core
-pipe5 独立 TB 口径 cycles_to_halt = 130
+load 到 bulk-store 仍保守 stall
+输入装载段使用 LDR/LDR/LSL/LSL/PKHBT，删除旧的 MOV R9,#128 缩放常量
+pipe5 独立 TB 口径 cycles_to_halt = 108
+pipe5 system wrapper 口径 cnt_cycles = 124
+pipe5 system wrapper 已用 CORE_RELEASE_LOAD_IDX = 0 重叠输入装载和 core 运行
 ```
 
-pipe5 的本地 cycle 高于 pipe2，主要因为标准五级流水需要处理 load-use、control flush 和
-bulk-store 依赖。是否值得作为主线仍取决于 Vivado Fmax 提升是否抵消额外 stall。
+pipe5 的 system cnt_cycles 目前低于默认单周期 system 的 138；是否值得作为主线仍取决于
+Vivado Fmax 是否还能保持或提升。
 
 继续代码工作时，先跑：
 

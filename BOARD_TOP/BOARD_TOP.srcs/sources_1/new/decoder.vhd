@@ -49,6 +49,7 @@ architecture rtl of mcu_v1_decoder is
     constant ALU_SMUSD  : std_logic_vector(3 downto 0) := "1011";
     constant ALU_SSAX   : std_logic_vector(3 downto 0) := "1100";
     constant ALU_SSUB16 : std_logic_vector(3 downto 0) := "1101";
+    constant ALU_LSL    : std_logic_vector(3 downto 0) := "1110";
 
     constant COND_EQ : std_logic_vector(3 downto 0) := "0000";
     constant COND_NE : std_logic_vector(3 downto 0) := "0001";
@@ -141,6 +142,17 @@ begin
                     when OPC_MOV =>
                         alu_control <= ALU_MOV;
                         reg_write <= cond_ok_v;
+                        if instr(25) = '0' and instr(11 downto 4) /= x"00" then
+                            if instr(6 downto 5) = "00" and instr(4) = '0' then
+                                alu_control <= ALU_LSL;
+                                alu_src_imm <= '1';
+                                ra1 <= instr(3 downto 0);
+                                ra2 <= (others => '0');
+                                imm_ext <= std_logic_vector(resize(unsigned(instr(11 downto 7)), 32));
+                            else
+                                illegal_v := '1';
+                            end if;
+                        end if;
                     when OPC_CMP =>
                         alu_control <= ALU_SUB;
                         flag_write <= cond_ok_v;

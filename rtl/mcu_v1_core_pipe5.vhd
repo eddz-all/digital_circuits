@@ -23,7 +23,23 @@ entity mcu_v1_core_pipe5 is
         halted_debug  : out std_logic;
         illegal_debug : out std_logic;
         flag_z_debug  : out std_logic;
-        flag_n_debug  : out std_logic
+        flag_n_debug  : out std_logic;
+
+        stat_core_cycles      : out std_logic_vector(31 downto 0);
+        stat_issue_count      : out std_logic_vector(31 downto 0);
+        stat_load_use_stalls  : out std_logic_vector(31 downto 0);
+        stat_bulk_load_stalls : out std_logic_vector(31 downto 0);
+        stat_flag_stalls      : out std_logic_vector(31 downto 0);
+        stat_branch_flushes   : out std_logic_vector(31 downto 0);
+        stat_halt_events      : out std_logic_vector(31 downto 0);
+        stat_seg_prologue     : out std_logic_vector(31 downto 0);
+        stat_seg_input_load   : out std_logic_vector(31 downto 0);
+        stat_seg_stage1       : out std_logic_vector(31 downto 0);
+        stat_seg_stage2       : out std_logic_vector(31 downto 0);
+        stat_seg_stage3       : out std_logic_vector(31 downto 0);
+        stat_seg_twiddle      : out std_logic_vector(31 downto 0);
+        stat_seg_output       : out std_logic_vector(31 downto 0);
+        stat_seg_done         : out std_logic_vector(31 downto 0)
     );
 end entity mcu_v1_core_pipe5;
 
@@ -63,6 +79,7 @@ architecture rtl of mcu_v1_core_pipe5 is
     signal reg_rd2 : std_logic_vector(31 downto 0) := (others => '0');
     signal reg_rd3 : std_logic_vector(31 downto 0) := (others => '0');
     signal reg_bulk_rd : std_logic_vector(511 downto 0) := (others => '0');
+    signal id_bulk_data : std_logic_vector(511 downto 0) := (others => '0');
 
     signal id_ex_valid : std_logic := '0';
     signal id_ex_pc : std_logic_vector(31 downto 0) := (others => '0');
@@ -130,10 +147,54 @@ architecture rtl of mcu_v1_core_pipe5 is
     signal mem_wb_flag_z : std_logic := '0';
     signal mem_wb_flag_n : std_logic := '0';
 
+    constant OP_DATA   : std_logic_vector(1 downto 0) := "00";
+    constant OP_MEM    : std_logic_vector(1 downto 0) := "01";
+    constant OP_BRANCH : std_logic_vector(1 downto 0) := "10";
+    constant OP_EXT    : std_logic_vector(1 downto 0) := "11";
+
+    constant OPC_ADD : std_logic_vector(3 downto 0) := "0100";
+    constant OPC_SUB : std_logic_vector(3 downto 0) := "0010";
+    constant OPC_MOV : std_logic_vector(3 downto 0) := "1101";
+    constant OPC_CMP : std_logic_vector(3 downto 0) := "1010";
+    constant OPC_MUL : std_logic_vector(3 downto 0) := "1001";
+    constant OPC_ASR : std_logic_vector(3 downto 0) := "1111";
+
+    constant EXT_SMUAD  : std_logic_vector(4 downto 0) := "00010";
+    constant EXT_SMUSD  : std_logic_vector(4 downto 0) := "00011";
+    constant EXT_PKHBT  : std_logic_vector(4 downto 0) := "00101";
+    constant EXT_SSAX   : std_logic_vector(4 downto 0) := "01000";
+    constant EXT_SSUB16 : std_logic_vector(4 downto 0) := "01001";
+    constant EXT_SMLAD  : std_logic_vector(4 downto 0) := "01010";
+    constant EXT_STMIA  : std_logic_vector(4 downto 0) := "01011";
+    constant EXT_SADD16 : std_logic_vector(4 downto 0) := "01100";
+
+    signal dec_read_ra1 : std_logic := '0';
+    signal dec_read_ra2 : std_logic := '0';
+    signal dec_read_ra3 : std_logic := '0';
+
     signal stall_id : std_logic := '0';
+    signal stall_load_use : std_logic := '0';
+    signal stall_bulk_load : std_logic := '0';
+    signal stall_flag : std_logic := '0';
     signal halted_reg : std_logic := '0';
     signal halted_pc : std_logic_vector(31 downto 0) := (others => '0');
     signal halted_instr : std_logic_vector(31 downto 0) := (others => '0');
+
+    signal stat_core_cycles_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_issue_count_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_load_use_stalls_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_bulk_load_stalls_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_flag_stalls_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_branch_flushes_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_halt_events_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_seg_prologue_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_seg_input_load_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_seg_stage1_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_seg_stage2_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_seg_stage3_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_seg_twiddle_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_seg_output_reg : unsigned(31 downto 0) := (others => '0');
+    signal stat_seg_done_reg : unsigned(31 downto 0) := (others => '0');
 
     function popcount(mask : std_logic_vector(15 downto 0)) return natural is
         variable count : natural := 0;
@@ -283,25 +344,124 @@ begin
     ex_branch_target <= std_logic_vector(signed(id_ex_pc) + to_signed(8, 32) + signed(id_ex_branch_offset));
     ex_halted <= '1' when id_ex_valid = '1' and id_ex_branch_taken = '1' and ex_branch_target = id_ex_pc else '0';
 
-    process(if_id_valid, dec_ra1, dec_ra2, dec_ra3, dec_bulk_store, dec_bulk_regmask,
-            if_id_instr, id_ex_valid, id_ex_reg_write, id_ex_mem_to_reg, id_ex_flag_write,
-            id_ex_wa, ex_mem_valid, ex_mem_reg_write, ex_mem_flag_write, ex_mem_wa,
-            mem_wb_valid, mem_wb_reg_write, mem_wb_flag_write, mem_wb_wa)
+    process(if_id_instr)
     begin
-        stall_id <= '0';
+        dec_read_ra1 <= '0';
+        dec_read_ra2 <= '0';
+        dec_read_ra3 <= '0';
+
+        case if_id_instr(27 downto 26) is
+            when OP_DATA =>
+                case if_id_instr(24 downto 21) is
+                    when OPC_ADD | OPC_SUB | OPC_CMP =>
+                        dec_read_ra1 <= '1';
+                        if if_id_instr(25) = '0' then
+                            dec_read_ra2 <= '1';
+                        end if;
+                    when OPC_MOV =>
+                        if if_id_instr(25) = '0' then
+                            if if_id_instr(11 downto 4) = x"00" then
+                                dec_read_ra2 <= '1';
+                            else
+                                dec_read_ra1 <= '1';
+                            end if;
+                        end if;
+                    when OPC_MUL =>
+                        dec_read_ra1 <= '1';
+                        dec_read_ra2 <= '1';
+                    when OPC_ASR =>
+                        dec_read_ra1 <= '1';
+                    when others =>
+                        null;
+                end case;
+
+            when OP_MEM =>
+                dec_read_ra1 <= '1';
+                if if_id_instr(25) = '0' then
+                    dec_read_ra2 <= '1';
+                end if;
+
+            when OP_EXT =>
+                case if_id_instr(25 downto 21) is
+                    when EXT_SADD16 | EXT_SMUAD | EXT_SMUSD | EXT_PKHBT | EXT_SSAX | EXT_SSUB16 =>
+                        dec_read_ra1 <= '1';
+                        dec_read_ra2 <= '1';
+                    when EXT_SMLAD =>
+                        dec_read_ra1 <= '1';
+                        dec_read_ra2 <= '1';
+                        dec_read_ra3 <= '1';
+                    when EXT_STMIA =>
+                        dec_read_ra1 <= '1';
+                    when others =>
+                        null;
+                end case;
+
+            when OP_BRANCH =>
+                null;
+
+            when others =>
+                null;
+        end case;
+    end process;
+
+    process(reg_bulk_rd, id_ex_valid, id_ex_reg_write, id_ex_mem_to_reg, id_ex_wa, ex_result,
+            ex_mem_valid, ex_mem_reg_write, ex_mem_mem_to_reg, ex_mem_wa, ex_mem_result,
+            mem_wb_valid, mem_wb_reg_write, mem_wb_wa, mem_wb_result)
+        variable data : std_logic_vector(511 downto 0);
+        variable reg_index : natural range 0 to 15;
+    begin
+        data := reg_bulk_rd;
+
+        if mem_wb_valid = '1' and mem_wb_reg_write = '1' then
+            reg_index := to_integer(unsigned(mem_wb_wa));
+            data(32 * reg_index + 31 downto 32 * reg_index) := mem_wb_result;
+        end if;
+
+        if ex_mem_valid = '1' and ex_mem_reg_write = '1' and ex_mem_mem_to_reg = '0' then
+            reg_index := to_integer(unsigned(ex_mem_wa));
+            data(32 * reg_index + 31 downto 32 * reg_index) := ex_mem_result;
+        end if;
+
+        if id_ex_valid = '1' and id_ex_reg_write = '1' and id_ex_mem_to_reg = '0' then
+            reg_index := to_integer(unsigned(id_ex_wa));
+            data(32 * reg_index + 31 downto 32 * reg_index) := ex_result;
+        end if;
+
+        id_bulk_data <= data;
+    end process;
+
+    process(if_id_valid, dec_ra1, dec_ra2, dec_ra3, dec_bulk_store, dec_bulk_regmask,
+            dec_read_ra1, dec_read_ra2, dec_read_ra3,
+            if_id_instr, id_ex_valid, id_ex_reg_write, id_ex_mem_to_reg, id_ex_flag_write,
+            id_ex_wa, ex_mem_valid, ex_mem_reg_write, ex_mem_mem_to_reg, ex_mem_flag_write, ex_mem_wa,
+            mem_wb_valid, mem_wb_reg_write, mem_wb_flag_write, mem_wb_wa)
+        variable load_use_v : std_logic;
+        variable bulk_load_v : std_logic;
+        variable flag_v : std_logic;
+    begin
+        load_use_v := '0';
+        bulk_load_v := '0';
+        flag_v := '0';
+
         if if_id_valid = '1' then
             if id_ex_valid = '1' and id_ex_mem_to_reg = '1' and id_ex_reg_write = '1'
-                and (same_reg(dec_ra1, id_ex_wa) or same_reg(dec_ra2, id_ex_wa) or same_reg(dec_ra3, id_ex_wa)) then
-                stall_id <= '1';
+                and ((dec_read_ra1 = '1' and same_reg(dec_ra1, id_ex_wa))
+                    or (dec_read_ra2 = '1' and same_reg(dec_ra2, id_ex_wa))
+                    or (dec_read_ra3 = '1' and same_reg(dec_ra3, id_ex_wa))) then
+                if dec_bulk_store = '1' then
+                    bulk_load_v := '1';
+                else
+                    load_use_v := '1';
+                end if;
             end if;
 
             if dec_bulk_store = '1' then
-                if id_ex_valid = '1' and id_ex_reg_write = '1' and reg_in_mask(dec_bulk_regmask, id_ex_wa) then
-                    stall_id <= '1';
-                elsif ex_mem_valid = '1' and ex_mem_reg_write = '1' and reg_in_mask(dec_bulk_regmask, ex_mem_wa) then
-                    stall_id <= '1';
-                elsif mem_wb_valid = '1' and mem_wb_reg_write = '1' and reg_in_mask(dec_bulk_regmask, mem_wb_wa) then
-                    stall_id <= '1';
+                if id_ex_valid = '1' and id_ex_reg_write = '1' and id_ex_mem_to_reg = '1'
+                    and reg_in_mask(dec_bulk_regmask, id_ex_wa) then
+                    bulk_load_v := '1';
+                elsif ex_mem_valid = '1' and ex_mem_reg_write = '1' and ex_mem_mem_to_reg = '1'
+                    and reg_in_mask(dec_bulk_regmask, ex_mem_wa) then
+                    bulk_load_v := '1';
                 end if;
             end if;
 
@@ -309,12 +469,18 @@ begin
                 and ((id_ex_valid = '1' and id_ex_flag_write = '1')
                     or (ex_mem_valid = '1' and ex_mem_flag_write = '1')
                     or (mem_wb_valid = '1' and mem_wb_flag_write = '1')) then
-                stall_id <= '1';
+                flag_v := '1';
             end if;
         end if;
+
+        stall_load_use <= load_use_v;
+        stall_bulk_load <= bulk_load_v;
+        stall_flag <= flag_v;
+        stall_id <= load_use_v or bulk_load_v or flag_v;
     end process;
 
     process(clk)
+        variable issue_pc_i : natural;
     begin
         if rising_edge(clk) then
             if rst = '1' then
@@ -382,7 +548,24 @@ begin
                 halted_reg <= '0';
                 halted_pc <= (others => '0');
                 halted_instr <= (others => '0');
+                stat_core_cycles_reg <= (others => '0');
+                stat_issue_count_reg <= (others => '0');
+                stat_load_use_stalls_reg <= (others => '0');
+                stat_bulk_load_stalls_reg <= (others => '0');
+                stat_flag_stalls_reg <= (others => '0');
+                stat_branch_flushes_reg <= (others => '0');
+                stat_halt_events_reg <= (others => '0');
+                stat_seg_prologue_reg <= (others => '0');
+                stat_seg_input_load_reg <= (others => '0');
+                stat_seg_stage1_reg <= (others => '0');
+                stat_seg_stage2_reg <= (others => '0');
+                stat_seg_stage3_reg <= (others => '0');
+                stat_seg_twiddle_reg <= (others => '0');
+                stat_seg_output_reg <= (others => '0');
+                stat_seg_done_reg <= (others => '0');
             elsif halted_reg = '0' then
+                stat_core_cycles_reg <= stat_core_cycles_reg + 1;
+
                 if mem_wb_valid = '1' and mem_wb_flag_write = '1' then
                     flag_z_reg <= mem_wb_flag_z;
                     flag_n_reg <= mem_wb_flag_n;
@@ -426,6 +609,7 @@ begin
                 end if;
 
                 if ex_halted = '1' then
+                    stat_halt_events_reg <= stat_halt_events_reg + 1;
                     halted_reg <= '1';
                     halted_pc <= id_ex_pc;
                     halted_instr <= id_ex_instr;
@@ -433,12 +617,21 @@ begin
                     if_id_valid <= '0';
                     id_ex_valid <= '0';
                 elsif id_ex_valid = '1' and id_ex_branch_taken = '1' then
+                    stat_branch_flushes_reg <= stat_branch_flushes_reg + 1;
                     fetch_pc <= ex_branch_target;
                     if_id_valid <= '0';
                     if_id_pc <= (others => '0');
                     if_id_instr <= (others => '0');
                     id_ex_valid <= '0';
                 elsif stall_id = '1' then
+                    if stall_bulk_load = '1' then
+                        stat_bulk_load_stalls_reg <= stat_bulk_load_stalls_reg + 1;
+                    elsif stall_load_use = '1' then
+                        stat_load_use_stalls_reg <= stat_load_use_stalls_reg + 1;
+                    elsif stall_flag = '1' then
+                        stat_flag_stalls_reg <= stat_flag_stalls_reg + 1;
+                    end if;
+
                     id_ex_valid <= '0';
                     id_ex_pc <= (others => '0');
                     id_ex_instr <= (others => '0');
@@ -455,6 +648,32 @@ begin
                     if_id_pc <= fetch_pc;
                     if_id_instr <= fetch_instr;
                     fetch_pc <= std_logic_vector(unsigned(fetch_pc) + 4);
+
+                    if if_id_valid = '1' and dec_illegal = '0' then
+                        stat_issue_count_reg <= stat_issue_count_reg + 1;
+                        issue_pc_i := to_integer(unsigned(if_id_pc(15 downto 0)));
+                        if issue_pc_i <= 16#0010# then
+                            stat_seg_prologue_reg <= stat_seg_prologue_reg + 1;
+                        elsif issue_pc_i <= 16#00B0# then
+                            stat_seg_input_load_reg <= stat_seg_input_load_reg + 1;
+                        elsif issue_pc_i <= 16#00E0# then
+                            stat_seg_stage1_reg <= stat_seg_stage1_reg + 1;
+                        elsif issue_pc_i <= 16#0118# then
+                            stat_seg_stage2_reg <= stat_seg_stage2_reg + 1;
+                        elsif issue_pc_i = 16#0128# or issue_pc_i = 16#012C#
+                            or issue_pc_i = 16#0130# or issue_pc_i = 16#0134#
+                            or issue_pc_i = 16#0138# or issue_pc_i = 16#0158#
+                            or issue_pc_i = 16#015C# or issue_pc_i = 16#0160#
+                            or issue_pc_i = 16#0164# or issue_pc_i = 16#0168# then
+                            stat_seg_twiddle_reg <= stat_seg_twiddle_reg + 1;
+                        elsif issue_pc_i <= 16#0174# then
+                            stat_seg_stage3_reg <= stat_seg_stage3_reg + 1;
+                        elsif issue_pc_i <= 16#01A0# then
+                            stat_seg_output_reg <= stat_seg_output_reg + 1;
+                        else
+                            stat_seg_done_reg <= stat_seg_done_reg + 1;
+                        end if;
+                    end if;
 
                     id_ex_valid <= if_id_valid and not dec_illegal;
                     id_ex_pc <= if_id_pc;
@@ -490,7 +709,7 @@ begin
                     if mem_wb_valid = '1' and mem_wb_reg_write = '1' and same_reg(dec_ra3, mem_wb_wa) then
                         id_ex_op3 <= mem_wb_result;
                     end if;
-                    id_ex_bulk_data <= reg_bulk_rd;
+                    id_ex_bulk_data <= id_bulk_data;
                 end if;
             end if;
         end if;
@@ -507,4 +726,19 @@ begin
         or (dec_illegal and if_id_valid and not (id_ex_valid and id_ex_branch_taken));
     flag_z_debug <= flag_z_reg;
     flag_n_debug <= flag_n_reg;
+    stat_core_cycles <= std_logic_vector(stat_core_cycles_reg);
+    stat_issue_count <= std_logic_vector(stat_issue_count_reg);
+    stat_load_use_stalls <= std_logic_vector(stat_load_use_stalls_reg);
+    stat_bulk_load_stalls <= std_logic_vector(stat_bulk_load_stalls_reg);
+    stat_flag_stalls <= std_logic_vector(stat_flag_stalls_reg);
+    stat_branch_flushes <= std_logic_vector(stat_branch_flushes_reg);
+    stat_halt_events <= std_logic_vector(stat_halt_events_reg);
+    stat_seg_prologue <= std_logic_vector(stat_seg_prologue_reg);
+    stat_seg_input_load <= std_logic_vector(stat_seg_input_load_reg);
+    stat_seg_stage1 <= std_logic_vector(stat_seg_stage1_reg);
+    stat_seg_stage2 <= std_logic_vector(stat_seg_stage2_reg);
+    stat_seg_stage3 <= std_logic_vector(stat_seg_stage3_reg);
+    stat_seg_twiddle <= std_logic_vector(stat_seg_twiddle_reg);
+    stat_seg_output <= std_logic_vector(stat_seg_output_reg);
+    stat_seg_done <= std_logic_vector(stat_seg_done_reg);
 end architecture rtl;

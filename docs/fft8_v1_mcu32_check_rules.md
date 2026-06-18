@@ -148,8 +148,8 @@ ghdl -r --std=08 mcu_fft_system_tb --assert-level=error
 当前编码检查结果：
 
 ```text
-encoded 107 instructions from asm/fft8_v1_mcu32_basic.s
-DONE at PC 0x01A8, word 0xE8FFFFFE
+encoded 106 instructions from asm/fft8_v1_mcu32_basic.s
+DONE at PC 0x01A4, word 0xE8FFFFFE
 ```
 
 当前 host checker 结果：
@@ -163,5 +163,5 @@ timed_steps = 100
 当前 GHDL system 结果：
 
 ```text
-mcu_fft_system_tb cnt_cycles 139
+mcu_fft_system_tb cnt_cycles 138
 ```

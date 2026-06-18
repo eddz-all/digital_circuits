@@ -125,7 +125,7 @@ begin
 
         assert halted_debug = '1' report "pipe2 FFT did not reach DONE self-loop" severity failure;
         assert illegal_debug = '0' report "pipe2 FFT hit illegal instruction" severity failure;
-        assert pc_debug = x"000001A8" report "pipe2 FFT PC should be at DONE" severity failure;
+        assert pc_debug = x"000001A4" report "pipe2 FFT PC should be at DONE" severity failure;
         assert instr_debug = x"E8FFFFFE" report "pipe2 FFT DONE instruction mismatch" severity failure;
 
         for slot in FFT_EXPECTED_OUTPUT'range loop

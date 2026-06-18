@@ -44,6 +44,7 @@ ALLOWED_OPS = {
     "BNE",
     "MUL",
     "ASR",
+    "LSL",
     "SADD16",
     "SMUAD",
     "SMUSD",
@@ -100,6 +101,10 @@ def mul32(a: int, b: int) -> int:
 
 def asr(value: int, bits: int) -> int:
     return s32(value) >> bits
+
+
+def lsl(value: int, bits: int) -> int:
+    return s32(s32(value) << bits)
 
 
 def pkhbt(low_value: int, high_value: int) -> int:
@@ -303,6 +308,9 @@ def run_program(program: Program, input_values: list[int]) -> RunResult:
             elif op == "ASR":
                 rd_text, ra_text, imm_text = split_args(arg_text)
                 regs[parse_reg(rd_text)] = s32(asr(operand_value(ra_text, regs), parse_imm(imm_text)))
+            elif op == "LSL":
+                rd_text, ra_text, imm_text = split_args(arg_text)
+                regs[parse_reg(rd_text)] = s32(lsl(operand_value(ra_text, regs), parse_imm(imm_text)))
             elif op == "PKHBT":
                 rd_text, rn_text, rm_text, shift_text = split_args(arg_text)
                 if shift_text.strip().upper() != "LSL #16":

@@ -19,6 +19,7 @@ architecture sim of mcu_v1_decoder_tb is
     constant ALU_SMUSD  : std_logic_vector(3 downto 0) := "1011";
     constant ALU_SSAX   : std_logic_vector(3 downto 0) := "1100";
     constant ALU_SSUB16 : std_logic_vector(3 downto 0) := "1101";
+    constant ALU_LSL    : std_logic_vector(3 downto 0) := "1110";
 
     signal instr         : std_logic_vector(31 downto 0) := (others => '0');
     signal flag_z        : std_logic := '0';
@@ -82,6 +83,17 @@ begin
         assert alu_src_imm = '1' report "MOV immediate should select imm" severity failure;
         assert wa = x"8" report "MOV destination should be R8" severity failure;
         assert imm_ext = x"00000000" report "MOV imm_ext mismatch" severity failure;
+
+        -- LSL R0, R0, #7, encoded as ARM MOV R0, R0, LSL #7.
+        instr <= x"E1A00380";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "LSL/MOV shifted operand should be legal" severity failure;
+        assert reg_write = '1' report "LSL should write register" severity failure;
+        assert alu_control = ALU_LSL report "LSL ALU control mismatch" severity failure;
+        assert alu_src_imm = '1' report "LSL should use immediate shift amount" severity failure;
+        assert ra1 = x"0" report "LSL source should be R0" severity failure;
+        assert wa = x"0" report "LSL destination should be R0" severity failure;
+        assert imm_ext = x"00000007" report "LSL shift mismatch" severity failure;
 
         -- ADD R12, R12, #4095
         instr <= x"E28CCFFF";

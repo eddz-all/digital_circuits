@@ -6,7 +6,8 @@
 ; Packed complex format:
 ;   low16 = real, high16 = imag, both Q12 during the butterfly stages.
 ;
-; DSP subset used:
+; Instruction subset used:
+;   LSL Rd, Rm, #imm
 ;   PKHBT Rd, Rn, Rm, LSL #16
 ;   SADD16 Rd, Rn, Rm
 ;   SSUB16 Rd, Rn, Rm
@@ -20,7 +21,6 @@
 
 START:
     MOV R8, #0
-    MOV R9, #128
     MOV R10, #91
     SUB R11, R8, R10
     PKHBT R12, R10, R10, LSL #16
@@ -28,51 +28,51 @@ START:
 
 ; Load x0, x4, x2, x6, x1, x5, x3, x7 as packed Q12 complex values.
     LDR R0, [R8 + 512]
-    MUL R0, R0, R9
     LDR R14, [R8 + 544]
-    MUL R14, R14, R9
+    LSL R0, R0, #7
+    LSL R14, R14, #7
     PKHBT R0, R0, R14, LSL #16
 
     LDR R1, [R8 + 528]
-    MUL R1, R1, R9
     LDR R14, [R8 + 560]
-    MUL R14, R14, R9
+    LSL R1, R1, #7
+    LSL R14, R14, #7
     PKHBT R1, R1, R14, LSL #16
 
     LDR R2, [R8 + 520]
-    MUL R2, R2, R9
     LDR R14, [R8 + 552]
-    MUL R14, R14, R9
+    LSL R2, R2, #7
+    LSL R14, R14, #7
     PKHBT R2, R2, R14, LSL #16
 
     LDR R3, [R8 + 536]
-    MUL R3, R3, R9
     LDR R14, [R8 + 568]
-    MUL R14, R14, R9
+    LSL R3, R3, #7
+    LSL R14, R14, #7
     PKHBT R3, R3, R14, LSL #16
 
     LDR R4, [R8 + 516]
-    MUL R4, R4, R9
     LDR R14, [R8 + 548]
-    MUL R14, R14, R9
+    LSL R4, R4, #7
+    LSL R14, R14, #7
     PKHBT R4, R4, R14, LSL #16
 
     LDR R5, [R8 + 532]
-    MUL R5, R5, R9
     LDR R14, [R8 + 564]
-    MUL R14, R14, R9
+    LSL R5, R5, #7
+    LSL R14, R14, #7
     PKHBT R5, R5, R14, LSL #16
 
     LDR R6, [R8 + 524]
-    MUL R6, R6, R9
     LDR R14, [R8 + 556]
-    MUL R14, R14, R9
+    LSL R6, R6, #7
+    LSL R14, R14, #7
     PKHBT R6, R6, R14, LSL #16
 
     LDR R7, [R8 + 540]
-    MUL R7, R7, R9
     LDR R14, [R8 + 572]
-    MUL R14, R14, R9
+    LSL R7, R7, #7
+    LSL R14, R14, #7
     PKHBT R7, R7, R14, LSL #16
 
 ; Stage 1.

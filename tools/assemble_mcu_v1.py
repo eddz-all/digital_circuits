@@ -34,7 +34,7 @@ DATA_OPCODE = {
     "ASR": 0b1111,
 }
 
-DATA_OPS = set(DATA_OPCODE)
+DATA_OPS = set(DATA_OPCODE) | {"LSL"}
 MEM_OPS = {"LDR", "STR"}
 BRANCH_OPS = {"B", "BEQ", "BNE"}
 EXT_FUNCT = {
@@ -178,7 +178,7 @@ def parse_mem_operand(text: str) -> tuple[int, int]:
 
 def encode_data(op: str, args: list[str]) -> int:
     cond = 0xE
-    opcode = DATA_OPCODE[op]
+    opcode = DATA_OPCODE["MOV"] if op == "LSL" else DATA_OPCODE[op]
     s_bit = 1 if op == "CMP" else 0
     i_bit = 0
     rn = 0
@@ -218,6 +218,16 @@ def encode_data(op: str, args: list[str]) -> int:
             raise ValueError("first-version ASR only supports immediate shift")
         i_bit = 1
         operand2 = parse_imm(args[2], 12)
+    elif op == "LSL":
+        if len(args) != 3:
+            raise ValueError("LSL expects Rd, Rm, #imm")
+        rd = parse_reg(args[0])
+        rm = parse_reg(args[1])
+        if not is_imm(args[2]):
+            raise ValueError("ARM LSL immediate form expects #imm")
+        shift = parse_imm(args[2], 5)
+        rn = 0
+        operand2 = (shift << 7) | rm
     else:
         if len(args) != 3:
             raise ValueError(f"{op} expects 3 operands")
@@ -229,7 +239,7 @@ def encode_data(op: str, args: list[str]) -> int:
         else:
             operand2 = parse_reg(args[2])
 
-    if i_bit == 0 and operand2 > 0xF:
+    if op != "LSL" and i_bit == 0 and operand2 > 0xF:
         raise ValueError("register operand2 must fit Rm[3:0]")
 
     return (

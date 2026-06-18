@@ -184,8 +184,9 @@ rtl/mcu_v1_regfile.vhd      -- ra3/rd3，允许写 R15，bulk_rd for STMIA
 rtl/mcu_v1_core.vhd         -- 接入 ra3/rd3、ALU c 输入和 STMIA bulk store
 rtl/mcu_v1_core_pipe2.vhd   -- P1 2-stage registered-fetch 实验 core，不替换默认 core
 rtl/mcu_v1_core_pipe5.vhd   -- 5-stage IF/ID/EX/MEM/WB 实验 core，不替换默认 core
-rtl/mcu_v1_instr_rom.vhd    -- hardcoded 107-word radix-2 packed FFT ROM
+rtl/mcu_v1_instr_rom.vhd    -- hardcoded 106-word radix-2 packed FFT ROM
 rtl/mcu_fft_system.vhd      -- 2026 样例 board-style wrapper，连续输入流 + 输出流水 dump
+rtl/mcu_fft_system_pipe5.vhd -- pipe5 system wrapper 变体，同口径量 pipe5 cnt_cycles
 ```
 
 汇编和机器码：
@@ -204,6 +205,7 @@ tools/test_fft8_v1_mcu32_basic.py
 tb/mcu_v1_decoder_tb.vhd
 tb/mcu_v1_core_tb.vhd
 tb/mcu_fft_system_tb.vhd
+tb/mcu_fft_system_pipe5_tb.vhd
 tb/mcu_v1_core_pipe2_tb.vhd
 tb/mcu_v1_core_pipe5_tb.vhd
 ```
@@ -224,8 +226,8 @@ Python host checker：
 ```text
 teacher sample output matched exactly
 100 random Q5 signal tests passed against the fixed DFT matrix
-107 instructions before labels/comments
-106 instructions executed before DONE self-loop
+106 instructions before labels/comments
+105 instructions executed before DONE self-loop
 100 instructions from first input read through last output write
 ```
 
@@ -235,17 +237,24 @@ GHDL system testbench：
 mcu_v1_decoder_tb passed
 mcu_v1_core_tb passed
 mcu_fft_system_tb passed
-mcu_fft_system_tb cnt_cycles 139
+mcu_fft_system_tb cnt_cycles 138
+```
+
+GHDL pipe5 system testbench：
+
+```text
+mcu_fft_system_pipe5_tb passed
+mcu_fft_system_pipe5_tb cnt_cycles 124
 ```
 
 P1 registered-fetch pipe2 实验：
 
 ```text
 mcu_v1_core_pipe2_tb passed
-mcu_v1_core_pipe2_tb cycles_to_halt 108
+mcu_v1_core_pipe2_tb cycles_to_halt 107
 ```
 
-`cycles_to_halt = 108` 是独立 core TB 从释放 reset 到 DONE self-loop 的本地实验口径，
+`cycles_to_halt = 107` 是独立 core TB 从释放 reset 到 DONE self-loop 的本地实验口径，
 不是 board wrapper 的 `cnt_cycles` / `cnt_test` 口径。当前 `rtl/mcu_fft_system.vhd`
 仍实例化单周期 `mcu_v1_core`，没有切到 pipe2。
 
@@ -253,23 +262,30 @@ mcu_v1_core_pipe2_tb cycles_to_halt 108
 
 ```text
 mcu_v1_core_pipe5_tb passed
-mcu_v1_core_pipe5_tb cycles_to_halt 130
+mcu_v1_core_pipe5_tb cycles_to_halt 108
 ```
 
 `mcu_v1_core_pipe5` 是独立 IF/ID/EX/MEM/WB 原型。普通 RAW 依赖使用 EX/MEM 和
-MEM/WB forwarding，LDR load-use 做 stall，STMIA bulk-store 数据依赖保守 stall，不做
-512-bit bulk forwarding。当前它只在独立 TB 中验证，没有替换 `mcu_fft_system`。
+MEM/WB forwarding，LDR load-use 做 stall，STMIA bulk-store 对 ID/EX、EX/MEM、
+MEM/WB 在途 ALU 写回做数据旁路；load 到 bulk-store 仍保守 stall。当前它只在独立
+TB 中验证，没有替换 `mcu_fft_system`。当前汇编输入装载段使用
+`LDR real, LDR imag, LSL real, LSL imag, PKHBT`，删除旧的 `MOV R9,#128` 缩放常量，
+并保持信号加载段无 load-use stall。`mcu_fft_system_pipe5` 还把输入装载和 pipe5 core 运行重叠：
+`CORE_RELEASE_LOAD_IDX = 0` 时从第一个 signal slot 写入后释放 core，GHDL 已验证输出
+仍匹配老师样例。
 
 计数口径不要混用：
 
 ```text
 host timed_steps = 100
-GHDL/system cnt_cycles = 139
+GHDL/single-cycle system cnt_cycles = 138
+GHDL/pipe5 system cnt_cycles = 124
 ```
 
-`cnt_cycles = 139` 是更接近板级 `cnt_test` 的口径，因为它包含系统 wrapper 的输入装载、
-运行和输出 dump。`timed_steps = 100` 只是 host checker 中从首个输入读到最后输出写的
-MCU 指令口径。
+`cnt_cycles` 是更接近板级 `cnt_test` 的口径，因为它包含系统 wrapper 的输入装载、运行和
+输出 dump。当前默认 `mcu_fft_system` 仍是单周期 core，pipe5 同口径结果来自
+`mcu_fft_system_pipe5_tb`。`timed_steps = 100` 只是 host checker 中从首个输入读到最后
+输出写的 MCU 指令口径。
 
 当前 wrapper 已做两处系统级压缩：
 
@@ -288,9 +304,9 @@ MCU 指令口径。
 SMLAD direct DFT 版 cnt_cycles = 350
 radix-2 packed FFT 版，未优化 dump 前 cnt_cycles = 198
 radix-2 packed FFT + 流水 dump 版 cnt_cycles = 182
-当前 radix-2 packed FFT + STMIA 输出 + 连续输入流版 cnt_cycles = 139
-相对 direct DFT 版减少 211 cycle，约 60%
-相对标量固定矩阵版减少 306 cycle，约 69%
+当前 radix-2 packed FFT + STMIA 输出 + 连续输入流 + LSL 缩放版 cnt_cycles = 138
+相对 direct DFT 版减少 212 cycle，约 61%
+相对标量固定矩阵版减少 307 cycle，约 69%
 ```
 
 ## 8. 复现命令
@@ -463,8 +479,9 @@ MEM  : data_mem read/write and STMIA store commit -> MEM/WB
 WB   : regfile/flags writeback
 ```
 
-pipe5 的本地 `cycles_to_halt` 比 pipe2 高，主要来自 load-use、flag/control flush 和 STMIA
-bulk-store 保守 stall。最终是否更快必须看 Vivado `Fmax / cnt_actual`。
+pipe5 的本地 `cycles_to_halt` 已接近 pipe2，但仍高于 pipe2，当前统计显示显式
+load-use / bulk-load / flag stall 都为 0，差异主要来自流水线填充和 halt 固定开销。最终是否更快必须看 Vivado
+`Fmax / cnt_actual`。
 
 ## 11. 下个会话启动顺序
 

@@ -29,6 +29,7 @@ architecture rtl of mcu_v1_alu is
     constant ALU_SMUSD  : std_logic_vector(3 downto 0) := "1011";
     constant ALU_SSAX   : std_logic_vector(3 downto 0) := "1100";
     constant ALU_SSUB16 : std_logic_vector(3 downto 0) := "1101";
+    constant ALU_LSL    : std_logic_vector(3 downto 0) := "1110";
 
     signal result_i : std_logic_vector(31 downto 0) := (others => '0');
 begin
@@ -71,6 +72,8 @@ begin
                 result_i <= std_logic_vector(mul64(31 downto 0));
             when ALU_ASR =>
                 result_i <= std_logic_vector(shift_right(signed(a), shamt));
+            when ALU_LSL =>
+                result_i <= std_logic_vector(shift_left(signed(a), shamt));
             when ALU_MOV =>
                 result_i <= b;
             when ALU_PKHBT =>
