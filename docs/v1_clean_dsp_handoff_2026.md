@@ -183,6 +183,7 @@ rtl/mcu_v1_decoder.vhd      -- OP_EXT 解码，ra3 第三读口，STMIA regmask
 rtl/mcu_v1_regfile.vhd      -- ra3/rd3，允许写 R15，bulk_rd for STMIA
 rtl/mcu_v1_core.vhd         -- 接入 ra3/rd3、ALU c 输入和 STMIA bulk store
 rtl/mcu_v1_core_pipe2.vhd   -- P1 2-stage registered-fetch 实验 core，不替换默认 core
+rtl/mcu_v1_core_pipe5.vhd   -- 5-stage IF/ID/EX/MEM/WB 实验 core，不替换默认 core
 rtl/mcu_v1_instr_rom.vhd    -- hardcoded 107-word radix-2 packed FFT ROM
 rtl/mcu_fft_system.vhd      -- 2026 样例 board-style wrapper，连续输入流 + 输出流水 dump
 ```
@@ -204,6 +205,7 @@ tb/mcu_v1_decoder_tb.vhd
 tb/mcu_v1_core_tb.vhd
 tb/mcu_fft_system_tb.vhd
 tb/mcu_v1_core_pipe2_tb.vhd
+tb/mcu_v1_core_pipe5_tb.vhd
 ```
 
 board 工程副本已同步：
@@ -246,6 +248,17 @@ mcu_v1_core_pipe2_tb cycles_to_halt 108
 `cycles_to_halt = 108` 是独立 core TB 从释放 reset 到 DONE self-loop 的本地实验口径，
 不是 board wrapper 的 `cnt_cycles` / `cnt_test` 口径。当前 `rtl/mcu_fft_system.vhd`
 仍实例化单周期 `mcu_v1_core`，没有切到 pipe2。
+
+5-stage pipe5 实验：
+
+```text
+mcu_v1_core_pipe5_tb passed
+mcu_v1_core_pipe5_tb cycles_to_halt 130
+```
+
+`mcu_v1_core_pipe5` 是独立 IF/ID/EX/MEM/WB 原型。普通 RAW 依赖使用 EX/MEM 和
+MEM/WB forwarding，LDR load-use 做 stall，STMIA bulk-store 数据依赖保守 stall，不做
+512-bit bulk forwarding。当前它只在独立 TB 中验证，没有替换 `mcu_fft_system`。
 
 计数口径不要混用：
 
@@ -346,6 +359,28 @@ ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe2 \
 /tmp/digital_circuits_ghdl_pipe2/mcu_v1_core_pipe2_tb --assert-level=error
 ```
 
+5-stage pipe5 实验回归命令：
+
+```bash
+rm -rf /tmp/digital_circuits_ghdl_pipe5
+mkdir -p /tmp/digital_circuits_ghdl_pipe5
+
+ghdl -a --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe5 \
+  rtl/mcu_v1_alu.vhd \
+  rtl/mcu_v1_decoder.vhd \
+  rtl/mcu_v1_data_mem.vhd \
+  rtl/mcu_v1_regfile.vhd \
+  rtl/mcu_v1_instr_rom.vhd \
+  rtl/mcu_v1_core_pipe5.vhd \
+  tb/mcu_v1_core_pipe5_tb.vhd
+
+ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe5 \
+  -o /tmp/digital_circuits_ghdl_pipe5/mcu_v1_core_pipe5_tb \
+  mcu_v1_core_pipe5_tb
+
+/tmp/digital_circuits_ghdl_pipe5/mcu_v1_core_pipe5_tb --assert-level=error
+```
+
 GHDL 可能在 `0ms` 打出 `NUMERIC_STD.TO_INTEGER: metavalue detected` warning。当前这些 warning
 没有导致失败，判断结果以 testbench 是否 passed 和 assertion 是否失败为准。
 
@@ -417,6 +452,19 @@ EX: if_id_instr -> decoder -> regfile -> ALU -> data_mem -> writeback
 P1 只处理 branch flush 和 DONE self-loop halt 保持，不做 ID/EX 分离，也不引入 forwarding。
 如果后续 Vivado Fmax 仍不足，再考虑 P2 `IF / ID / EX-WB` 加 forwarding；本阶段不要直接
 改成复杂 5-stage。
+
+如果课程展示需要标准 5-stage，当前 pipe5 原型路线是：
+
+```text
+IF   : PC -> instr_rom -> IF/ID
+ID   : decoder + regfile read + hazard detect -> ID/EX
+EX   : forwarding + ALU/branch/address -> EX/MEM
+MEM  : data_mem read/write and STMIA store commit -> MEM/WB
+WB   : regfile/flags writeback
+```
+
+pipe5 的本地 `cycles_to_halt` 比 pipe2 高，主要来自 load-use、flag/control flush 和 STMIA
+bulk-store 保守 stall。最终是否更快必须看 Vivado `Fmax / cnt_actual`。
 
 ## 11. 下个会话启动顺序
 

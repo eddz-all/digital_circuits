@@ -42,6 +42,22 @@ pipe2 独立 TB 口径 cycles_to_halt = 108
 `cycles_to_halt` 不是上板 `cnt_test`，也不是 system wrapper `cnt_cycles`。后续判断流水线收益仍然
 要看 `throughput = Fmax / cnt_actual`，不能只看单一计数。
 
+5-stage pipeline 实验：
+
+```text
+pipe5 prototype: rtl/mcu_v1_core_pipe5.vhd
+pipe5 testbench: tb/mcu_v1_core_pipe5_tb.vhd
+pipe5 结构：IF / ID / EX / MEM / WB
+普通 RAW：EX/MEM 和 MEM/WB forwarding
+LDR load-use：stall
+STMIA bulk-store 数据依赖：保守 stall，不做 512-bit bulk forwarding
+当前不替换 rtl/mcu_fft_system.vhd 内的默认 mcu_v1_core
+pipe5 独立 TB 口径 cycles_to_halt = 130
+```
+
+pipe5 的本地 cycle 高于 pipe2，主要因为标准五级流水需要处理 load-use、control flush 和
+bulk-store 依赖。是否值得作为主线仍取决于 Vivado Fmax 提升是否抵消额外 stall。
+
 继续代码工作时，先跑：
 
 ```bash

@@ -45,6 +45,9 @@ commit 9776851 Implement teacher-sample radix2 packed FFT fast path
 - P1 registered-fetch 实验 core 是 rtl/mcu_v1_core_pipe2.vhd，独立 TB 是
   tb/mcu_v1_core_pipe2_tb.vhd；它目前不替换 rtl/mcu_fft_system.vhd 默认实例化的
   单周期 mcu_v1_core。
+- 5-stage pipeline 实验 core 是 rtl/mcu_v1_core_pipe5.vhd，独立 TB 是
+  tb/mcu_v1_core_pipe5_tb.vhd；它是 IF/ID/EX/MEM/WB 原型，普通 RAW forwarding，
+  LDR load-use stall，STMIA bulk-store 保守 stall，目前也不替换 mcu_fft_system。
 
 工具边界：
 
@@ -100,6 +103,26 @@ ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe2 \
   mcu_v1_core_pipe2_tb
 
 /tmp/digital_circuits_ghdl_pipe2/mcu_v1_core_pipe2_tb --assert-level=error
+
+如果继续 5-stage pipe5 实验，额外跑：
+
+rm -rf /tmp/digital_circuits_ghdl_pipe5
+mkdir -p /tmp/digital_circuits_ghdl_pipe5
+
+ghdl -a --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe5 \
+  rtl/mcu_v1_alu.vhd \
+  rtl/mcu_v1_decoder.vhd \
+  rtl/mcu_v1_data_mem.vhd \
+  rtl/mcu_v1_regfile.vhd \
+  rtl/mcu_v1_instr_rom.vhd \
+  rtl/mcu_v1_core_pipe5.vhd \
+  tb/mcu_v1_core_pipe5_tb.vhd
+
+ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe5 \
+  -o /tmp/digital_circuits_ghdl_pipe5/mcu_v1_core_pipe5_tb \
+  mcu_v1_core_pipe5_tb
+
+/tmp/digital_circuits_ghdl_pipe5/mcu_v1_core_pipe5_tb --assert-level=error
 
 注意事项：
 
