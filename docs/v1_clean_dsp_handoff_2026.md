@@ -17,11 +17,13 @@
 
 ```text
 branch: codex/v1-clean
-HEAD: 9d69361
+fast-path baseline commit: 9776851
 remote tracking: origin/codex/v1-clean
 ```
 
-当前工作树有未提交改动。不要默认提交或推送，除非用户明确要求。
+`9776851 Implement teacher-sample radix2 packed FFT fast path` 已推送到
+`origin/codex/v1-clean`。后续流水线实验从这个 fast-path 基线继续；是否有本地未提交
+实验改动以 `git status --short --branch` 为准。不要默认提交或推送，除非用户明确要求。
 
 当前未跟踪目录：
 
@@ -180,6 +182,7 @@ rtl/mcu_v1_alu.vhd          -- 4-bit alu_control，packed DSP ALU ops
 rtl/mcu_v1_decoder.vhd      -- OP_EXT 解码，ra3 第三读口，STMIA regmask
 rtl/mcu_v1_regfile.vhd      -- ra3/rd3，允许写 R15，bulk_rd for STMIA
 rtl/mcu_v1_core.vhd         -- 接入 ra3/rd3、ALU c 输入和 STMIA bulk store
+rtl/mcu_v1_core_pipe2.vhd   -- P1 2-stage registered-fetch 实验 core，不替换默认 core
 rtl/mcu_v1_instr_rom.vhd    -- hardcoded 107-word radix-2 packed FFT ROM
 rtl/mcu_fft_system.vhd      -- 2026 样例 board-style wrapper，连续输入流 + 输出流水 dump
 ```
@@ -200,6 +203,7 @@ tools/test_fft8_v1_mcu32_basic.py
 tb/mcu_v1_decoder_tb.vhd
 tb/mcu_v1_core_tb.vhd
 tb/mcu_fft_system_tb.vhd
+tb/mcu_v1_core_pipe2_tb.vhd
 ```
 
 board 工程副本已同步：
@@ -231,6 +235,17 @@ mcu_v1_core_tb passed
 mcu_fft_system_tb passed
 mcu_fft_system_tb cnt_cycles 139
 ```
+
+P1 registered-fetch pipe2 实验：
+
+```text
+mcu_v1_core_pipe2_tb passed
+mcu_v1_core_pipe2_tb cycles_to_halt 108
+```
+
+`cycles_to_halt = 108` 是独立 core TB 从释放 reset 到 DONE self-loop 的本地实验口径，
+不是 board wrapper 的 `cnt_cycles` / `cnt_test` 口径。当前 `rtl/mcu_fft_system.vhd`
+仍实例化单周期 `mcu_v1_core`，没有切到 pipe2。
 
 计数口径不要混用：
 
@@ -309,6 +324,28 @@ ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_dsp mcu_fft_system_tb
 ghdl -r --std=08 --workdir=/tmp/digital_circuits_ghdl_dsp mcu_fft_system_tb --assert-level=error
 ```
 
+P1 pipe2 实验回归命令：
+
+```bash
+rm -rf /tmp/digital_circuits_ghdl_pipe2
+mkdir -p /tmp/digital_circuits_ghdl_pipe2
+
+ghdl -a --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe2 \
+  rtl/mcu_v1_alu.vhd \
+  rtl/mcu_v1_decoder.vhd \
+  rtl/mcu_v1_data_mem.vhd \
+  rtl/mcu_v1_regfile.vhd \
+  rtl/mcu_v1_instr_rom.vhd \
+  rtl/mcu_v1_core_pipe2.vhd \
+  tb/mcu_v1_core_pipe2_tb.vhd
+
+ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe2 \
+  -o /tmp/digital_circuits_ghdl_pipe2/mcu_v1_core_pipe2_tb \
+  mcu_v1_core_pipe2_tb
+
+/tmp/digital_circuits_ghdl_pipe2/mcu_v1_core_pipe2_tb --assert-level=error
+```
+
 GHDL 可能在 `0ms` 打出 `NUMERIC_STD.TO_INTEGER: metavalue detected` warning。当前这些 warning
 没有导致失败，判断结果以 testbench 是否 passed 和 assertion 是否失败为准。
 
@@ -369,6 +406,17 @@ imag_i = input_mem[136 + i]
 ```
 
 注意：任何更激进的优化都不能绕过 MCU 指令直接硬件得出 FFT 结果。
+
+当前流水线路线先做 P1 registered fetch：
+
+```text
+IF: pc_fetch -> instr_rom -> if_id_pc/if_id_instr register
+EX: if_id_instr -> decoder -> regfile -> ALU -> data_mem -> writeback
+```
+
+P1 只处理 branch flush 和 DONE self-loop halt 保持，不做 ID/EX 分离，也不引入 forwarding。
+如果后续 Vivado Fmax 仍不足，再考虑 P2 `IF / ID / EX-WB` 加 forwarding；本阶段不要直接
+改成复杂 5-stage。
 
 ## 11. 下个会话启动顺序
 

@@ -17,8 +17,8 @@ docs/v1_clean_dsp_handoff_2026.md
 
 ```text
 branch: codex/v1-clean
-HEAD: 9d69361
-当前改动未提交，除非用户明确要求，不要提交或推送
+fast-path baseline: 9776851 Implement teacher-sample radix2 packed FFT fast path
+9776851 已推送到 origin/codex/v1-clean
 FFT_input.coe 以 144-slot 老师样例为准
 运行时只读取 signal slots 128..143
 输入按 bit-reversed 顺序加载为 packed complex Q12
@@ -28,6 +28,19 @@ host timed_steps = 100
 GHDL/system cnt_cycles = 139
 wrapper 输入装载已改为连续流，输出使用 STMIA 批量写回
 ```
+
+2026-06-18 后续流水线实验：
+
+```text
+P1 registered-fetch prototype: rtl/mcu_v1_core_pipe2.vhd
+P1 testbench: tb/mcu_v1_core_pipe2_tb.vhd
+P1 结构：IF 取指寄存 + EX 单周期执行
+当前不替换 rtl/mcu_fft_system.vhd 内的默认 mcu_v1_core
+pipe2 独立 TB 口径 cycles_to_halt = 108
+```
+
+`cycles_to_halt` 不是上板 `cnt_test`，也不是 system wrapper `cnt_cycles`。后续判断流水线收益仍然
+要看 `throughput = Fmax / cnt_actual`，不能只看单一计数。
 
 继续代码工作时，先跑：
 

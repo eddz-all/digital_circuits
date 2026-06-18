@@ -9,8 +9,13 @@
 
 git status --short --branch
 
-当前目标分支应是 codex/v1-clean；这个分支上已有未提交的 2026 老师样例适配和
-packed radix-2 FFT butterfly DSP fast path 改动。不要默认提交、不要默认推送，除非我明确要求。
+当前目标分支应是 codex/v1-clean。2026 老师样例适配和 packed radix-2 FFT butterfly
+DSP fast path 基线已经提交并推送：
+
+commit 9776851 Implement teacher-sample radix2 packed FFT fast path
+
+后续可能有本地流水线实验改动；是否未提交以 git status 为准。不要默认提交、不要默认推送，
+除非我明确要求。
 
 先读这些文档恢复上下文：
 
@@ -37,6 +42,9 @@ packed radix-2 FFT butterfly DSP fast path 改动。不要默认提交、不要�
   合约下的 radix-2 packed FFT 版本。
 - 当前已验证结果是 host timed_steps = 100，GHDL/system cnt_cycles = 139。
 - 上板相关 cnt 优先看 cnt_cycles / cnt_test 口径，不要和 host timed_steps 混用。
+- P1 registered-fetch 实验 core 是 rtl/mcu_v1_core_pipe2.vhd，独立 TB 是
+  tb/mcu_v1_core_pipe2_tb.vhd；它目前不替换 rtl/mcu_fft_system.vhd 默认实例化的
+  单周期 mcu_v1_core。
 
 工具边界：
 
@@ -72,6 +80,26 @@ ghdl -r --std=08 --workdir=/tmp/digital_circuits_ghdl_dsp mcu_v1_core_tb --asser
 
 ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_dsp mcu_fft_system_tb
 ghdl -r --std=08 --workdir=/tmp/digital_circuits_ghdl_dsp mcu_fft_system_tb --assert-level=error
+
+如果继续 P1 pipe2 实验，额外跑：
+
+rm -rf /tmp/digital_circuits_ghdl_pipe2
+mkdir -p /tmp/digital_circuits_ghdl_pipe2
+
+ghdl -a --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe2 \
+  rtl/mcu_v1_alu.vhd \
+  rtl/mcu_v1_decoder.vhd \
+  rtl/mcu_v1_data_mem.vhd \
+  rtl/mcu_v1_regfile.vhd \
+  rtl/mcu_v1_instr_rom.vhd \
+  rtl/mcu_v1_core_pipe2.vhd \
+  tb/mcu_v1_core_pipe2_tb.vhd
+
+ghdl -e --std=08 --workdir=/tmp/digital_circuits_ghdl_pipe2 \
+  -o /tmp/digital_circuits_ghdl_pipe2/mcu_v1_core_pipe2_tb \
+  mcu_v1_core_pipe2_tb
+
+/tmp/digital_circuits_ghdl_pipe2/mcu_v1_core_pipe2_tb --assert-level=error
 
 注意事项：
 
