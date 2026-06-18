@@ -202,7 +202,7 @@ begin
         assert branch_taken = '1' report "BNE should branch when Z=0" severity failure;
 
         -- PKHBT R13, R9, R10, LSL #16
-        instr <= x"ECA9D00A";
+        instr <= x"ECA9D80A";
         flag_z <= '0';
         wait for 1 ns;
         assert illegal_instr = '0' report "PKHBT should be legal" severity failure;
@@ -211,7 +211,22 @@ begin
         assert alu_src_imm = '0' report "PKHBT should use register operands" severity failure;
         assert ra1 = x"9" report "PKHBT low source should be R9" severity failure;
         assert ra2 = x"A" report "PKHBT high source should be R10" severity failure;
+        assert ra3 = x"0" report "PKHBT should not read accumulator source" severity failure;
         assert wa = x"D" report "PKHBT destination should be R13" severity failure;
+        assert imm_ext = x"00000010" report "PKHBT #16 shift mismatch" severity failure;
+
+        -- PKHBT R0, R0, R14, LSL #23
+        instr <= x"ECA00B8E";
+        wait for 1 ns;
+        assert illegal_instr = '0' report "PKHBT #23 should be legal" severity failure;
+        assert reg_write = '1' report "PKHBT #23 should write register" severity failure;
+        assert alu_control = ALU_PKHBT report "PKHBT #23 ALU control mismatch" severity failure;
+        assert alu_src_imm = '0' report "PKHBT #23 should use register operands" severity failure;
+        assert ra1 = x"0" report "PKHBT #23 low source should be R0" severity failure;
+        assert ra2 = x"E" report "PKHBT #23 high source should be R14" severity failure;
+        assert ra3 = x"0" report "PKHBT #23 should not read accumulator source" severity failure;
+        assert wa = x"0" report "PKHBT #23 destination should be R0" severity failure;
+        assert imm_ext = x"00000017" report "PKHBT #23 shift mismatch" severity failure;
 
         -- SADD16 R14, R0, R4
         instr <= x"ED80E004";

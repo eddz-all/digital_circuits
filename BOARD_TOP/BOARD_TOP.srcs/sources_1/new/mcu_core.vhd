@@ -28,6 +28,8 @@ entity mcu_v1_core is
 end entity mcu_v1_core;
 
 architecture rtl of mcu_v1_core is
+    constant ALU_PKHBT : std_logic_vector(3 downto 0) := "0111";
+
     signal pc_reg  : std_logic_vector(31 downto 0) := (others => '0');
     signal pc_next : std_logic_vector(31 downto 0);
     signal instr   : std_logic_vector(31 downto 0) := (others => '0');
@@ -62,6 +64,7 @@ architecture rtl of mcu_v1_core is
     signal reg_rd3 : std_logic_vector(31 downto 0) := (others => '0');
     signal reg_bulk_rd : std_logic_vector(511 downto 0) := (others => '0');
     signal alu_b   : std_logic_vector(31 downto 0) := (others => '0');
+    signal alu_c   : std_logic_vector(31 downto 0) := (others => '0');
     signal alu_res : std_logic_vector(31 downto 0) := (others => '0');
     signal mem_rd  : std_logic_vector(31 downto 0) := (others => '0');
     signal bulk_store_data : std_logic_vector(511 downto 0) := (others => '0');
@@ -134,12 +137,13 @@ begin
         );
 
     alu_b <= imm_ext when alu_src_imm = '1' else reg_rd2;
+    alu_c <= imm_ext when alu_control = ALU_PKHBT else reg_rd3;
 
     u_alu : entity work.mcu_v1_alu
         port map (
             a           => reg_rd1,
             b           => alu_b,
-            c           => reg_rd3,
+            c           => alu_c,
             alu_control => alu_control,
             result      => alu_res,
             flag_z      => alu_z,

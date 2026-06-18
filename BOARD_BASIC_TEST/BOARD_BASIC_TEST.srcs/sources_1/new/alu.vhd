@@ -45,6 +45,7 @@ begin
         variable prod_lo : signed(31 downto 0);
         variable prod_hi : signed(31 downto 0);
         variable sum32   : signed(31 downto 0);
+        variable shifted_b : unsigned(31 downto 0);
     begin
         mul64   := (others => '0');
         shamt   := to_integer(unsigned(b(4 downto 0)));
@@ -57,6 +58,7 @@ begin
         prod_lo := (others => '0');
         prod_hi := (others => '0');
         sum32   := (others => '0');
+        shifted_b := (others => '0');
 
         case alu_control is
             when ALU_AND =>
@@ -77,7 +79,8 @@ begin
             when ALU_MOV =>
                 result_i <= b;
             when ALU_PKHBT =>
-                result_i <= b(15 downto 0) & a(15 downto 0);
+                shifted_b := shift_left(unsigned(b), to_integer(unsigned(c(4 downto 0))));
+                result_i <= std_logic_vector(shifted_b(31 downto 16)) & a(15 downto 0);
             when ALU_SADD16 =>
                 lo17 := a_lo17 + b_lo17;
                 hi17 := a_hi17 + b_hi17;

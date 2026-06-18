@@ -79,6 +79,10 @@ def s32(value: int) -> int:
     return value - 0x100000000 if value & 0x80000000 else value
 
 
+def u32(value: int) -> int:
+    return value & 0xFFFFFFFF
+
+
 def lo16(value: int) -> int:
     return s16(value)
 
@@ -107,8 +111,11 @@ def lsl(value: int, bits: int) -> int:
     return s32(s32(value) << bits)
 
 
-def pkhbt(low_value: int, high_value: int) -> int:
-    return s32(((high_value & 0xFFFF) << 16) | (low_value & 0xFFFF))
+def pkhbt(low_value: int, high_value: int, shift: int = 16) -> int:
+    if not 0 <= shift <= 31:
+        raise ValueError(f"PKHBT shift {shift} is outside 0..31")
+    high_half = (u32(high_value) << shift) & 0xFFFF0000
+    return s32(high_half | (low_value & 0xFFFF))
 
 
 def sadd16(a: int, b: int) -> int:
@@ -171,6 +178,16 @@ def parse_imm(text: str) -> int:
     value = int(text[1:], 0)
     if not 0 <= value <= 0xFFF:
         raise ValueError(f"immediate {text!r} does not fit imm12")
+    return value
+
+
+def parse_shift_operand(text: str) -> int:
+    match = re.fullmatch(r"LSL\s+#(.+)", text.strip().upper())
+    if not match:
+        raise ValueError(f"expected LSL #imm shift operand, got {text!r}")
+    value = int(match.group(1), 0)
+    if not 0 <= value <= 31:
+        raise ValueError(f"PKHBT shift {value} is outside 0..31")
     return value
 
 
@@ -313,9 +330,12 @@ def run_program(program: Program, input_values: list[int]) -> RunResult:
                 regs[parse_reg(rd_text)] = s32(lsl(operand_value(ra_text, regs), parse_imm(imm_text)))
             elif op == "PKHBT":
                 rd_text, rn_text, rm_text, shift_text = split_args(arg_text)
-                if shift_text.strip().upper() != "LSL #16":
-                    raise ValueError("PKHBT checker only supports LSL #16")
-                regs[parse_reg(rd_text)] = pkhbt(operand_value(rn_text, regs), operand_value(rm_text, regs))
+                shift = parse_shift_operand(shift_text)
+                regs[parse_reg(rd_text)] = pkhbt(
+                    operand_value(rn_text, regs),
+                    operand_value(rm_text, regs),
+                    shift,
+                )
             elif op == "SADD16":
                 rd_text, rn_text, rm_text = split_args(arg_text)
                 regs[parse_reg(rd_text)] = sadd16(operand_value(rn_text, regs), operand_value(rm_text, regs))

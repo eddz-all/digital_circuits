@@ -19,11 +19,12 @@ commit 9776851 Implement teacher-sample radix2 packed FFT fast path
 
 先读这些文档恢复上下文：
 
-1. docs/v1_clean_dsp_handoff_2026.md
-2. docs/session_memory_mcu_fft.md
-3. docs/fft8_v1_mcu32_check_rules.md
-4. FFT_ALGORITHM_NOTES.md
-5. 上板注意事项.md
+1. docs/v1_clean_next_optimization_plan_2026.md
+2. docs/v1_clean_dsp_handoff_2026.md
+3. docs/session_memory_mcu_fft.md
+4. docs/fft8_v1_mcu32_check_rules.md
+5. FFT_ALGORITHM_NOTES.md
+6. 上板注意事项.md
 
 当前实现口径：
 

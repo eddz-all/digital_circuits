@@ -231,7 +231,9 @@ begin
                         end if;
                     when EXT_PKHBT =>
                         alu_control <= ALU_PKHBT;
-                        if instr(20) /= '0' or instr(11 downto 4) /= x"00" then
+                        imm_ext <= std_logic_vector(resize(unsigned(instr(11 downto 7)), 32));
+                        ra3 <= (others => '0');
+                        if instr(20) /= '0' or instr(6 downto 4) /= "000" then
                             illegal_v := '1';
                         end if;
                     when EXT_SSAX =>

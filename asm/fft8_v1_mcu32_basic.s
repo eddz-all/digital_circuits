@@ -8,7 +8,7 @@
 ;
 ; Instruction subset used:
 ;   LSL Rd, Rm, #imm
-;   PKHBT Rd, Rn, Rm, LSL #16
+;   PKHBT Rd, Rn, Rm, LSL #imm
 ;   SADD16 Rd, Rn, Rm
 ;   SSUB16 Rd, Rn, Rm
 ;   SSAX Rd, Rn, Rm
@@ -30,50 +30,42 @@ START:
     LDR R0, [R8 + 512]
     LDR R14, [R8 + 544]
     LSL R0, R0, #7
-    LSL R14, R14, #7
-    PKHBT R0, R0, R14, LSL #16
+    PKHBT R0, R0, R14, LSL #23
 
     LDR R1, [R8 + 528]
     LDR R14, [R8 + 560]
     LSL R1, R1, #7
-    LSL R14, R14, #7
-    PKHBT R1, R1, R14, LSL #16
+    PKHBT R1, R1, R14, LSL #23
 
     LDR R2, [R8 + 520]
     LDR R14, [R8 + 552]
     LSL R2, R2, #7
-    LSL R14, R14, #7
-    PKHBT R2, R2, R14, LSL #16
+    PKHBT R2, R2, R14, LSL #23
 
     LDR R3, [R8 + 536]
     LDR R14, [R8 + 568]
     LSL R3, R3, #7
-    LSL R14, R14, #7
-    PKHBT R3, R3, R14, LSL #16
+    PKHBT R3, R3, R14, LSL #23
 
     LDR R4, [R8 + 516]
     LDR R14, [R8 + 548]
     LSL R4, R4, #7
-    LSL R14, R14, #7
-    PKHBT R4, R4, R14, LSL #16
+    PKHBT R4, R4, R14, LSL #23
 
     LDR R5, [R8 + 532]
     LDR R14, [R8 + 564]
     LSL R5, R5, #7
-    LSL R14, R14, #7
-    PKHBT R5, R5, R14, LSL #16
+    PKHBT R5, R5, R14, LSL #23
 
     LDR R6, [R8 + 524]
     LDR R14, [R8 + 556]
     LSL R6, R6, #7
-    LSL R14, R14, #7
-    PKHBT R6, R6, R14, LSL #16
+    PKHBT R6, R6, R14, LSL #23
 
     LDR R7, [R8 + 540]
     LDR R14, [R8 + 572]
     LSL R7, R7, #7
-    LSL R14, R14, #7
-    PKHBT R7, R7, R14, LSL #16
+    PKHBT R7, R7, R14, LSL #23
 
 ; Stage 1.
     SSUB16 R14, R0, R1
@@ -119,8 +111,7 @@ START:
     SMUAD R14, R5, R12
     SMUSD R15, R5, R13
     ASR R14, R14, #7
-    ASR R15, R15, #7
-    PKHBT R5, R14, R15, LSL #16
+    PKHBT R5, R14, R15, LSL #9
     SSUB16 R14, R1, R5
     SADD16 R1, R1, R5
     MOV R5, R14
@@ -133,8 +124,7 @@ START:
     SMUSD R14, R7, R13
     SMUAD R15, R7, R13
     ASR R14, R14, #7
-    ASR R15, R15, #7
-    PKHBT R7, R14, R15, LSL #16
+    PKHBT R7, R14, R15, LSL #9
     SSUB16 R14, R3, R7
     SADD16 R3, R3, R7
     MOV R7, R14

@@ -160,6 +160,13 @@ def parse_imm(text: str, bits: int, *, signed: bool = False) -> int:
     return value
 
 
+def parse_lsl_shift(text: str) -> int:
+    match = re.fullmatch(r"LSL\s+#(.+)", text.strip().upper())
+    if not match:
+        raise ValueError(f"expected LSL #imm shift operand, got {text!r}")
+    return parse_imm("#" + match.group(1), 5)
+
+
 def is_imm(text: str) -> bool:
     return text.strip().startswith("#")
 
@@ -328,18 +335,18 @@ def encode_ext(op: str, args: list[str]) -> int:
 
     if op == "PKHBT":
         if len(args) != 4:
-            raise ValueError("PKHBT expects Rd, Rn, Rm, LSL #16")
+            raise ValueError("PKHBT expects Rd, Rn, Rm, LSL #imm")
         rd = parse_reg(args[0])
         rn = parse_reg(args[1])
         rm = parse_reg(args[2])
-        if args[3].strip().upper() != "LSL #16":
-            raise ValueError("first-version PKHBT only supports LSL #16")
+        shift = parse_lsl_shift(args[3])
         return (
             (cond << 28)
             | (0b11 << 26)
             | (funct << 21)
             | (rn << 16)
             | (rd << 12)
+            | (shift << 7)
             | rm
         )
 

@@ -147,6 +147,8 @@ architecture rtl of mcu_v1_core_pipe5 is
     signal mem_wb_flag_z : std_logic := '0';
     signal mem_wb_flag_n : std_logic := '0';
 
+    constant ALU_PKHBT : std_logic_vector(3 downto 0) := "0111";
+
     constant OP_DATA   : std_logic_vector(1 downto 0) := "00";
     constant OP_MEM    : std_logic_vector(1 downto 0) := "01";
     constant OP_BRANCH : std_logic_vector(1 downto 0) := "10";
@@ -323,15 +325,17 @@ begin
         end if;
     end process;
 
-    process(id_ex_ra3, id_ex_op3, ex_mem_valid, ex_mem_reg_write, ex_mem_mem_to_reg,
+    process(id_ex_alu_control, id_ex_ra3, id_ex_op3, ex_mem_valid, ex_mem_reg_write, ex_mem_mem_to_reg,
             ex_mem_wa, ex_mem_result, mem_wb_valid, mem_wb_reg_write, mem_wb_wa, mem_wb_result)
     begin
         ex_op3 <= id_ex_op3;
-        if ex_mem_valid = '1' and ex_mem_reg_write = '1' and ex_mem_mem_to_reg = '0'
-            and same_reg(id_ex_ra3, ex_mem_wa) then
-            ex_op3 <= ex_mem_result;
-        elsif mem_wb_valid = '1' and mem_wb_reg_write = '1' and same_reg(id_ex_ra3, mem_wb_wa) then
-            ex_op3 <= mem_wb_result;
+        if id_ex_alu_control /= ALU_PKHBT then
+            if ex_mem_valid = '1' and ex_mem_reg_write = '1' and ex_mem_mem_to_reg = '0'
+                and same_reg(id_ex_ra3, ex_mem_wa) then
+                ex_op3 <= ex_mem_result;
+            elsif mem_wb_valid = '1' and mem_wb_reg_write = '1' and same_reg(id_ex_ra3, mem_wb_wa) then
+                ex_op3 <= mem_wb_result;
+            end if;
         end if;
     end process;
 
@@ -654,21 +658,20 @@ begin
                         issue_pc_i := to_integer(unsigned(if_id_pc(15 downto 0)));
                         if issue_pc_i <= 16#0010# then
                             stat_seg_prologue_reg <= stat_seg_prologue_reg + 1;
-                        elsif issue_pc_i <= 16#00B0# then
+                        elsif issue_pc_i <= 16#0090# then
                             stat_seg_input_load_reg <= stat_seg_input_load_reg + 1;
-                        elsif issue_pc_i <= 16#00E0# then
+                        elsif issue_pc_i <= 16#00C0# then
                             stat_seg_stage1_reg <= stat_seg_stage1_reg + 1;
-                        elsif issue_pc_i <= 16#0118# then
+                        elsif issue_pc_i <= 16#00F8# then
                             stat_seg_stage2_reg <= stat_seg_stage2_reg + 1;
-                        elsif issue_pc_i = 16#0128# or issue_pc_i = 16#012C#
-                            or issue_pc_i = 16#0130# or issue_pc_i = 16#0134#
-                            or issue_pc_i = 16#0138# or issue_pc_i = 16#0158#
-                            or issue_pc_i = 16#015C# or issue_pc_i = 16#0160#
-                            or issue_pc_i = 16#0164# or issue_pc_i = 16#0168# then
+                        elsif issue_pc_i = 16#0108# or issue_pc_i = 16#010C#
+                            or issue_pc_i = 16#0110# or issue_pc_i = 16#0114#
+                            or issue_pc_i = 16#0134# or issue_pc_i = 16#0138#
+                            or issue_pc_i = 16#013C# or issue_pc_i = 16#0140# then
                             stat_seg_twiddle_reg <= stat_seg_twiddle_reg + 1;
-                        elsif issue_pc_i <= 16#0174# then
+                        elsif issue_pc_i <= 16#014C# then
                             stat_seg_stage3_reg <= stat_seg_stage3_reg + 1;
-                        elsif issue_pc_i <= 16#01A0# then
+                        elsif issue_pc_i <= 16#0178# then
                             stat_seg_output_reg <= stat_seg_output_reg + 1;
                         else
                             stat_seg_done_reg <= stat_seg_done_reg + 1;
@@ -705,9 +708,13 @@ begin
                         id_ex_op2 <= mem_wb_result;
                     end if;
 
-                    id_ex_op3 <= reg_rd3;
-                    if mem_wb_valid = '1' and mem_wb_reg_write = '1' and same_reg(dec_ra3, mem_wb_wa) then
-                        id_ex_op3 <= mem_wb_result;
+                    if dec_alu_control = ALU_PKHBT then
+                        id_ex_op3 <= dec_imm_ext;
+                    else
+                        id_ex_op3 <= reg_rd3;
+                        if mem_wb_valid = '1' and mem_wb_reg_write = '1' and same_reg(dec_ra3, mem_wb_wa) then
+                            id_ex_op3 <= mem_wb_result;
+                        end if;
                     end if;
                     id_ex_bulk_data <= id_bulk_data;
                 end if;
