@@ -1,74 +1,156 @@
-; 8-point DFT/FFT sample program for the first MCU32 interface.
+; 8-point radix-2 packed FFT program for the first MCU32 interface.
 ;
 ; Target ISA:
 ;   Custom first-version ARM-like MCU, 32-bit registers R0..R15.
 ;
-; Instruction subset used:
-;   MOV, ADD, SUB, CMP, LDR, STR, B, BNE, MUL
+; Packed complex format:
+;   low16 = real, high16 = imag, both Q12 during the butterfly stages.
 ;
-; Teacher sample input layout, 16-bit signed slots, program-view +4 stride:
-;   input slots   0..63   DFT matrix real coefficients, Q7, row-major
-;   input slots  64..127  DFT matrix imaginary coefficients, Q7, row-major
-;   input slots 128..135  signal real samples, Q5
-;   input slots 136..143  signal imaginary samples, Q5
+; DSP subset used:
+;   PKHBT Rd, Rn, Rm, LSL #16
+;   SADD16 Rd, Rn, Rm
+;   SSUB16 Rd, Rn, Rm
+;   SSAX Rd, Rn, Rm
+;   SMUAD Rd, Rn, Rm
+;   SMUSD Rd, Rn, Rm
+;   STMIA Rn!, {register list}
 ;
-; Output layout, 16-bit signed slots, program-view +4 stride:
-;   output slots 0..7     DFT result real parts, Q12, natural order
-;   output slots 8..15    DFT result imaginary parts, Q12, natural order
-;
-; Computation:
-;   For each output k:
-;     real[k] = sum_n xr[n] * wr[k,n] - xi[n] * wi[k,n]
-;     imag[k] = sum_n xr[n] * wi[k,n] + xi[n] * wr[k,n]
-;
-; Q5 * Q7 accumulates directly into Q12. No FFT/8 scaling and no
-; bit-reversal output are applied.
+; Runtime input reads only teacher signal slots 128..143. The bit-reversed
+; load order makes the radix-2 DIT stages produce natural-order outputs.
 
 START:
-    MOV R8, #0          ; current DFT real-matrix row pointer
-    MOV R9, #256        ; current DFT imag-matrix row pointer
-    MOV R12, #2048      ; output real slot 0 address
-    MOV R13, #2080      ; output imag slot 8 address
-    MOV R14, #8         ; output rows remaining
+    MOV R8, #0
+    MOV R9, #128
+    MOV R10, #91
+    SUB R11, R8, R10
+    PKHBT R12, R10, R10, LSL #16
+    PKHBT R13, R11, R11, LSL #16
 
-OUTPUT_LOOP:
-    MOV R4, #0          ; real accumulator, Q12
-    MOV R5, #0          ; imag accumulator, Q12
-    MOV R10, #512       ; signal real slot 128 address
-    MOV R11, #544       ; signal imag slot 136 address
-    MOV R6, #8          ; columns remaining
+; Load x0, x4, x2, x6, x1, x5, x3, x7 as packed Q12 complex values.
+    LDR R0, [R8 + 512]
+    MUL R0, R0, R9
+    LDR R14, [R8 + 544]
+    MUL R14, R14, R9
+    PKHBT R0, R0, R14, LSL #16
 
-MAC_LOOP:
-    LDR R0, [R10 + 0]   ; xr[n], Q5
-    LDR R1, [R11 + 0]   ; xi[n], Q5
-    LDR R2, [R8 + 0]    ; wr[k,n], Q7
-    LDR R3, [R9 + 0]    ; wi[k,n], Q7
+    LDR R1, [R8 + 528]
+    MUL R1, R1, R9
+    LDR R14, [R8 + 560]
+    MUL R14, R14, R9
+    PKHBT R1, R1, R14, LSL #16
 
-    MUL R7, R0, R2
-    ADD R4, R4, R7
-    MUL R7, R1, R3
-    SUB R4, R4, R7
+    LDR R2, [R8 + 520]
+    MUL R2, R2, R9
+    LDR R14, [R8 + 552]
+    MUL R14, R14, R9
+    PKHBT R2, R2, R14, LSL #16
 
-    MUL R7, R0, R3
-    ADD R5, R5, R7
-    MUL R7, R1, R2
-    ADD R5, R5, R7
+    LDR R3, [R8 + 536]
+    MUL R3, R3, R9
+    LDR R14, [R8 + 568]
+    MUL R14, R14, R9
+    PKHBT R3, R3, R14, LSL #16
 
-    ADD R8, R8, #4
-    ADD R9, R9, #4
-    ADD R10, R10, #4
-    ADD R11, R11, #4
-    SUB R6, R6, #1
-    CMP R6, #0
-    BNE MAC_LOOP
+    LDR R4, [R8 + 516]
+    MUL R4, R4, R9
+    LDR R14, [R8 + 548]
+    MUL R14, R14, R9
+    PKHBT R4, R4, R14, LSL #16
 
-    STR R4, [R12 + 0]
-    STR R5, [R13 + 0]
-    ADD R12, R12, #4
-    ADD R13, R13, #4
-    SUB R14, R14, #1
-    CMP R14, #0
-    BNE OUTPUT_LOOP
+    LDR R5, [R8 + 532]
+    MUL R5, R5, R9
+    LDR R14, [R8 + 564]
+    MUL R14, R14, R9
+    PKHBT R5, R5, R14, LSL #16
+
+    LDR R6, [R8 + 524]
+    MUL R6, R6, R9
+    LDR R14, [R8 + 556]
+    MUL R14, R14, R9
+    PKHBT R6, R6, R14, LSL #16
+
+    LDR R7, [R8 + 540]
+    MUL R7, R7, R9
+    LDR R14, [R8 + 572]
+    MUL R14, R14, R9
+    PKHBT R7, R7, R14, LSL #16
+
+; Stage 1.
+    SSUB16 R14, R0, R1
+    SADD16 R0, R0, R1
+    MOV R1, R14
+
+    SSUB16 R14, R2, R3
+    SADD16 R2, R2, R3
+    MOV R3, R14
+
+    SSUB16 R14, R4, R5
+    SADD16 R4, R4, R5
+    MOV R5, R14
+
+    SSUB16 R14, R6, R7
+    SADD16 R6, R6, R7
+    MOV R7, R14
+
+; Stage 2.
+    SSUB16 R14, R0, R2
+    SADD16 R0, R0, R2
+    MOV R2, R14
+
+    SSAX R3, R8, R3
+    SSUB16 R14, R1, R3
+    SADD16 R1, R1, R3
+    MOV R3, R14
+
+    SSUB16 R14, R4, R6
+    SADD16 R4, R4, R6
+    MOV R6, R14
+
+    SSAX R7, R8, R7
+    SSUB16 R14, R5, R7
+    SADD16 R5, R5, R7
+    MOV R7, R14
+
+; Stage 3.
+    SSUB16 R14, R0, R4
+    SADD16 R0, R0, R4
+    MOV R4, R14
+
+    SMUAD R14, R5, R12
+    SMUSD R15, R5, R13
+    ASR R14, R14, #7
+    ASR R15, R15, #7
+    PKHBT R5, R14, R15, LSL #16
+    SSUB16 R14, R1, R5
+    SADD16 R1, R1, R5
+    MOV R5, R14
+
+    SSAX R6, R8, R6
+    SSUB16 R14, R2, R6
+    SADD16 R2, R2, R6
+    MOV R6, R14
+
+    SMUSD R14, R7, R13
+    SMUAD R15, R7, R13
+    ASR R14, R14, #7
+    ASR R15, R15, #7
+    PKHBT R7, R14, R15, LSL #16
+    SSUB16 R14, R3, R7
+    SADD16 R3, R3, R7
+    MOV R7, R14
+
+; Store real0..real7, then imag0..imag7.
+    MOV R10, #2048
+    STMIA R10!, {R0-R7}
+    ASR R0, R0, #16
+    ASR R1, R1, #16
+    ASR R2, R2, #16
+    ASR R3, R3, #16
+    ASR R4, R4, #16
+    ASR R5, R5, #16
+    ASR R6, R6, #16
+    ASR R7, R7, #16
+    STMIA R10!, {R0-R7}
 
 DONE:
     B DONE

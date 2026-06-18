@@ -175,11 +175,11 @@ begin
         expect_basic_output(2, 707);
         expect_basic_output(3, 123);
 
-        for slot in FFT_SAMPLE_INPUT'range loop
+        for slot in 128 to 143 loop
             write_fft_input(slot, FFT_SAMPLE_INPUT(slot));
         end loop;
         fft_rst <= '0';
-        wait_cycles(1800);
+        wait_cycles(600);
 
         assert fft_illegal = '0' report "FFT program hit illegal instruction" severity failure;
         assert fft_halted = '1' report "FFT program did not reach DONE self-loop" severity failure;

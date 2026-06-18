@@ -12,3 +12,6 @@ mcu_v1_*_tb
 *.log
 *.str
 *.wdb
+
+# Local copy of teacher sample files; tracked COE copies live at repo root / board projects.
+测试数据样例-2026/

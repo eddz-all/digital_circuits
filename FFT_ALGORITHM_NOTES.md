@@ -4,13 +4,14 @@
 
 ## 1. 板级壳子的当前约定
 
-现在板级逻辑已经恢复成最直观的顺序加载：
+当前 DSP fast path 已切到 packed radix-2 FFT butterfly。板级 `test_ROM`
+仍然使用完整 `FFT_input.coe`，但 MCU 运行时只读取最后 16 个原始信号槽：
 
 ```text
-test_ROM[0]  -> input_mem[0]
-test_ROM[1]  -> input_mem[1]
+test_ROM[128] -> input_mem[128]
+test_ROM[129] -> input_mem[129]
 ...
-test_ROM[15] -> input_mem[15]
+test_ROM[143] -> input_mem[143]
 ```
 
 输出也是顺序导出：
@@ -22,7 +23,10 @@ output_mem[1]  -> verify_RAM[1]
 output_mem[15] -> verify_RAM[15]
 ```
 
-也就是说，板级不再做 `0,8,1,9...` 这种地址重排。FFT 程序应该直接按照老师 COE 的数据布局理解输入和输出。
+也就是说，板级不再做 `0,8,1,9...` 这种地址重排，也不再把前
+128 个 DFT 矩阵槽装入 MCU 输入内存。FFT 程序直接按照老师 COE
+的数据布局读取信号槽，并用 bit-reversed input 的 radix-2 DIT 计算等价的老师
+Q7 DFT 结果。
 
 ## 2. 老师 FFT_input.coe 的结构
 
@@ -35,18 +39,18 @@ output_mem[15] -> verify_RAM[15]
 第 137-144 个数据：原始输入信号虚部，8 个，Q5
 ```
 
-当前上板 `test_ROM` 只放最后 16 个原始输入信号。也就是：
+当前 DSP fast path 只从 `test_ROM` 读取最后 16 个原始输入信号。也就是：
 
 ```text
-input_mem[0..7]  = real0, real1, ..., real7
-input_mem[8..15] = imag0, imag1, ..., imag7
+input_mem[128..135] = real0, real1, ..., real7
+input_mem[136..143] = imag0, imag1, ..., imag7
 ```
 
 因此 FFT 程序读取第 `i` 个复数输入时，应该使用：
 
 ```text
-real_i = input_mem[i]
-imag_i = input_mem[8 + i]
+real_i = input_mem[128 + i]
+imag_i = input_mem[136 + i]
 ```
 
 不要再按交错格式读取：
@@ -126,7 +130,10 @@ Q5 输入 * Q7 系数 = Q12 乘积
 
 这些是 Q7 系数。
 
-程序可以不直接读取这 128 个矩阵数据，也可以把旋转因子写死在汇编里。但写死时必须保证：
+当前 DSP fast path 不直接读取这 128 个矩阵数据，而是把老师 `dftmtx(8)`
+对应的 Q7 系数等价分解到 radix-2 butterfly 中：`128/-128` 通过 Q5 输入先乘
+128 变成 Q12 和 `SSAX` 的 `-j` 旋转处理，`91/-91` 通过 `SMUAD/SMUSD`
+复乘后 `ASR #7` 回到 Q12。实现时必须保证：
 
 ```text
 数学方向一致
@@ -209,11 +216,45 @@ imag: -5888, 12668, 11264, 8076, 2816, 3204, 5632, -10124
 建议算法同学先不要上板，先用软件或 MCU 仿真逐步验证：
 
 ```text
-1. 按 input_mem[0..7] 实部、input_mem[8..15] 虚部读入。
+1. 按 input_mem[128..135] 实部、input_mem[136..143] 虚部读入。
 2. 确认输入按 Q5 解释。
 3. 确认旋转因子或 DFT 矩阵按 Q7 或等价格式解释。
 4. 确认乘法和累加后最终输出为 Q12。
 5. 确认输出顺序是先 8 实、再 8 虚。
+
+## 10. 当前 DSP 指令实现口径
+
+当前 MCU RTL 额外支持这些 DSP / bulk-store 指令：
+
+```text
+PKHBT Rd, Rn, Rm, LSL #16  -> Rd = {Rm[15:0], Rn[15:0]}
+SADD16 Rd, Rn, Rm          -> packed lane-wise signed add
+SSUB16 Rd, Rn, Rm          -> packed lane-wise signed subtract
+SSAX Rd, Rn, Rm            -> low = Rn.low + Rm.high, high = Rn.high - Rm.low
+SMUAD Rd, Rn, Rm           -> Rd = Rn.low*Rm.low + Rn.high*Rm.high
+SMUSD Rd, Rn, Rm           -> Rd = Rn.low*Rm.low - Rn.high*Rm.high
+SMLAD Rd, Rn, Rm, Ra       -> packed dual multiply accumulate
+STMIA Rn!, {reglist}       -> store multiple, increment after, writeback
+```
+
+DSP 版 FFT 程序把 8 个复数样本打包成 8 个寄存器，packed complex 格式为：
+
+```text
+low16 = real Q12
+high16 = imag Q12
+```
+
+输入加载顺序为 `x0, x4, x2, x6, x1, x5, x3, x7`，三层 radix-2 DIT
+butterfly 后直接输出自然序。旋转因子仍然只来自老师 `dftmtx(8)` 的 Q7
+常数集合 `0, 128, -128, 91, -91`。
+
+本地 host checker 实测：
+
+```text
+107 instructions before labels/comments
+106 instructions executed before DONE self-loop
+100 instructions from first input read through last output write
+```
 6. 用老师 FFT_output.coe 对比 16 个十六进制结果。
 ```
 

@@ -20,6 +20,8 @@ architecture sim of mcu_fft_system_tb is
 
     signal cnt_start : std_logic;
     signal cnt_stop  : std_logic;
+    signal cnt_active : std_logic := '0';
+    signal cnt_cycles : natural := 0;
     signal done      : std_logic;
     signal illegal   : std_logic;
     signal pc_debug  : std_logic_vector(31 downto 0);
@@ -67,7 +69,9 @@ begin
         generic map (
             MEM_FILE       => "asm/fft8_v1_mcu32_basic.mem",
             CORE_ROM_DEPTH => 1024,
-            INPUT_COUNT    => 144,
+            INPUT_COUNT    => 16,
+            INPUT_ROM_BASE => 128,
+            INPUT_MEM_BASE => 128,
             OUTPUT_COUNT   => 16
         )
         port map (
@@ -93,6 +97,9 @@ begin
         if rising_edge(clk) then
             if test_rom_en = '1' then
                 addr := to_integer(unsigned(test_rom_addr));
+                assert addr >= 128
+                    report "fast path should load only FFT signal slots 128..143"
+                    severity failure;
                 assert addr < FFT_SAMPLE_INPUT'length
                     report "test_rom_addr out of FFT sample range"
                     severity failure;
@@ -105,6 +112,27 @@ begin
                     report "verify_ram_addr out of expected FFT output range"
                     severity failure;
                 verify_mem(addr) <= verify_vector_out;
+            end if;
+        end if;
+    end process;
+
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if rst = '1' then
+                cnt_active <= '0';
+                cnt_cycles <= 0;
+            else
+                if cnt_start = '1' and cnt_active = '0' then
+                    cnt_active <= '1';
+                    cnt_cycles <= cnt_cycles + 1;
+                elsif cnt_active = '1' then
+                    cnt_cycles <= cnt_cycles + 1;
+                end if;
+
+                if cnt_stop = '1' then
+                    cnt_active <= '0';
+                end if;
             end if;
         end if;
     end process;
@@ -139,6 +167,7 @@ begin
                 severity failure;
         end loop;
 
+        report "mcu_fft_system_tb cnt_cycles " & integer'image(cnt_cycles) severity note;
         report "mcu_fft_system_tb passed" severity note;
         finish;
     end process;

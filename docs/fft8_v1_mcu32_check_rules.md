@@ -19,9 +19,10 @@ tb/mcu_fft_system_tb.vhd
 X[k] = sum_n x[n] * W[k,n]
 ```
 
-其中 `W[k,n]` 来自 `FFT_input.coe` 中的 DFT 变换矩阵。程序不再做旧版
-radix-2 DIF 的每级 `/2` 缩放，因此输出不是 `FFT(input) / 8`；也不再输出
-bit-reversal 顺序。
+其中 `W[k,n]` 等价于 `FFT_input.coe` 中的 DFT 变换矩阵。当前 DSP fast
+path 不再运行时读取前 128 个矩阵槽，而是用 bit-reversed input 的 radix-2
+DIT packed FFT butterfly 计算等价结果。程序不做旧版 radix-2 DIF 的每级
+`/2` 缩放，因此输出不是 `FFT(input) / 8`；最终输出仍是自然顺序。
 
 ## 2. 输入 COE 顺序
 
@@ -75,8 +76,9 @@ verify_ram_addr    6-bit, 写 FFT_output.coe slot 0..15
 verify_vector_out  16-bit signed
 ```
 
-`mcu_fft_system` 会在 core 保持 reset 时把 144 个输入槽写入 `input_mem`，
-然后释放 core，core 停机后再把 16 个输出槽转写到外部 verify RAM 接口。
+`mcu_fft_system` 会在 core 保持 reset 时用连续输入流把 `FFT_input.coe[128..143]`
+这 16 个 signal 槽写入 `input_mem[128..143]`，然后释放 core；core 停机后再把
+16 个输出槽转写到外部 verify RAM 接口。
 
 ## 5. 定点规则
 
@@ -90,6 +92,32 @@ imag_acc += xi * wr
 ```
 
 当前程序不使用 Q15 旋转因子常数 `23170`，也不使用 `ASR #1` 做 FFT 级间缩放。
+
+## 5.1 当前 DSP fast path
+
+当前汇编使用这些 packed DSP 指令：
+
+```text
+PKHBT Rd, Rn, Rm, LSL #16
+SADD16 Rd, Rn, Rm
+SSUB16 Rd, Rn, Rm
+SSAX Rd, Rn, Rm
+SMUAD Rd, Rn, Rm
+SMUSD Rd, Rn, Rm
+STMIA Rn!, {register list}
+```
+
+`PKHBT` 把 real/imag 打包成一个 32-bit complex 值，`SADD16/SSUB16`
+做 lane-wise butterfly 加减，`SSAX` 做 `-j` 旋转，`SMUAD/SMUSD`
+做 W8^1/W8^3 的 packed 复乘，`STMIA` 批量写回 real0..real7 和
+imag0..imag7。当前程序按 bit-reversed 顺序加载：
+
+```text
+x0, x4, x2, x6, x1, x5, x3, x7
+```
+
+每个输入先由 Q5 乘 128 放大为 Q12 packed complex lane，三层 radix-2
+DIT butterfly 后得到自然序 Q12 输出。
 
 ## 6. 本地检查
 
@@ -120,6 +148,20 @@ ghdl -r --std=08 mcu_fft_system_tb --assert-level=error
 当前编码检查结果：
 
 ```text
-encoded 37 instructions from asm/fft8_v1_mcu32_basic.s
-DONE at PC 0x0090, word 0xE8FFFFFE
+encoded 107 instructions from asm/fft8_v1_mcu32_basic.s
+DONE at PC 0x01A8, word 0xE8FFFFFE
+```
+
+当前 host checker 结果：
+
+```text
+teacher sample passed
+100 random Q5 signal tests passed against the sample DFT matrix
+timed_steps = 100
+```
+
+当前 GHDL system 结果：
+
+```text
+mcu_fft_system_tb cnt_cycles 139
 ```

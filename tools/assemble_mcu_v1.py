@@ -37,7 +37,18 @@ DATA_OPCODE = {
 DATA_OPS = set(DATA_OPCODE)
 MEM_OPS = {"LDR", "STR"}
 BRANCH_OPS = {"B", "BEQ", "BNE"}
-SUPPORTED_OPS = DATA_OPS | MEM_OPS | BRANCH_OPS
+EXT_FUNCT = {
+    "SADD16": 0b01100,
+    "SMUAD": 0b00010,
+    "SMUSD": 0b00011,
+    "PKHBT": 0b00101,
+    "SSAX": 0b01000,
+    "SSUB16": 0b01001,
+    "SMLAD": 0b01010,
+    "STMIA": 0b01011,
+}
+EXT_OPS = set(EXT_FUNCT)
+SUPPORTED_OPS = DATA_OPS | MEM_OPS | BRANCH_OPS | EXT_OPS
 
 
 @dataclass
@@ -78,7 +89,23 @@ def parse_source(path: Path) -> Program:
 
 
 def split_args(text: str) -> list[str]:
-    return [part.strip() for part in text.split(",")]
+    args: list[str] = []
+    start = 0
+    brace_depth = 0
+    for i, ch in enumerate(text):
+        if ch == "{":
+            brace_depth += 1
+        elif ch == "}":
+            brace_depth -= 1
+            if brace_depth < 0:
+                raise ValueError(f"unmatched register-list brace in {text!r}")
+        elif ch == "," and brace_depth == 0:
+            args.append(text[start:i].strip())
+            start = i + 1
+    if brace_depth != 0:
+        raise ValueError(f"unmatched register-list brace in {text!r}")
+    args.append(text[start:].strip())
+    return args
 
 
 def parse_reg(text: str) -> int:
@@ -86,6 +113,35 @@ def parse_reg(text: str) -> int:
     if not match:
         raise ValueError(f"bad register {text!r}")
     return int(match.group(1))
+
+
+def parse_reg_list(text: str) -> int:
+    text = text.strip().upper()
+    if not (text.startswith("{") and text.endswith("}")):
+        raise ValueError(f"bad register list {text!r}")
+    body = text[1:-1].strip()
+    if not body:
+        raise ValueError("empty register list")
+
+    mask = 0
+    for part in body.split(","):
+        part = part.strip()
+        if "-" in part:
+            start_text, end_text = [item.strip() for item in part.split("-", 1)]
+            start = parse_reg(start_text)
+            end = parse_reg(end_text)
+            if start > end:
+                raise ValueError(f"descending register range {part!r}")
+            for reg in range(start, end + 1):
+                mask |= 1 << reg
+        else:
+            mask |= 1 << parse_reg(part)
+
+    if mask == 0:
+        raise ValueError("empty register mask")
+    if mask & (1 << 15):
+        raise ValueError("R15 is not supported in register lists")
+    return mask
 
 
 def parse_imm(text: str, bits: int, *, signed: bool = False) -> int:
@@ -220,6 +276,83 @@ def encode_branch(op: str, args: list[str], pc: int, labels: dict[str, int]) -> 
     return (COND[op] << 28) | (0b10 << 26) | imm24
 
 
+def encode_ext(op: str, args: list[str]) -> int:
+    cond = 0xE
+    funct = EXT_FUNCT[op]
+
+    if op == "STMIA":
+        if len(args) != 2:
+            raise ValueError("STMIA expects Rn!, {reglist}")
+        base_text = args[0].strip().upper()
+        if not base_text.endswith("!"):
+            raise ValueError("first-version STMIA requires writeback, e.g. R10!")
+        rn = parse_reg(base_text[:-1])
+        if rn == 15:
+            raise ValueError("STMIA base register cannot be R15")
+        regmask = parse_reg_list(args[1])
+        if regmask & (1 << rn):
+            raise ValueError("STMIA writeback base register cannot be in reglist")
+        return (
+            (cond << 28)
+            | (0b11 << 26)
+            | (funct << 21)
+            | (1 << 20)
+            | (rn << 16)
+            | regmask
+        )
+
+    if op in {"SADD16", "SMUAD", "SMUSD", "SSAX", "SSUB16"}:
+        if len(args) != 3:
+            raise ValueError(f"{op} expects Rd, Rn, Rm")
+        rd = parse_reg(args[0])
+        rn = parse_reg(args[1])
+        rm = parse_reg(args[2])
+        return (
+            (cond << 28)
+            | (0b11 << 26)
+            | (funct << 21)
+            | (rn << 16)
+            | (rd << 12)
+            | rm
+        )
+
+    if op == "PKHBT":
+        if len(args) != 4:
+            raise ValueError("PKHBT expects Rd, Rn, Rm, LSL #16")
+        rd = parse_reg(args[0])
+        rn = parse_reg(args[1])
+        rm = parse_reg(args[2])
+        if args[3].strip().upper() != "LSL #16":
+            raise ValueError("first-version PKHBT only supports LSL #16")
+        return (
+            (cond << 28)
+            | (0b11 << 26)
+            | (funct << 21)
+            | (rn << 16)
+            | (rd << 12)
+            | rm
+        )
+
+    if op == "SMLAD":
+        if len(args) != 4:
+            raise ValueError("SMLAD expects Rd, Rn, Rm, Ra")
+        rd = parse_reg(args[0])
+        rn = parse_reg(args[1])
+        rm = parse_reg(args[2])
+        ra = parse_reg(args[3])
+        return (
+            (cond << 28)
+            | (0b11 << 26)
+            | (funct << 21)
+            | (rn << 16)
+            | (rd << 12)
+            | (ra << 8)
+            | rm
+        )
+
+    raise ValueError(f"unsupported extension instruction {op}")
+
+
 def encode_instruction(inst: Instruction, labels: dict[str, int]) -> int:
     op, _, arg_text = inst.text.partition(" ")
     op = op.upper()
@@ -229,6 +362,8 @@ def encode_instruction(inst: Instruction, labels: dict[str, int]) -> int:
             return encode_data(op, args)
         if op in MEM_OPS:
             return encode_mem(op, args)
+        if op in EXT_OPS:
+            return encode_ext(op, args)
         return encode_branch(op, args, inst.pc, labels)
     except Exception as exc:
         raise ValueError(f"line {inst.lineno}: {inst.text}: {exc}") from exc

@@ -11,6 +11,9 @@ entity mcu_v1_data_mem is
         write_data : in  std_logic_vector(31 downto 0);
         mem_read   : in  std_logic;
         mem_write  : in  std_logic;
+        bulk_store : in  std_logic;
+        bulk_write_data : in std_logic_vector(511 downto 0);
+        bulk_regmask : in std_logic_vector(15 downto 0);
         read_data  : out std_logic_vector(31 downto 0);
 
         input_we    : in  std_logic;
@@ -41,6 +44,8 @@ begin
     process(clk)
         variable addr_i : natural;
         variable slot_i : natural;
+        variable target_addr : natural;
+        variable data_index : natural range 0 to 16;
     begin
         if rising_edge(clk) then
             if input_we = '1' then
@@ -57,15 +62,38 @@ begin
                 if mem_write = '1' then
                     addr_i := to_integer(unsigned(addr(15 downto 0)));
                     if addr(1 downto 0) = "00" then
-                        if addr_i >= TEACHER_OUTPUT_BASE
-                            and addr_i < TEACHER_OUTPUT_BASE + OUTPUT_SLOTS * 4 then
-                            output_mem((addr_i - TEACHER_OUTPUT_BASE) / 4) <= write_data(15 downto 0);
-                        elsif addr_i >= LEGACY_OUTPUT_BASE
-                            and addr_i < LEGACY_OUTPUT_BASE + OUTPUT_SLOTS * 4 then
-                            output_mem((addr_i - LEGACY_OUTPUT_BASE) / 4) <= write_data(15 downto 0);
-                        elsif addr_i >= WORK_BASE
-                            and addr_i < WORK_BASE + WORK_SLOTS * 4 then
-                            work_mem((addr_i - WORK_BASE) / 4) <= write_data;
+                        if bulk_store = '1' then
+                            data_index := 0;
+                            for reg_index in 0 to 15 loop
+                                if bulk_regmask(reg_index) = '1' then
+                                    target_addr := addr_i + data_index * 4;
+                                    if target_addr >= TEACHER_OUTPUT_BASE
+                                        and target_addr < TEACHER_OUTPUT_BASE + OUTPUT_SLOTS * 4 then
+                                        output_mem((target_addr - TEACHER_OUTPUT_BASE) / 4) <=
+                                            bulk_write_data(32 * data_index + 15 downto 32 * data_index);
+                                    elsif target_addr >= LEGACY_OUTPUT_BASE
+                                        and target_addr < LEGACY_OUTPUT_BASE + OUTPUT_SLOTS * 4 then
+                                        output_mem((target_addr - LEGACY_OUTPUT_BASE) / 4) <=
+                                            bulk_write_data(32 * data_index + 15 downto 32 * data_index);
+                                    elsif target_addr >= WORK_BASE
+                                        and target_addr < WORK_BASE + WORK_SLOTS * 4 then
+                                        work_mem((target_addr - WORK_BASE) / 4) <=
+                                            bulk_write_data(32 * data_index + 31 downto 32 * data_index);
+                                    end if;
+                                    data_index := data_index + 1;
+                                end if;
+                            end loop;
+                        else
+                            if addr_i >= TEACHER_OUTPUT_BASE
+                                and addr_i < TEACHER_OUTPUT_BASE + OUTPUT_SLOTS * 4 then
+                                output_mem((addr_i - TEACHER_OUTPUT_BASE) / 4) <= write_data(15 downto 0);
+                            elsif addr_i >= LEGACY_OUTPUT_BASE
+                                and addr_i < LEGACY_OUTPUT_BASE + OUTPUT_SLOTS * 4 then
+                                output_mem((addr_i - LEGACY_OUTPUT_BASE) / 4) <= write_data(15 downto 0);
+                            elsif addr_i >= WORK_BASE
+                                and addr_i < WORK_BASE + WORK_SLOTS * 4 then
+                                work_mem((addr_i - WORK_BASE) / 4) <= write_data;
+                            end if;
                         end if;
                     end if;
                 end if;

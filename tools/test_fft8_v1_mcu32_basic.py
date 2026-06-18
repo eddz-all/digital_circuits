@@ -11,6 +11,11 @@ verifies the program against the teacher-provided 2026 DFT/FFT COE layout:
 * input slots 136..143  signal imaginary samples, Q5
 * output slots 0..7     DFT result real parts, Q12
 * output slots 8..15    DFT result imaginary parts, Q12
+
+The fast MCU program computes the same teacher dftmtx(8) result with a
+bit-reversed radix-2 packed FFT, so runtime input reads only need the 16 signal
+slots. The checker still parses the full 144-slot COE to compare against the
+teacher matrix model.
 """
 
 from __future__ import annotations
@@ -27,7 +32,27 @@ SIGNAL_REAL_BASE_SLOT = 128
 SIGNAL_IMAG_BASE_SLOT = 136
 MATRIX_IMAG_BASE_SLOT = 64
 TEACHER_OUTPUT_BASE = 0x800
-ALLOWED_OPS = {"MOV", "ADD", "SUB", "CMP", "LDR", "STR", "B", "BEQ", "BNE", "MUL", "ASR"}
+ALLOWED_OPS = {
+    "MOV",
+    "ADD",
+    "SUB",
+    "CMP",
+    "LDR",
+    "STR",
+    "B",
+    "BEQ",
+    "BNE",
+    "MUL",
+    "ASR",
+    "SADD16",
+    "SMUAD",
+    "SMUSD",
+    "PKHBT",
+    "SSAX",
+    "SSUB16",
+    "SMLAD",
+    "STMIA",
+}
 
 
 @dataclass
@@ -53,6 +78,14 @@ def s32(value: int) -> int:
     return value - 0x100000000 if value & 0x80000000 else value
 
 
+def lo16(value: int) -> int:
+    return s16(value)
+
+
+def hi16(value: int) -> int:
+    return s16(value >> 16)
+
+
 def add32(a: int, b: int) -> int:
     return s32(s32(a) + s32(b))
 
@@ -67,6 +100,34 @@ def mul32(a: int, b: int) -> int:
 
 def asr(value: int, bits: int) -> int:
     return s32(value) >> bits
+
+
+def pkhbt(low_value: int, high_value: int) -> int:
+    return s32(((high_value & 0xFFFF) << 16) | (low_value & 0xFFFF))
+
+
+def sadd16(a: int, b: int) -> int:
+    return pkhbt(s16(lo16(a) + lo16(b)), s16(hi16(a) + hi16(b)))
+
+
+def ssub16(a: int, b: int) -> int:
+    return pkhbt(s16(lo16(a) - lo16(b)), s16(hi16(a) - hi16(b)))
+
+
+def ssax(a: int, b: int) -> int:
+    return pkhbt(s16(lo16(a) + hi16(b)), s16(hi16(a) - lo16(b)))
+
+
+def smuad(a: int, b: int) -> int:
+    return s32(lo16(a) * lo16(b) + hi16(a) * hi16(b))
+
+
+def smusd(a: int, b: int) -> int:
+    return s32(lo16(a) * lo16(b) - hi16(a) * hi16(b))
+
+
+def smlad(a: int, b: int, acc: int) -> int:
+    return s32(lo16(a) * lo16(b) + hi16(a) * hi16(b) + s32(acc))
 
 
 def load_program(path: Path) -> Program:
@@ -129,7 +190,51 @@ def parse_mem(text: str, regs: list[int]) -> int:
 
 
 def split_args(text: str) -> list[str]:
-    return [part.strip() for part in text.split(",")]
+    args: list[str] = []
+    start = 0
+    brace_depth = 0
+    for i, ch in enumerate(text):
+        if ch == "{":
+            brace_depth += 1
+        elif ch == "}":
+            brace_depth -= 1
+            if brace_depth < 0:
+                raise ValueError(f"unmatched register-list brace in {text!r}")
+        elif ch == "," and brace_depth == 0:
+            args.append(text[start:i].strip())
+            start = i + 1
+    if brace_depth != 0:
+        raise ValueError(f"unmatched register-list brace in {text!r}")
+    args.append(text[start:].strip())
+    return args
+
+
+def parse_reg_list(text: str) -> list[int]:
+    text = text.strip().upper()
+    if not (text.startswith("{") and text.endswith("}")):
+        raise ValueError(f"bad register list {text!r}")
+    body = text[1:-1].strip()
+    if not body:
+        raise ValueError("empty register list")
+
+    regs: list[int] = []
+    for part in body.split(","):
+        part = part.strip()
+        if "-" in part:
+            start_text, end_text = [item.strip() for item in part.split("-", 1)]
+            start = parse_reg(start_text)
+            end = parse_reg(end_text)
+            if start > end:
+                raise ValueError(f"descending register range {part!r}")
+            regs.extend(range(start, end + 1))
+        else:
+            regs.append(parse_reg(part))
+
+    if len(set(regs)) != len(regs):
+        raise ValueError(f"duplicate register in list {text!r}")
+    if 15 in regs:
+        raise ValueError("R15 is not supported in STMIA register lists")
+    return sorted(regs)
 
 
 def is_input_addr(addr: int) -> bool:
@@ -198,6 +303,33 @@ def run_program(program: Program, input_values: list[int]) -> RunResult:
             elif op == "ASR":
                 rd_text, ra_text, imm_text = split_args(arg_text)
                 regs[parse_reg(rd_text)] = s32(asr(operand_value(ra_text, regs), parse_imm(imm_text)))
+            elif op == "PKHBT":
+                rd_text, rn_text, rm_text, shift_text = split_args(arg_text)
+                if shift_text.strip().upper() != "LSL #16":
+                    raise ValueError("PKHBT checker only supports LSL #16")
+                regs[parse_reg(rd_text)] = pkhbt(operand_value(rn_text, regs), operand_value(rm_text, regs))
+            elif op == "SADD16":
+                rd_text, rn_text, rm_text = split_args(arg_text)
+                regs[parse_reg(rd_text)] = sadd16(operand_value(rn_text, regs), operand_value(rm_text, regs))
+            elif op == "SSUB16":
+                rd_text, rn_text, rm_text = split_args(arg_text)
+                regs[parse_reg(rd_text)] = ssub16(operand_value(rn_text, regs), operand_value(rm_text, regs))
+            elif op == "SSAX":
+                rd_text, rn_text, rm_text = split_args(arg_text)
+                regs[parse_reg(rd_text)] = ssax(operand_value(rn_text, regs), operand_value(rm_text, regs))
+            elif op == "SMUAD":
+                rd_text, rn_text, rm_text = split_args(arg_text)
+                regs[parse_reg(rd_text)] = smuad(operand_value(rn_text, regs), operand_value(rm_text, regs))
+            elif op == "SMUSD":
+                rd_text, rn_text, rm_text = split_args(arg_text)
+                regs[parse_reg(rd_text)] = smusd(operand_value(rn_text, regs), operand_value(rm_text, regs))
+            elif op == "SMLAD":
+                rd_text, rn_text, rm_text, ra_text = split_args(arg_text)
+                regs[parse_reg(rd_text)] = smlad(
+                    operand_value(rn_text, regs),
+                    operand_value(rm_text, regs),
+                    operand_value(ra_text, regs),
+                )
             elif op == "CMP":
                 ra_text, rb_text = split_args(arg_text)
                 value = sub32(operand_value(ra_text, regs), operand_value(rb_text, regs))
@@ -215,6 +347,22 @@ def run_program(program: Program, input_values: list[int]) -> RunResult:
                 addr = parse_mem(mem_text, regs)
                 write_mem(addr, regs[parse_reg(rd_text)])
                 external_output_write = is_output_addr(addr)
+            elif op == "STMIA":
+                base_text, reg_list_text = split_args(arg_text)
+                base_text = base_text.strip().upper()
+                if not base_text.endswith("!"):
+                    raise ValueError("STMIA checker requires writeback")
+                rn = parse_reg(base_text[:-1])
+                reg_list = parse_reg_list(reg_list_text)
+                if rn in reg_list:
+                    raise ValueError("STMIA base register cannot be in reglist")
+                base_addr = s32(regs[rn])
+                values = [regs[reg] for reg in reg_list]
+                for i, value in enumerate(values):
+                    addr = s32(base_addr + 4 * i)
+                    write_mem(addr, value)
+                    external_output_write = external_output_write or is_output_addr(addr)
+                regs[rn] = s32(base_addr + 4 * len(reg_list))
             elif op == "B":
                 next_pc = program.labels[arg_text.strip()]
             elif op == "BEQ":

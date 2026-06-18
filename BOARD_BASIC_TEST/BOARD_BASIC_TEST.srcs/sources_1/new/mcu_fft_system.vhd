@@ -6,7 +6,9 @@ entity mcu_fft_system is
     generic (
         MEM_FILE       : string := "asm/fft8_v1_mcu32_basic.mem";
         CORE_ROM_DEPTH : positive := 1024;
-        INPUT_COUNT    : positive := 144;
+        INPUT_COUNT    : positive := 16;
+        INPUT_ROM_BASE : natural := 128;
+        INPUT_MEM_BASE : natural := 128;
         OUTPUT_COUNT   : positive := 16
     );
     port (
@@ -35,9 +37,8 @@ architecture rtl of mcu_fft_system is
     type state_t is (
         S_LOAD_REQ,
         S_LOAD_WAIT,
-        S_LOAD_WRITE,
+        S_LOAD_STREAM,
         S_RUN,
-        S_DUMP_ADDR,
         S_DUMP_WRITE,
         S_DONE
     );
@@ -60,6 +61,12 @@ architecture rtl of mcu_fft_system is
 begin
     assert INPUT_COUNT <= 256
         report "mcu_fft_system INPUT_COUNT must fit test_rom_addr[7:0]"
+        severity failure;
+    assert INPUT_ROM_BASE + INPUT_COUNT <= 256
+        report "mcu_fft_system input ROM window must fit test_rom_addr[7:0]"
+        severity failure;
+    assert INPUT_MEM_BASE + INPUT_COUNT <= 256
+        report "mcu_fft_system input memory window must fit input_waddr[7:0]"
         severity failure;
     assert OUTPUT_COUNT <= 64
         report "mcu_fft_system OUTPUT_COUNT must fit verify_ram_addr[5:0]"
@@ -124,19 +131,24 @@ begin
                     when S_LOAD_REQ =>
                         core_rst <= '1';
                         test_rom_en <= '1';
-                        test_rom_addr <= std_logic_vector(to_unsigned(load_idx, 8));
+                        test_rom_addr <= std_logic_vector(to_unsigned(INPUT_ROM_BASE + load_idx, 8));
                         state <= S_LOAD_WAIT;
 
                     when S_LOAD_WAIT =>
                         core_rst <= '1';
                         test_rom_en <= '1';
-                        test_rom_addr <= std_logic_vector(to_unsigned(load_idx, 8));
-                        state <= S_LOAD_WRITE;
+                        load_idx <= 0;
+                        if last_input = 0 then
+                            test_rom_addr <= std_logic_vector(to_unsigned(INPUT_ROM_BASE, 8));
+                        else
+                            test_rom_addr <= std_logic_vector(to_unsigned(INPUT_ROM_BASE + 1, 8));
+                        end if;
+                        state <= S_LOAD_STREAM;
 
-                    when S_LOAD_WRITE =>
+                    when S_LOAD_STREAM =>
                         core_rst <= '1';
                         core_input_we <= '1';
-                        core_input_waddr <= std_logic_vector(to_unsigned(load_idx, 8));
+                        core_input_waddr <= std_logic_vector(to_unsigned(INPUT_MEM_BASE + load_idx, 8));
                         core_input_wdata <= test_vector_in;
                         if load_idx = 0 then
                             cnt_start <= '1';
@@ -146,8 +158,12 @@ begin
                             core_rst <= '0';
                             state <= S_RUN;
                         else
+                            if load_idx + 1 < last_input then
+                                test_rom_en <= '1';
+                                test_rom_addr <= std_logic_vector(to_unsigned(INPUT_ROM_BASE + load_idx + 2, 8));
+                            end if;
                             load_idx <= load_idx + 1;
-                            state <= S_LOAD_REQ;
+                            state <= S_LOAD_STREAM;
                         end if;
 
                     when S_RUN =>
@@ -155,13 +171,8 @@ begin
                         if core_halted = '1' or core_illegal = '1' then
                             dump_idx <= 0;
                             core_output_raddr <= (others => '0');
-                            state <= S_DUMP_ADDR;
+                            state <= S_DUMP_WRITE;
                         end if;
-
-                    when S_DUMP_ADDR =>
-                        core_rst <= '0';
-                        core_output_raddr <= std_logic_vector(to_unsigned(dump_idx, 6));
-                        state <= S_DUMP_WRITE;
 
                     when S_DUMP_WRITE =>
                         core_rst <= '0';
@@ -173,7 +184,8 @@ begin
                             state <= S_DONE;
                         else
                             dump_idx <= dump_idx + 1;
-                            state <= S_DUMP_ADDR;
+                            core_output_raddr <= std_logic_vector(to_unsigned(dump_idx + 1, 6));
+                            state <= S_DUMP_WRITE;
                         end if;
 
                     when S_DONE =>

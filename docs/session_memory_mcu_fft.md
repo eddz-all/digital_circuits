@@ -1,8 +1,43 @@
 # MCU FFT 项目接力记忆
 
-更新时间：2026-06-02
+更新时间：2026-06-18
 
 本文档用于在后续会话中快速恢复上下文，继续完成数字电路课程设计中的 8 点 FFT 速度榜任务。
+
+## 0.1 2026-06-18 当前优先入口
+
+当前 `codex/v1-clean` 分支已经在 2026 老师样例合约上切到 packed radix-2
+FFT butterfly DSP fast path。后续会话优先读取：
+
+```text
+docs/v1_clean_dsp_handoff_2026.md
+```
+
+当前关键结论：
+
+```text
+branch: codex/v1-clean
+HEAD: 9d69361
+当前改动未提交，除非用户明确要求，不要提交或推送
+FFT_input.coe 以 144-slot 老师样例为准
+运行时只读取 signal slots 128..143
+输入按 bit-reversed 顺序加载为 packed complex Q12
+DFT 矩阵 dftmtx(8) Q7 系数等价分解进 radix-2 butterfly
+DSP 指令：PKHBT, SADD16, SSUB16, SSAX, SMUAD, SMUSD, STMIA
+host timed_steps = 100
+GHDL/system cnt_cycles = 139
+wrapper 输入装载已改为连续流，输出使用 STMIA 批量写回
+```
+
+继续代码工作时，先跑：
+
+```bash
+git status --short --branch
+python3 tools/test_fft8_v1_mcu32_basic.py
+```
+
+RTL 或汇编行为有变化时，再按 `docs/v1_clean_dsp_handoff_2026.md` 第 8 节跑
+GHDL 回归。
 
 ## 0. 2026-06-02 最新接口覆盖说明
 
