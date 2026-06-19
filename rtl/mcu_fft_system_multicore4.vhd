@@ -180,10 +180,6 @@ begin
                             buf_a(BITREV_ORDER(src_idx)) <= pack_q5_to_q12(input_samples(src_idx), test_vector_in);
                         end if;
 
-                        if load_idx = 0 then
-                            cnt_start <= '1';
-                        end if;
-
                         if load_idx = last_input then
                             load_idx <= 0;
                             stage_idx <= 0;
@@ -200,6 +196,9 @@ begin
                     when S_STAGE_DISPATCH =>
                         lane_done_seen <= (others => '0');
                         lane_start <= (others => '1');
+                        if stage_idx = 0 then
+                            cnt_start <= '1';
+                        end if;
 
                         if stage_idx = 0 then
                             lane_a(0) <= buf_a(0);

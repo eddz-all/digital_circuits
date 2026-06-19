@@ -23,8 +23,8 @@ timed_steps:
   host checker 中从第一条输入读到最后一次输出写的 MCU 指令数口径。
 
 cnt_cycles:
-  system wrapper 中从第一个 signal slot 写入开始，到最后一个 verify slot 写出结束的
-  端到端 cycle 口径，更接近板级 cnt_test。
+  system wrapper 中从输入加载/pack 完成后的 Stage 1 dispatch 开始，到最后一个
+  verify slot 写出结束的 CORES-style board counter 口径。
 
 cycles_to_halt:
   独立 core TB 从释放 reset 到 DONE self-loop 的本地 core 口径，不能和 cnt_cycles 混用。
@@ -186,13 +186,13 @@ S_DONE
 ```text
 S_LOAD_*:
   从 test_ROM 连续读取 FFT_input[128..143]。
-  cnt_start 在第一个 signal slot 写入时拉高。
   signal real slot 到达时暂存 real。
   signal imag slot 到达时同步完成 Q5->Q12 pack，并按 bit-reversed order 写入 buf_a。
 
 S_STAGE_DISPATCH:
   给 4 个 lane 分配 operand 和 twiddle_mode。
   core_start 拉高一个周期。
+  cnt_start 在 stage 0 dispatch 时拉高，即输入加载/pack 完成后开始计数。
 
 S_WAIT_CORES:
   latch 每个 lane 的 done pulse。
@@ -242,15 +242,14 @@ multicore4 system cnt_cycles ~= 55..70
 tools/test_multicore4_fft_model.py passed
 mcu_v1_butterfly_core_tb passed
 mcu_fft_system_multicore4_tb passed
-mcu_fft_system_multicore4_tb cnt_cycles = 49
+mcu_fft_system_multicore4_tb cnt_cycles = 33
 ```
 
-对比当前基线：
+按当前 CORES-style counter 口径：
 
 ```text
-single-cycle system cnt_cycles = 128
-pipe5 system cnt_cycles = 114
-multicore4 non-pipelined system cnt_cycles = 49
+multicore4 non-pipelined system cnt_cycles = 33
+CORES 8-worker branch counted_cycles = 60
 ```
 
 2026-06-19 更新借鉴了 pipeline prototype 的 wrapper-level overlap 思路，但没有把
@@ -263,6 +262,10 @@ multicore4 non-pipelined system cnt_cycles = 49
 
 该优化减少 controller 空拍，不改变 4-lane butterfly core、twiddle mode、输出顺序或老师
 COE I/O 合约。
+
+同日再次对齐 CORES 上板计数风格：外部 `test_ROM[128..143]` 的 16-word 输入加载仍然存在，
+但 `cnt_start` 移到输入加载/pack 完成后的 Stage 1 dispatch。因此当前 `cnt_cycles = 33`
+不包含输入加载；此前端到端输入包含口径为 `49`。
 
 这些结果只说明本地功能仿真和 system-level counter 口径成立。当前 Mac/GHDL
 工作流不能证明 Vivado Fmax、资源或上板表现。

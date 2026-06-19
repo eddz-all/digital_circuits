@@ -137,15 +137,16 @@ The readback phase is only for observation. It is not included in `cnt_test`.
 `cnt_test` follows the current 4-core system counter:
 
 ```text
-count starts when the first signal input is accepted
+count starts when stage 0 dispatch begins after input loading and packing
 count stops when the final output slot is written
 ```
 
 The current GHDL result for the underlying 4-core system is:
 
 ```text
-cnt_cycles = 49
+cnt_cycles = 33
 ```
 
-This is not directly comparable with an 8-core branch counter that starts only
-after input loading.
+This follows the same counter boundary style as the CORES 8-core board branch:
+the external input loading phase still exists, but it is not included in
+`cnt_test`.

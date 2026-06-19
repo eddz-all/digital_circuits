@@ -125,31 +125,34 @@ For the current 4-core board wrapper, create `ila_0` with 8 probes. If an
 existing Vivado project only has the CORES 6-probe ILA, either regenerate the
 ILA as 8 probes or use a separate CORES-compatible board wrapper.
 
-## Counter boundary difference
+## Counter boundary alignment
 
-Do not compare the two `cnt_test` values as the same metric without adjusting
-the boundary.
+The 4-core board counter is aligned to the CORES branch counter style.
 
 In the 4-core system:
 
 ```text
-cnt_start = first input word accepted by S_LOAD_STREAM
+cnt_start = stage 0 dispatch after input loading and packing
 cnt_stop  = final output word written in S_DUMP_OUTPUT
 ```
 
 So the 4-core board counter includes:
 
 ```text
-input streaming with overlapped Q5 -> Q12 packing
 three butterfly stages
 barrier/writeback overhead
 16-word output dump
 ```
 
-In the CORES system, the documented counter starts after input loading and
-covers the execute/output side of the eight-worker system. Therefore the 4-core
-`cnt_test` and CORES `cnt_test` are useful board observations, but they are not
-the same timing definition.
+The external `test_ROM[128..143]` 16-word input loading phase still exists, but
+it is not included in `cnt_test`, matching the CORES branch convention.
+
+Current GHDL-observed values under this aligned counter boundary:
+
+```text
+multicore4 cnt_cycles = 33
+CORES counted_cycles  = 60
+```
 
 ## Practical board guidance
 

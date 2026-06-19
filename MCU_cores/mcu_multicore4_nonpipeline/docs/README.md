@@ -49,18 +49,19 @@ the generic map in this wrapper, not the 4-core RTL.
 `cnt_test` mirrors the existing 4-core system counter pulses:
 
 ```text
-cnt_start: first signal sample accepted by S_LOAD_STREAM
+cnt_start: stage 0 dispatch after all input words are loaded and packed
 cnt_stop : final verify_RAM output slot written by S_DUMP_OUTPUT
 ```
 
-So the board counter includes input streaming with overlapped Q5 to Q12
-packing, three butterfly stages, barrier/writeback overhead, and the 16-slot output dump. It
+So the board counter follows the CORES-style execution/output boundary. It
+includes three butterfly stages, barrier/writeback overhead, and the 16-slot output dump. It
+does not include the external 16-word `test_ROM[128..143]` input loading phase.
 does not include reset time or post-done verify_RAM readback for ILA display.
 
 The current local GHDL system test for the underlying 4-core system reports:
 
 ```text
-mcu_fft_system_multicore4_tb cnt_cycles 49
+mcu_fft_system_multicore4_tb cnt_cycles 33
 ```
 
 ## ILA probes
