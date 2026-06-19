@@ -1,6 +1,6 @@
 # Multicore4 non-pipelined FFT architecture
 
-更新时间：2026-06-18
+更新时间：2026-06-19
 
 本文档记录 `codex/multicore4-nonpipeline` 分支的 4-lane radix-2 FFT
 prototype 方案。目标是在不新增非 ARM 指令、不改变老师 COE I/O 合约、不做专用 FFT
@@ -175,11 +175,8 @@ imag += xr * wi + xi * wr
 S_LOAD_REQ
 S_LOAD_WAIT
 S_LOAD_STREAM
-S_PACK_INPUT
 S_STAGE_DISPATCH
 S_WAIT_CORES
-S_WRITEBACK
-S_NEXT_STAGE
 S_DUMP_OUTPUT
 S_DONE
 ```
@@ -190,9 +187,8 @@ S_DONE
 S_LOAD_*:
   从 test_ROM 连续读取 FFT_input[128..143]。
   cnt_start 在第一个 signal slot 写入时拉高。
-
-S_PACK_INPUT:
-  按 bit-reversed order 把 Q5 real/imag pack 成 Q12 complex。
+  signal real slot 到达时暂存 real。
+  signal imag slot 到达时同步完成 Q5->Q12 pack，并按 bit-reversed order 写入 buf_a。
 
 S_STAGE_DISPATCH:
   给 4 个 lane 分配 operand 和 twiddle_mode。
@@ -201,11 +197,7 @@ S_STAGE_DISPATCH:
 S_WAIT_CORES:
   latch 每个 lane 的 done pulse。
   等 4 个 lane 都 done 后形成 stage barrier。
-
-S_WRITEBACK:
-  把 4 个 lane 的 even/odd 写回目标 ping-pong buffer。
-
-S_NEXT_STAGE:
+  在 barrier 完成的同一拍把 4 个 lane 的 even/odd 写回目标 ping-pong buffer。
   stage 0: A -> B
   stage 1: B -> A
   stage 2: A -> B
@@ -250,7 +242,7 @@ multicore4 system cnt_cycles ~= 55..70
 tools/test_multicore4_fft_model.py passed
 mcu_v1_butterfly_core_tb passed
 mcu_fft_system_multicore4_tb passed
-mcu_fft_system_multicore4_tb cnt_cycles = 63
+mcu_fft_system_multicore4_tb cnt_cycles = 49
 ```
 
 对比当前基线：
@@ -258,8 +250,19 @@ mcu_fft_system_multicore4_tb cnt_cycles = 63
 ```text
 single-cycle system cnt_cycles = 128
 pipe5 system cnt_cycles = 114
-multicore4 non-pipelined system cnt_cycles = 63
+multicore4 non-pipelined system cnt_cycles = 49
 ```
+
+2026-06-19 更新借鉴了 pipeline prototype 的 wrapper-level overlap 思路，但没有把
+`mcu_v1_core_pipe5` 放进 4 个 lane。具体变化是：
+
+```text
+1. Q5->Q12 pack 从独立 S_PACK_INPUT 阶段移动到 imag input slot 到达时完成。
+2. stage writeback 从独立 S_WRITEBACK/S_NEXT_STAGE 阶段移动到 S_WAIT_CORES barrier 完成拍完成。
+```
+
+该优化减少 controller 空拍，不改变 4-lane butterfly core、twiddle mode、输出顺序或老师
+COE I/O 合约。
 
 这些结果只说明本地功能仿真和 system-level counter 口径成立。当前 Mac/GHDL
 工作流不能证明 Vivado Fmax、资源或上板表现。

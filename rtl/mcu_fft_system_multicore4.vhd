@@ -35,11 +35,8 @@ architecture rtl of mcu_fft_system_multicore4 is
         S_LOAD_REQ,
         S_LOAD_WAIT,
         S_LOAD_STREAM,
-        S_PACK_INPUT,
         S_STAGE_DISPATCH,
         S_WAIT_CORES,
-        S_WRITEBACK,
-        S_NEXT_STAGE,
         S_DUMP_OUTPUT,
         S_DONE
     );
@@ -54,7 +51,6 @@ architecture rtl of mcu_fft_system_multicore4 is
 
     signal state : state_t := S_LOAD_REQ;
     signal load_idx : integer range 0 to INPUT_COUNT - 1 := 0;
-    signal pack_idx : integer range 0 to 7 := 0;
     signal stage_idx : integer range 0 to 2 := 0;
     signal dump_idx : integer range 0 to OUTPUT_COUNT - 1 := 0;
 
@@ -135,7 +131,6 @@ begin
             if rst = '1' then
                 state <= S_LOAD_REQ;
                 load_idx <= 0;
-                pack_idx <= 0;
                 stage_idx <= 0;
                 dump_idx <= 0;
                 input_samples <= (others => (others => '0'));
@@ -177,15 +172,22 @@ begin
                         state <= S_LOAD_STREAM;
 
                     when S_LOAD_STREAM =>
-                        input_samples(load_idx) <= test_vector_in;
+                        if load_idx < 8 then
+                            input_samples(load_idx) <= test_vector_in;
+                        else
+                            src_idx := load_idx - 8;
+                            input_samples(load_idx) <= test_vector_in;
+                            buf_a(BITREV_ORDER(src_idx)) <= pack_q5_to_q12(input_samples(src_idx), test_vector_in);
+                        end if;
+
                         if load_idx = 0 then
                             cnt_start <= '1';
                         end if;
 
                         if load_idx = last_input then
                             load_idx <= 0;
-                            pack_idx <= 0;
-                            state <= S_PACK_INPUT;
+                            stage_idx <= 0;
+                            state <= S_STAGE_DISPATCH;
                         else
                             if load_idx + 1 < last_input then
                                 test_rom_en <= '1';
@@ -193,18 +195,6 @@ begin
                             end if;
                             load_idx <= load_idx + 1;
                             state <= S_LOAD_STREAM;
-                        end if;
-
-                    when S_PACK_INPUT =>
-                        src_idx := BITREV_ORDER(pack_idx);
-                        buf_a(pack_idx) <= pack_q5_to_q12(input_samples(src_idx), input_samples(8 + src_idx));
-                        if pack_idx = 7 then
-                            pack_idx <= 0;
-                            stage_idx <= 0;
-                            state <= S_STAGE_DISPATCH;
-                        else
-                            pack_idx <= pack_idx + 1;
-                            state <= S_PACK_INPUT;
                         end if;
 
                     when S_STAGE_DISPATCH =>
@@ -258,49 +248,42 @@ begin
                         next_done_seen := lane_done_seen or lane_done;
                         lane_done_seen <= next_done_seen;
                         if next_done_seen = "1111" then
-                            state <= S_WRITEBACK;
+                            if stage_idx = 0 then
+                                buf_b(0) <= lane_even(0);
+                                buf_b(1) <= lane_odd(0);
+                                buf_b(2) <= lane_even(1);
+                                buf_b(3) <= lane_odd(1);
+                                buf_b(4) <= lane_even(2);
+                                buf_b(5) <= lane_odd(2);
+                                buf_b(6) <= lane_even(3);
+                                buf_b(7) <= lane_odd(3);
+                                stage_idx <= 1;
+                                state <= S_STAGE_DISPATCH;
+                            elsif stage_idx = 1 then
+                                buf_a(0) <= lane_even(0);
+                                buf_a(2) <= lane_odd(0);
+                                buf_a(1) <= lane_even(1);
+                                buf_a(3) <= lane_odd(1);
+                                buf_a(4) <= lane_even(2);
+                                buf_a(6) <= lane_odd(2);
+                                buf_a(5) <= lane_even(3);
+                                buf_a(7) <= lane_odd(3);
+                                stage_idx <= 2;
+                                state <= S_STAGE_DISPATCH;
+                            else
+                                buf_b(0) <= lane_even(0);
+                                buf_b(4) <= lane_odd(0);
+                                buf_b(1) <= lane_even(1);
+                                buf_b(5) <= lane_odd(1);
+                                buf_b(2) <= lane_even(2);
+                                buf_b(6) <= lane_odd(2);
+                                buf_b(3) <= lane_even(3);
+                                buf_b(7) <= lane_odd(3);
+                                dump_idx <= 0;
+                                state <= S_DUMP_OUTPUT;
+                            end if;
                         else
                             state <= S_WAIT_CORES;
-                        end if;
-
-                    when S_WRITEBACK =>
-                        if stage_idx = 0 then
-                            buf_b(0) <= lane_even(0);
-                            buf_b(1) <= lane_odd(0);
-                            buf_b(2) <= lane_even(1);
-                            buf_b(3) <= lane_odd(1);
-                            buf_b(4) <= lane_even(2);
-                            buf_b(5) <= lane_odd(2);
-                            buf_b(6) <= lane_even(3);
-                            buf_b(7) <= lane_odd(3);
-                        elsif stage_idx = 1 then
-                            buf_a(0) <= lane_even(0);
-                            buf_a(2) <= lane_odd(0);
-                            buf_a(1) <= lane_even(1);
-                            buf_a(3) <= lane_odd(1);
-                            buf_a(4) <= lane_even(2);
-                            buf_a(6) <= lane_odd(2);
-                            buf_a(5) <= lane_even(3);
-                            buf_a(7) <= lane_odd(3);
-                        else
-                            buf_b(0) <= lane_even(0);
-                            buf_b(4) <= lane_odd(0);
-                            buf_b(1) <= lane_even(1);
-                            buf_b(5) <= lane_odd(1);
-                            buf_b(2) <= lane_even(2);
-                            buf_b(6) <= lane_odd(2);
-                            buf_b(3) <= lane_even(3);
-                            buf_b(7) <= lane_odd(3);
-                        end if;
-                        state <= S_NEXT_STAGE;
-
-                    when S_NEXT_STAGE =>
-                        if stage_idx = 2 then
-                            dump_idx <= 0;
-                            state <= S_DUMP_OUTPUT;
-                        else
-                            stage_idx <= stage_idx + 1;
-                            state <= S_STAGE_DISPATCH;
                         end if;
 
                     when S_DUMP_OUTPUT =>

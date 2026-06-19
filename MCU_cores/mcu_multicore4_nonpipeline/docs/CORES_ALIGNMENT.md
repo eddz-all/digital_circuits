@@ -140,8 +140,7 @@ cnt_stop  = final output word written in S_DUMP_OUTPUT
 So the 4-core board counter includes:
 
 ```text
-input streaming
-Q5 -> Q12 packing
+input streaming with overlapped Q5 -> Q12 packing
 three butterfly stages
 barrier/writeback overhead
 16-word output dump

@@ -144,7 +144,7 @@ count stops when the final output slot is written
 The current GHDL result for the underlying 4-core system is:
 
 ```text
-cnt_cycles = 63
+cnt_cycles = 49
 ```
 
 This is not directly comparable with an 8-core branch counter that starts only
