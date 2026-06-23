@@ -12,9 +12,7 @@ Add these files as design sources in this order:
 
 ```text
 rtl/mcu4_multi_pkg.vhd
-rtl/mcu4_instr_rom.vhd
-rtl/mcu4_decoder.vhd
-rtl/mcu4_butterfly_lane.vhd
+rtl/mcu4_worker_core.vhd
 rtl/mcu4_multicycle_core.vhd
 rtl/mcu_fft_system.vhd
 rtl/board_top.vhd
@@ -111,7 +109,7 @@ mcu_fft_system_tb
 Expected note:
 
 ```text
-mcu_fft_system_tb cnt_cycles 35
+mcu_fft_system_tb cnt_cycles 28
 mcu_fft_system_tb passed
 ```
 
@@ -147,7 +145,7 @@ This testbench provides simple simulation stubs for `clk_wiz_0`, `test_ROM`,
 Counter:
 
 ```text
-cnt_test = 00023
+cnt_test = 0001C
 ```
 
 Readback values:
@@ -173,13 +171,11 @@ addr 0F  D874
 
 ## Notes For Presentation
 
-- This version supports the PPT-required baseline instruction families in the decoder: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
-- The FFT is launched by one visible `BL fft_kernel` instruction.
-- `BL` jumps to a real instruction-ROM function body made from ARM-style `STR`, `LDR`, `CMP`, `BNE`, and `MOV pc, lr`.
-- The four butterfly lanes are multicycle DSP execution units controlled through memory-mapped `LDR/STR`, matching the PPT allowance for hardware acceleration and multicore parallelism without adding custom visible opcodes.
-- Stage start is selected by MMIO address: `[r0,#0]`, `[r0,#8]`, and `[r0,#12]`. The done mask is read from `[r0,#4]`.
-- Stage commit is explicit and also uses ARM `STR`: `[r0,#16]`, `[r0,#20]`, and `[r0,#24]`.
-- FFT data is stored in the MCU work memory `buf_a/buf_b`, implemented as a small multi-port register array. It is also single-port accessible by ARM `LDR/STR`: `buf_a` starts at `[r0,#64]`, and `buf_b` starts at `[r0,#128]`.
-- The W1/W3 complex multiply path uses four parallel registered 16x16 products, then sum/subtract and pack cycles. This spends more DSP resources to reduce counted cycles.
+- This version uses four parallel worker cores rather than a memory-mapped butterfly accelerator.
+- Each worker has its own PC, register file, instruction decode, ARM-style ALU/DSP execution, work-memory ports, and halt state.
+- FFT data is stored in the MCU work memory `buf_a/buf_b`, implemented as a small multi-port register array.
+- The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
+- Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
+- The `91/-91` twiddle constants are immediate constants initialized by worker instructions, not hidden constants in a special butterfly unit.
 - The counter intentionally excludes input loading and output dump. It starts at
   the first instruction fetch and stops when the final instruction completes.

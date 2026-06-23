@@ -308,7 +308,7 @@ cnt_stop  = all_cores_halted
 
 ## 12. 预期性能方向
 
-当前 butterfly 黑盒版本计数很低，但不符合老师对 ARM 指令粒度的要求。新版本会增加指令数，但通过四核并行和多周期高频弥补。
+旧版 butterfly 黑盒计数很低，但不符合老师对 ARM 指令粒度的要求。当前版本已改为四个 worker core 并行执行 ARM/ARM-DSP 风格指令序列，避免一次性完成 butterfly 的专用硬件路径。
 
 性能关键点：
 
@@ -317,41 +317,34 @@ cnt_stop  = all_cores_halted
 - W1/W3 用 ARM DSP 指令组合完成，不用完整 butterfly 黑盒。
 - 工作内存多端口，避免单口 RAM 卡住四核并行。
 
-粗略预期：
+当前 GHDL 结果：
 
 ```text
-cnt 可能在 40-80 cycle 区间，取决于 DSP 指令多周期拆分和同步开销。
+mcu_fft_system_tb cnt_cycles = 28
 ```
 
 如果能保持 180-220 MHz，最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器版本。
 
-## 13. 后续实现步骤
+## 13. 当前实现状态
 
-建议按以下顺序重构：
+当前实现已经完成以下重构：
 
 1. 保留 `board_top` 和 `mcu_fft_system` 的输入输出框架。
-2. 把 `mcu4_multicycle_core` 重构为 `multicore_arm_fft_core`。
-3. 新建单个 worker core 模块：
+2. `mcu4_multicycle_core` 保持对外接口不变，内部改为四个 worker core 并行。
+3. 新建 worker core 模块：
 
 ```text
-arm_worker_core.vhd
+rtl/mcu4_worker_core.vhd
 ```
 
-4. 新建多端口工作内存模块：
-
-```text
-fft_work_mem.vhd
-```
-
-5. 指令 ROM 改为四读口或四份只读副本。
-6. 编写每个 core 的 FFT lane 指令程序。
-7. 修改 `cnt_stop` 为 `all_cores_halted`，不再等输出 dump。
-8. GHDL 验证输出和计数。
-9. Vivado 综合实现，目标先试 200 MHz。
+4. 共享 `buf_a/buf_b` 多端口工作内存在 `mcu4_multicycle_core` 内保留。
+5. 每个 worker 从自己的 lane-specific 程序执行 FFT stage。
+6. `cnt_stop` 由 `all_workers_halted` 产生，不等待输出 dump。
+7. Worker core 已补足课程最低 ARM 风格操作：`ADD/SUB/AND/ORR/MOV/LDR/STR/B/BL`。
+8. GHDL 已验证最低指令自测、FFT 输出和计数。
 
 ## 14. 答辩口径
 
 推荐表述：
 
 > 我们采用四核多周期 ARM 指令执行结构。每个 core 都有 PC、译码器、寄存器组、ALU 和 ARM DSP 指令执行单元。FFT 数据存储在多端口工作内存 `buf_a/buf_b` 中，普通 ARM `LDR/STR` 可以单口访问该内存，四个 core 也可以并行访问。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持的 `SADD16/SSUB16/SMLAD/SMLSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM 指令序列。
-
