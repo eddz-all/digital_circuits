@@ -7,12 +7,24 @@ This audit records the safe optimization applied to the four-worker FFT program.
 The counted instruction window is expected to be:
 
 ```text
-mcu_fft_system_tb cnt_cycles 28
-cnt_test = 0001C
+mcu_fft_system_tb cnt_cycles 34
+cnt_test = 00022
 ```
 
 Input loading from `test_ROM[128..143]` and output dumping to `verify_RAM[0..15]`
 remain outside the counted instruction window.
+
+The worker path is now explicit:
+
+```text
+fetch PC -> 32-bit instruction ROM -> instruction register
+current instruction -> decoder -> decode register -> execute
+```
+
+The instruction and decode registers break the previous PC-to-execute and
+instruction-to-execute critical paths. Straight-line code still overlaps fetch,
+decode and execute after pipeline fill. `SMUAD` and `SMUSD` then use extra
+internal DSP stages to avoid a two-DSP plus writeback path in a single clock.
 
 ## Safe Optimization
 

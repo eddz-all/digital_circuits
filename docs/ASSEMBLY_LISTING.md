@@ -3,13 +3,24 @@
 The visible FFT instruction streams are implemented in:
 
 ```text
-rtl/mcu4_worker_core.vhd
+rtl/mcu4_worker_instr_rom.vhd
 ```
 
 There are four parallel worker cores. Each worker has its own PC, register file,
-instruction decode, ARM-style ALU/DSP operations, halt state, and work-memory
-ports. The workers execute the same timed program shape with lane-specific
-memory addresses.
+32-bit instruction ROM, decoder, ARM-style ALU/DSP operations, halt state, and
+work-memory ports. The workers execute the same timed program shape with
+lane-specific memory addresses.
+
+The execution path is:
+
+```text
+fetch PC -> 32-bit instruction ROM -> instruction register
+current instruction -> decoder -> decode register
+                    -> register/ALU/DSP/load-store execute
+```
+
+`instr_debug` is now the actual 32-bit instruction ROM word, not a reverse
+encoding of a pre-decoded control record.
 
 The worker core also implements the course minimum ARM-style operations:
 

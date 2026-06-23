@@ -12,6 +12,8 @@ Add these files as design sources in this order:
 
 ```text
 rtl/mcu4_multi_pkg.vhd
+rtl/mcu4_worker_instr_rom.vhd
+rtl/mcu4_worker_decoder.vhd
 rtl/mcu4_worker_core.vhd
 rtl/mcu4_multicycle_core.vhd
 rtl/mcu_fft_system.vhd
@@ -109,7 +111,7 @@ mcu_fft_system_tb
 Expected note:
 
 ```text
-mcu_fft_system_tb cnt_cycles 28
+mcu_fft_system_tb cnt_cycles 34
 mcu_fft_system_tb passed
 ```
 
@@ -145,7 +147,7 @@ This testbench provides simple simulation stubs for `clk_wiz_0`, `test_ROM`,
 Counter:
 
 ```text
-cnt_test = 0001C
+cnt_test = 00022
 ```
 
 Readback values:
@@ -172,10 +174,11 @@ addr 0F  D874
 ## Notes For Presentation
 
 - This version uses four parallel worker cores rather than a memory-mapped butterfly accelerator.
-- Each worker has its own PC, register file, instruction decode, ARM-style ALU/DSP execution, work-memory ports, and halt state.
+- Each worker has its own PC, 32-bit instruction ROM, decoder, register file, ARM-style ALU/DSP execution, work-memory ports, and halt state.
 - FFT data is stored in the MCU work memory `buf_a/buf_b`, implemented as a small multi-port register array.
 - The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
 - Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
+- `SMUAD` and `SMUSD` are internally multi-cycle to shorten the DSP critical path for 200 MHz-class timing.
 - The `91/-91` twiddle constants are immediate constants initialized by worker instructions, not hidden constants in a special butterfly unit.
 - The counter intentionally excludes input loading and output dump. It starts at
   the first instruction fetch and stops when the final instruction completes.

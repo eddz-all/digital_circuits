@@ -8,7 +8,7 @@ project.
 - Loads only 16 input samples from `test_ROM[128..143]` in the outer system.
 - Starts `cnt_test` when the core instruction-run window begins.
 - Runs four parallel worker cores. Each worker has its own PC, register file,
-  instruction decode, ARM-style ALU/DSP execution, and halt state.
+  32-bit instruction ROM, decoder, ARM-style ALU/DSP execution, and halt state.
 - Computes each FFT butterfly through visible ARM/ARM-DSP style worker
   instructions, not through a single-purpose butterfly hardware block.
 - Writes 16 FFT output words to `verify_RAM[0..15]` after the instruction
@@ -18,14 +18,14 @@ project.
 The system-level GHDL test passes with:
 
 ```text
-mcu_fft_system_tb cnt_cycles 28
+mcu_fft_system_tb cnt_cycles 34
 mcu_fft_system_tb passed
 ```
 
 So the expected board counter is:
 
 ```text
-cnt_test = 0001C
+cnt_test = 00022
 ```
 
 ## File Map
@@ -34,6 +34,8 @@ RTL files:
 
 ```text
 rtl/mcu4_multi_pkg.vhd
+rtl/mcu4_worker_instr_rom.vhd
+rtl/mcu4_worker_decoder.vhd
 rtl/mcu4_worker_core.vhd
 rtl/mcu4_multicycle_core.vhd
 rtl/mcu_fft_system.vhd
@@ -78,8 +80,19 @@ word[15:0]  = real
 word[31:16] = imag
 ```
 
-`mcu4_worker_core.vhd` implements four parallel worker cores. The worker core
-supports the minimum ARM-style instruction set required by the course brief:
+Each worker uses the normal MCU path:
+
+```text
+fetch PC -> mcu4_worker_instr_rom -> instruction register
+current instruction -> mcu4_worker_decoder -> decode register
+                    -> mcu4_worker_core execution
+```
+
+`mcu4_worker_instr_rom.vhd` stores concrete 32-bit instruction words.
+`mcu4_worker_decoder.vhd` decodes those words into operation, register, immediate
+and memory-index fields. `mcu4_worker_core.vhd` owns the PC, register file and
+execution datapath. The worker core supports the minimum ARM-style instruction
+set required by the course brief:
 
 ```text
 ADD, SUB, AND, ORR, MOV, LDR, STR, B, BL
@@ -91,6 +104,12 @@ needed for the FFT:
 ```text
 MOV, LDR, STR, SADD16, SSUB16, SSAX, SMUAD, SMUSD, ASR, PKHBT
 ```
+
+For timing, normal straight-line instructions keep one-instruction-per-cycle
+throughput after fetch/decode fill. `SMUAD` and `SMUSD` are internally split
+into operand latch, DSP multiply, and add/sub writeback stages, so the visible
+instruction stream remains ARM/ARM-DSP style while the critical path is much
+shorter for high-frequency implementation.
 
 The fixed twiddle constants `91/-91` are immediate constants in the worker
 program. `+91/+91` is built with `PKHBT`, and `-91/-91` is built with
@@ -121,6 +140,8 @@ mkdir -p /tmp/digital_circuits_ghdl_mcu4
 
 ghdl -a --std=08 --workdir=/tmp/digital_circuits_ghdl_mcu4 \
   rtl/mcu4_multi_pkg.vhd \
+  rtl/mcu4_worker_instr_rom.vhd \
+  rtl/mcu4_worker_decoder.vhd \
   rtl/mcu4_worker_core.vhd \
   rtl/mcu4_multicycle_core.vhd \
   rtl/mcu_fft_system.vhd \
@@ -143,6 +164,8 @@ Board-level simulation with IP stubs:
 ```bash
 ghdl -a --std=08 --workdir=/tmp/digital_circuits_ghdl_mcu4 \
   rtl/mcu4_multi_pkg.vhd \
+  rtl/mcu4_worker_instr_rom.vhd \
+  rtl/mcu4_worker_decoder.vhd \
   rtl/mcu4_worker_core.vhd \
   rtl/mcu4_multicycle_core.vhd \
   rtl/mcu_fft_system.vhd \
