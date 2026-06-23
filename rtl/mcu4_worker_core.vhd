@@ -240,28 +240,11 @@ begin
             if rst = '1' then
                 state_reg <= S_FETCH;
                 pc_fetch_reg <= 0;
-                instr_pc_reg <= 0;
-                instr_reg <= x"E1A00000";
-                exec_op <= WOP_NOP;
-                exec_rd <= 0;
-                exec_rn <= 0;
-                exec_rm <= 0;
-                exec_imm <= 0;
-                exec_idx <= 0;
-                exec_illegal <= '0';
-                exec_instr <= x"E1A00000";
-                exec_pc_reg <= 0;
-                regs <= (others => (others => '0'));
                 halted_reg <= '0';
                 illegal_reg <= '0';
-                dsp_a <= (others => '0');
-                dsp_b <= (others => '0');
-                dsp_prod_lo <= (others => '0');
-                dsp_prod_hi <= (others => '0');
-                dsp_rd <= 0;
-                dsp_op <= WOP_NOP;
-                dsp_pc_reg <= 0;
-                dsp_instr_reg <= x"E1A00000";
+                -- Data-path registers are overwritten by fetch/decode or by
+                -- the program prologue before use. Leaving them out of reset
+                -- keeps the core reset fanout small enough for higher clocks.
             elsif halted_reg = '0' and illegal_reg = '0' then
                 case state_reg is
                     when S_FETCH =>
