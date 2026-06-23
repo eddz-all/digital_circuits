@@ -92,6 +92,21 @@ needed for the FFT:
 MOV, LDR, STR, SADD16, SSUB16, SSAX, SMUAD, SMUSD, ASR, PKHBT
 ```
 
+The worker execution path is:
+
+```text
+pc_reg -> 32-bit worker instruction ROM -> decode_worker_instr -> execute
+```
+
+`instr_debug` directly exposes the 32-bit instruction word fetched from the
+worker ROM. The decoder parses `op`, `rd`, `rn`, `rm`, immediate fields, and
+`buf_a/buf_b` load-store addresses from that instruction word.
+
+The encoding is an ARM/ARM-DSP style 32-bit instruction encoding. Base
+instructions use ARM-like words such as `E3Axxxxx`, `E590xxxx`, and `EAxxxxxx`;
+the packed DSP instructions use project-local ARM-DSP style fixed patterns that
+the decoder recognizes explicitly.
+
 The fixed twiddle constants `91/-91` are immediate constants in the worker
 program. `+91/+91` is built with `PKHBT`, and `-91/-91` is built with
 `SSUB16` from zero and `+91/+91`; the constants are not read from external input

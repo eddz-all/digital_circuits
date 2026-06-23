@@ -29,6 +29,12 @@ architecture sim of mcu4_worker_core_min_arm_tb is
 
     signal saw_buf_b0 : std_logic := '0';
     signal saw_buf_b2 : std_logic := '0';
+    signal saw_mov_imm : std_logic := '0';
+    signal saw_add     : std_logic := '0';
+    signal saw_ldr     : std_logic := '0';
+    signal saw_b       : std_logic := '0';
+    signal saw_bl      : std_logic := '0';
+    signal saw_mov_pc  : std_logic := '0';
 begin
     clk <= not clk after 5 ns;
 
@@ -84,6 +90,43 @@ begin
                             severity failure;
                 end case;
             end if;
+
+            if rst = '0' then
+                case to_integer(unsigned(pc_debug(7 downto 2))) is
+                    when 0 =>
+                        assert instr_debug = x"E3A00000"
+                            report "instr_debug pc0 should expose MOV r0,#0 ROM word"
+                            severity failure;
+                        saw_mov_imm <= '1';
+                    when 3 =>
+                        assert instr_debug = x"E0813002"
+                            report "instr_debug pc3 should expose ADD r3,r1,r2 ROM word"
+                            severity failure;
+                        saw_add <= '1';
+                    when 8 =>
+                        assert instr_debug = x"E5908040"
+                            report "instr_debug pc8 should expose LDR r8,[buf_a+0] ROM word"
+                            severity failure;
+                        saw_ldr <= '1';
+                    when 11 =>
+                        assert instr_debug = x"EA00000D"
+                            report "instr_debug pc11 should expose B absolute target 13 ROM word"
+                            severity failure;
+                        saw_b <= '1';
+                    when 13 =>
+                        assert instr_debug = x"EB000010"
+                            report "instr_debug pc13 should expose BL absolute target 16 ROM word"
+                            severity failure;
+                        saw_bl <= '1';
+                    when 17 =>
+                        assert instr_debug = x"E1A0F00E"
+                            report "instr_debug pc17 should expose MOV pc,lr ROM word"
+                            severity failure;
+                        saw_mov_pc <= '1';
+                    when others =>
+                        null;
+                end case;
+            end if;
         end if;
     end process;
 
@@ -114,6 +157,10 @@ begin
             severity failure;
         assert saw_buf_b2 = '1'
             report "minimum ARM self-test did not return from BL"
+            severity failure;
+        assert saw_mov_imm = '1' and saw_add = '1' and saw_ldr = '1'
+            and saw_b = '1' and saw_bl = '1' and saw_mov_pc = '1'
+            report "minimum ARM self-test did not observe expected ROM instr_debug words"
             severity failure;
 
         report "mcu4_worker_core_min_arm_tb passed" severity note;

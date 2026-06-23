@@ -54,7 +54,8 @@ architecture rtl of mcu4_worker_core is
         WOP_ASR,
         WOP_B,
         WOP_BL,
-        WOP_HALT
+        WOP_HALT,
+        WOP_ILLEGAL
     );
 
     type worker_instr_t is record
@@ -215,210 +216,11 @@ architecture rtl of mcu4_worker_core is
         return inst;
     end function;
 
-    function worker_program(wid : natural; pc : natural) return worker_instr_t is
+    function illegal_instr return worker_instr_t is
+        variable inst : worker_instr_t := blank_instr;
     begin
-        case pc is
-            when 0 => return mov_imm(REG_ZERO, 0);
-            when 1 => return mov_imm(REG_POS91, 91);
-            when 2 => return pkhbt(REG_PACK91, REG_POS91, REG_POS91, 16);
-            when 3 => return alu2(WOP_SSUB16, REG_PACKN91, REG_ZERO, REG_PACK91);
-
-            when 4 =>
-                case wid is
-                    when 0 => return ldr_a(REG_A, 0);
-                    when 1 => return ldr_a(REG_A, 2);
-                    when 2 => return ldr_a(REG_A, 4);
-                    when others => return ldr_a(REG_A, 6);
-                end case;
-            when 5 =>
-                case wid is
-                    when 0 => return ldr_a(REG_B, 1);
-                    when 1 => return ldr_a(REG_B, 3);
-                    when 2 => return ldr_a(REG_B, 5);
-                    when others => return ldr_a(REG_B, 7);
-                end case;
-            when 6 => return alu2(WOP_SADD16, REG_EVEN, REG_A, REG_B);
-            when 7 => return alu2(WOP_SSUB16, REG_ODD, REG_A, REG_B);
-            when 8 =>
-                case wid is
-                    when 0 => return str_b(REG_EVEN, 0);
-                    when 1 => return str_b(REG_EVEN, 2);
-                    when 2 => return str_b(REG_EVEN, 4);
-                    when others => return str_b(REG_EVEN, 6);
-                end case;
-            when 9 =>
-                case wid is
-                    when 0 => return str_b(REG_ODD, 1);
-                    when 1 => return str_b(REG_ODD, 3);
-                    when 2 => return str_b(REG_ODD, 5);
-                    when others => return str_b(REG_ODD, 7);
-                end case;
-
-            when 10 =>
-                case wid is
-                    when 0 => return ldr_b(REG_A, 0);
-                    when 1 => return ldr_b(REG_A, 1);
-                    when 2 => return ldr_b(REG_A, 4);
-                    when others => return ldr_b(REG_A, 5);
-                end case;
-            when 11 =>
-                case wid is
-                    when 0 => return ldr_b(REG_B, 2);
-                    when 1 => return ldr_b(REG_B, 3);
-                    when 2 => return ldr_b(REG_B, 6);
-                    when others => return ldr_b(REG_B, 7);
-                end case;
-            when 12 =>
-                if wid = 1 or wid = 3 then
-                    return alu2(WOP_SSAX, REG_T, REG_ZERO, REG_B);
-                else
-                    return alu2(WOP_SADD16, REG_EVEN, REG_A, REG_B);
-                end if;
-            when 13 =>
-                if wid = 1 or wid = 3 then
-                    return alu2(WOP_SADD16, REG_EVEN, REG_A, REG_T);
-                else
-                    return alu2(WOP_SSUB16, REG_ODD, REG_A, REG_B);
-                end if;
-            when 14 =>
-                if wid = 1 or wid = 3 then
-                    return alu2(WOP_SSUB16, REG_ODD, REG_A, REG_T);
-                else
-                    return str_a(REG_EVEN, 0 + 4 * (wid / 2));
-                end if;
-            when 15 =>
-                case wid is
-                    when 0 => return str_a(REG_ODD, 2);
-                    when 1 => return str_a(REG_EVEN, 1);
-                    when 2 => return str_a(REG_ODD, 6);
-                    when others => return str_a(REG_EVEN, 5);
-                end case;
-            when 16 =>
-                if wid = 1 then
-                    return str_a(REG_ODD, 3);
-                elsif wid = 3 then
-                    return str_a(REG_ODD, 7);
-                else
-                    return blank_instr;
-                end if;
-
-            when 17 =>
-                case wid is
-                    when 0 => return ldr_a(REG_A, 0);
-                    when 1 => return ldr_a(REG_A, 1);
-                    when 2 => return ldr_a(REG_A, 2);
-                    when others => return ldr_a(REG_A, 3);
-                end case;
-            when 18 =>
-                case wid is
-                    when 0 => return ldr_a(REG_B, 4);
-                    when 1 => return ldr_a(REG_B, 5);
-                    when 2 => return ldr_a(REG_B, 6);
-                    when others => return ldr_a(REG_B, 7);
-                end case;
-            when 19 =>
-                if wid = 0 then
-                    return alu2(WOP_SADD16, REG_EVEN, REG_A, REG_B);
-                elsif wid = 2 then
-                    return alu2(WOP_SSAX, REG_T, REG_ZERO, REG_B);
-                elsif wid = 1 then
-                    return alu2(WOP_SMUAD, REG_TMP_RE, REG_B, REG_PACK91);
-                else
-                    return alu2(WOP_SMUSD, REG_TMP_RE, REG_B, REG_PACKN91);
-                end if;
-            when 20 =>
-                if wid = 0 then
-                    return alu2(WOP_SSUB16, REG_ODD, REG_A, REG_B);
-                elsif wid = 2 then
-                    return alu2(WOP_SADD16, REG_EVEN, REG_A, REG_T);
-                elsif wid = 1 then
-                    return alu2(WOP_SMUSD, REG_TMP_IM, REG_B, REG_PACKN91);
-                else
-                    return alu2(WOP_SMUAD, REG_TMP_IM, REG_B, REG_PACKN91);
-                end if;
-            when 21 =>
-                if wid = 0 then
-                    return str_b(REG_EVEN, 0);
-                elsif wid = 2 then
-                    return alu2(WOP_SSUB16, REG_ODD, REG_A, REG_T);
-                else
-                    return asr_imm(REG_TMP_RE, REG_TMP_RE, 7);
-                end if;
-            when 22 =>
-                if wid = 0 then
-                    return str_b(REG_ODD, 4);
-                elsif wid = 2 then
-                    return str_b(REG_EVEN, 2);
-                else
-                    return pkhbt(REG_T, REG_TMP_RE, REG_TMP_IM, 9);
-                end if;
-            when 23 =>
-                if wid = 0 then
-                    return blank_instr;
-                elsif wid = 2 then
-                    return str_b(REG_ODD, 6);
-                else
-                    return alu2(WOP_SADD16, REG_EVEN, REG_A, REG_T);
-                end if;
-            when 24 =>
-                if wid = 1 or wid = 3 then
-                    return alu2(WOP_SSUB16, REG_ODD, REG_A, REG_T);
-                else
-                    return blank_instr;
-                end if;
-            when 25 =>
-                if wid = 1 then
-                    return str_b(REG_EVEN, 1);
-                elsif wid = 3 then
-                    return str_b(REG_EVEN, 3);
-                else
-                    return blank_instr;
-                end if;
-            when 26 =>
-                if wid = 1 then
-                    return str_b(REG_ODD, 5);
-                elsif wid = 3 then
-                    return str_b(REG_ODD, 7);
-                else
-                    return blank_instr;
-                end if;
-            when others =>
-                return halt_instr;
-        end case;
-    end function;
-
-    function arm_minimum_selftest_program(pc : natural) return worker_instr_t is
-    begin
-        case pc is
-            when 0 => return mov_imm(0, 0);
-            when 1 => return mov_imm(1, 7);
-            when 2 => return mov_imm(2, 3);
-            when 3 => return alu2(WOP_ADD, 3, 1, 2);
-            when 4 => return sub_reg(4, 3, 2);
-            when 5 => return alu2(WOP_AND, 5, 3, 1);
-            when 6 => return alu2(WOP_ORR, 6, 5, 2);
-            when 7 => return mov_reg(7, 6);
-            when 8 => return ldr_a(8, 0);
-            when 9 => return alu2(WOP_ADD, 9, 8, 7);
-            when 10 => return str_b(9, 0);
-            when 11 => return branch_abs(13);
-            when 12 => return str_b(1, 1);
-            when 13 => return branch_link_abs(16);
-            when 14 => return str_b(10, 2);
-            when 15 => return halt_instr;
-            when 16 => return alu2(WOP_ADD, 10, 9, 4);
-            when 17 => return mov_reg(REG_PC, REG_LR);
-            when others => return halt_instr;
-        end case;
-    end function;
-
-    function selected_program(program_sel : natural; wid : natural; pc : natural)
-        return worker_instr_t is
-    begin
-        if program_sel = 1 then
-            return arm_minimum_selftest_program(pc);
-        end if;
-        return worker_program(wid, pc);
+        inst.op := WOP_ILLEGAL;
+        return inst;
     end function;
 
     function sadd16(a : word_t; b : word_t) return word_t is
@@ -523,19 +325,13 @@ architecture rtl of mcu4_worker_core is
         return idx;
     end function;
 
-    function branch_imm24(target_pc : integer; current_pc : natural)
-        return std_logic_vector is
-        variable offset : signed(23 downto 0);
-    begin
-        offset := to_signed(target_pc - integer(current_pc) - 2, 24);
-        return std_logic_vector(offset);
-    end function;
-
-    function encode_instr(inst : worker_instr_t; pc : natural) return word_t is
+    function encode_instr(inst : worker_instr_t) return word_t is
         variable enc : unsigned(31 downto 0) := (others => '0');
         variable imm_addr : natural range 0 to 255 := 0;
     begin
         case inst.op is
+            when WOP_NOP =>
+                enc := unsigned'(x"E1A00000");
             when WOP_MOV_IMM =>
                 enc := unsigned'(x"E3A00000");
                 enc(15 downto 12) := to_unsigned(inst.rd, 4);
@@ -622,10 +418,10 @@ architecture rtl of mcu4_worker_core is
                 enc(11 downto 7) := to_unsigned(inst.imm, 5);
             when WOP_B =>
                 enc := unsigned'(x"EA000000");
-                enc(23 downto 0) := unsigned(branch_imm24(inst.imm, pc));
+                enc(23 downto 0) := to_unsigned(inst.imm, 24);
             when WOP_BL =>
                 enc := unsigned'(x"EB000000");
-                enc(23 downto 0) := unsigned(branch_imm24(inst.imm, pc));
+                enc(23 downto 0) := to_unsigned(inst.imm, 24);
             when WOP_HALT =>
                 enc := unsigned'(x"EAFFFFFE");
             when others =>
@@ -634,9 +430,306 @@ architecture rtl of mcu4_worker_core is
         return std_logic_vector(enc);
     end function;
 
+    function worker_instr_rom(wid : natural; pc : natural) return word_t is
+    begin
+        case pc is
+            when 0 => return encode_instr(mov_imm(REG_ZERO, 0));
+            when 1 => return encode_instr(mov_imm(REG_POS91, 91));
+            when 2 => return encode_instr(pkhbt(REG_PACK91, REG_POS91, REG_POS91, 16));
+            when 3 => return encode_instr(alu2(WOP_SSUB16, REG_PACKN91, REG_ZERO, REG_PACK91));
+
+            when 4 =>
+                case wid is
+                    when 0 => return encode_instr(ldr_a(REG_A, 0));
+                    when 1 => return encode_instr(ldr_a(REG_A, 2));
+                    when 2 => return encode_instr(ldr_a(REG_A, 4));
+                    when others => return encode_instr(ldr_a(REG_A, 6));
+                end case;
+            when 5 =>
+                case wid is
+                    when 0 => return encode_instr(ldr_a(REG_B, 1));
+                    when 1 => return encode_instr(ldr_a(REG_B, 3));
+                    when 2 => return encode_instr(ldr_a(REG_B, 5));
+                    when others => return encode_instr(ldr_a(REG_B, 7));
+                end case;
+            when 6 => return encode_instr(alu2(WOP_SADD16, REG_EVEN, REG_A, REG_B));
+            when 7 => return encode_instr(alu2(WOP_SSUB16, REG_ODD, REG_A, REG_B));
+            when 8 =>
+                case wid is
+                    when 0 => return encode_instr(str_b(REG_EVEN, 0));
+                    when 1 => return encode_instr(str_b(REG_EVEN, 2));
+                    when 2 => return encode_instr(str_b(REG_EVEN, 4));
+                    when others => return encode_instr(str_b(REG_EVEN, 6));
+                end case;
+            when 9 =>
+                case wid is
+                    when 0 => return encode_instr(str_b(REG_ODD, 1));
+                    when 1 => return encode_instr(str_b(REG_ODD, 3));
+                    when 2 => return encode_instr(str_b(REG_ODD, 5));
+                    when others => return encode_instr(str_b(REG_ODD, 7));
+                end case;
+
+            when 10 =>
+                case wid is
+                    when 0 => return encode_instr(ldr_b(REG_A, 0));
+                    when 1 => return encode_instr(ldr_b(REG_A, 1));
+                    when 2 => return encode_instr(ldr_b(REG_A, 4));
+                    when others => return encode_instr(ldr_b(REG_A, 5));
+                end case;
+            when 11 =>
+                case wid is
+                    when 0 => return encode_instr(ldr_b(REG_B, 2));
+                    when 1 => return encode_instr(ldr_b(REG_B, 3));
+                    when 2 => return encode_instr(ldr_b(REG_B, 6));
+                    when others => return encode_instr(ldr_b(REG_B, 7));
+                end case;
+            when 12 =>
+                if wid = 1 or wid = 3 then
+                    return encode_instr(alu2(WOP_SSAX, REG_T, REG_ZERO, REG_B));
+                else
+                    return encode_instr(alu2(WOP_SADD16, REG_EVEN, REG_A, REG_B));
+                end if;
+            when 13 =>
+                if wid = 1 or wid = 3 then
+                    return encode_instr(alu2(WOP_SADD16, REG_EVEN, REG_A, REG_T));
+                else
+                    return encode_instr(alu2(WOP_SSUB16, REG_ODD, REG_A, REG_B));
+                end if;
+            when 14 =>
+                if wid = 1 or wid = 3 then
+                    return encode_instr(alu2(WOP_SSUB16, REG_ODD, REG_A, REG_T));
+                else
+                    return encode_instr(str_a(REG_EVEN, 0 + 4 * (wid / 2)));
+                end if;
+            when 15 =>
+                case wid is
+                    when 0 => return encode_instr(str_a(REG_ODD, 2));
+                    when 1 => return encode_instr(str_a(REG_EVEN, 1));
+                    when 2 => return encode_instr(str_a(REG_ODD, 6));
+                    when others => return encode_instr(str_a(REG_EVEN, 5));
+                end case;
+            when 16 =>
+                if wid = 1 then
+                    return encode_instr(str_a(REG_ODD, 3));
+                elsif wid = 3 then
+                    return encode_instr(str_a(REG_ODD, 7));
+                else
+                    return encode_instr(blank_instr);
+                end if;
+
+            when 17 =>
+                case wid is
+                    when 0 => return encode_instr(ldr_a(REG_A, 0));
+                    when 1 => return encode_instr(ldr_a(REG_A, 1));
+                    when 2 => return encode_instr(ldr_a(REG_A, 2));
+                    when others => return encode_instr(ldr_a(REG_A, 3));
+                end case;
+            when 18 =>
+                case wid is
+                    when 0 => return encode_instr(ldr_a(REG_B, 4));
+                    when 1 => return encode_instr(ldr_a(REG_B, 5));
+                    when 2 => return encode_instr(ldr_a(REG_B, 6));
+                    when others => return encode_instr(ldr_a(REG_B, 7));
+                end case;
+            when 19 =>
+                if wid = 0 then
+                    return encode_instr(alu2(WOP_SADD16, REG_EVEN, REG_A, REG_B));
+                elsif wid = 2 then
+                    return encode_instr(alu2(WOP_SSAX, REG_T, REG_ZERO, REG_B));
+                elsif wid = 1 then
+                    return encode_instr(alu2(WOP_SMUAD, REG_TMP_RE, REG_B, REG_PACK91));
+                else
+                    return encode_instr(alu2(WOP_SMUSD, REG_TMP_RE, REG_B, REG_PACKN91));
+                end if;
+            when 20 =>
+                if wid = 0 then
+                    return encode_instr(alu2(WOP_SSUB16, REG_ODD, REG_A, REG_B));
+                elsif wid = 2 then
+                    return encode_instr(alu2(WOP_SADD16, REG_EVEN, REG_A, REG_T));
+                elsif wid = 1 then
+                    return encode_instr(alu2(WOP_SMUSD, REG_TMP_IM, REG_B, REG_PACKN91));
+                else
+                    return encode_instr(alu2(WOP_SMUAD, REG_TMP_IM, REG_B, REG_PACKN91));
+                end if;
+            when 21 =>
+                if wid = 0 then
+                    return encode_instr(str_b(REG_EVEN, 0));
+                elsif wid = 2 then
+                    return encode_instr(alu2(WOP_SSUB16, REG_ODD, REG_A, REG_T));
+                else
+                    return encode_instr(asr_imm(REG_TMP_RE, REG_TMP_RE, 7));
+                end if;
+            when 22 =>
+                if wid = 0 then
+                    return encode_instr(str_b(REG_ODD, 4));
+                elsif wid = 2 then
+                    return encode_instr(str_b(REG_EVEN, 2));
+                else
+                    return encode_instr(pkhbt(REG_T, REG_TMP_RE, REG_TMP_IM, 9));
+                end if;
+            when 23 =>
+                if wid = 0 then
+                    return encode_instr(blank_instr);
+                elsif wid = 2 then
+                    return encode_instr(str_b(REG_ODD, 6));
+                else
+                    return encode_instr(alu2(WOP_SADD16, REG_EVEN, REG_A, REG_T));
+                end if;
+            when 24 =>
+                if wid = 1 or wid = 3 then
+                    return encode_instr(alu2(WOP_SSUB16, REG_ODD, REG_A, REG_T));
+                else
+                    return encode_instr(blank_instr);
+                end if;
+            when 25 =>
+                if wid = 1 then
+                    return encode_instr(str_b(REG_EVEN, 1));
+                elsif wid = 3 then
+                    return encode_instr(str_b(REG_EVEN, 3));
+                else
+                    return encode_instr(blank_instr);
+                end if;
+            when 26 =>
+                if wid = 1 then
+                    return encode_instr(str_b(REG_ODD, 5));
+                elsif wid = 3 then
+                    return encode_instr(str_b(REG_ODD, 7));
+                else
+                    return encode_instr(blank_instr);
+                end if;
+            when others =>
+                return encode_instr(halt_instr);
+        end case;
+    end function;
+
+    function arm_minimum_selftest_rom(pc : natural) return word_t is
+    begin
+        case pc is
+            when 0 => return encode_instr(mov_imm(0, 0));
+            when 1 => return encode_instr(mov_imm(1, 7));
+            when 2 => return encode_instr(mov_imm(2, 3));
+            when 3 => return encode_instr(alu2(WOP_ADD, 3, 1, 2));
+            when 4 => return encode_instr(sub_reg(4, 3, 2));
+            when 5 => return encode_instr(alu2(WOP_AND, 5, 3, 1));
+            when 6 => return encode_instr(alu2(WOP_ORR, 6, 5, 2));
+            when 7 => return encode_instr(mov_reg(7, 6));
+            when 8 => return encode_instr(ldr_a(8, 0));
+            when 9 => return encode_instr(alu2(WOP_ADD, 9, 8, 7));
+            when 10 => return encode_instr(str_b(9, 0));
+            when 11 => return encode_instr(branch_abs(13));
+            when 12 => return encode_instr(str_b(1, 1));
+            when 13 => return encode_instr(branch_link_abs(16));
+            when 14 => return encode_instr(str_b(10, 2));
+            when 15 => return encode_instr(halt_instr);
+            when 16 => return encode_instr(alu2(WOP_ADD, 10, 9, 4));
+            when 17 => return encode_instr(mov_reg(REG_PC, REG_LR));
+            when others => return encode_instr(halt_instr);
+        end case;
+    end function;
+
+    function selected_instr_rom(program_sel : natural; wid : natural; pc : natural)
+        return word_t is
+    begin
+        if program_sel = 1 then
+            return arm_minimum_selftest_rom(pc);
+        end if;
+        return worker_instr_rom(wid, pc);
+    end function;
+
+    function decode_work_mem_access(
+        is_store : boolean;
+        rd       : natural;
+        imm_addr : natural
+    ) return worker_instr_t is
+        variable word_addr : natural range 0 to 1023 := 0;
+    begin
+        if (imm_addr mod 4) /= 0 then
+            return illegal_instr;
+        end if;
+
+        word_addr := imm_addr / 4;
+        if word_addr >= WORK_BUF_A_BASE_WORD
+            and word_addr < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
+            if is_store then
+                return str_a(rd, word_addr - WORK_BUF_A_BASE_WORD);
+            end if;
+            return ldr_a(rd, word_addr - WORK_BUF_A_BASE_WORD);
+        elsif word_addr >= WORK_BUF_B_BASE_WORD
+            and word_addr < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
+            if is_store then
+                return str_b(rd, word_addr - WORK_BUF_B_BASE_WORD);
+            end if;
+            return ldr_b(rd, word_addr - WORK_BUF_B_BASE_WORD);
+        end if;
+
+        return illegal_instr;
+    end function;
+
+    function decode_worker_instr(instr_word : word_t) return worker_instr_t is
+        variable op12     : std_logic_vector(11 downto 0);
+        variable rd       : natural range 0 to 15;
+        variable rn       : natural range 0 to 15;
+        variable rm       : natural range 0 to 15;
+        variable imm_addr : natural range 0 to 4095;
+    begin
+        op12 := instr_word(31 downto 20);
+        rd := to_integer(unsigned(instr_word(15 downto 12)));
+        rn := to_integer(unsigned(instr_word(19 downto 16)));
+        rm := to_integer(unsigned(instr_word(3 downto 0)));
+        imm_addr := to_integer(unsigned(instr_word(11 downto 0)));
+
+        if instr_word = x"EAFFFFFE" then
+            return halt_instr;
+        elsif op12 = x"E3A" then
+            return mov_imm(rd, imm_addr);
+        elsif op12 = x"E1A" then
+            return mov_reg(rd, rm);
+        elsif op12 = x"E08" then
+            return alu2(WOP_ADD, rd, rn, rm);
+        elsif op12 = x"E04" then
+            return sub_reg(rd, rn, rm);
+        elsif op12 = x"E00" then
+            return alu2(WOP_AND, rd, rn, rm);
+        elsif op12 = x"E18" then
+            return alu2(WOP_ORR, rd, rn, rm);
+        elsif op12 = x"E59" then
+            if rn /= REG_ZERO then
+                return illegal_instr;
+            end if;
+            return decode_work_mem_access(false, rd, imm_addr);
+        elsif op12 = x"E58" then
+            if rn /= REG_ZERO then
+                return illegal_instr;
+            end if;
+            return decode_work_mem_access(true, rd, imm_addr);
+        elsif op12 = x"ECA" then
+            return pkhbt(rd, rn, rm, to_integer(unsigned(instr_word(11 downto 7))));
+        elsif op12 = x"ED8" then
+            return alu2(WOP_SADD16, rd, rn, rm);
+        elsif op12 = x"ED2" then
+            return alu2(WOP_SSUB16, rd, rn, rm);
+        elsif op12 = x"ED0" then
+            return alu2(WOP_SSAX, rd, rn, rm);
+        elsif op12 = x"EC4" then
+            return alu2(WOP_SMUAD, rd, rn, rm);
+        elsif op12 = x"EC6" then
+            return alu2(WOP_SMUSD, rd, rn, rm);
+        elsif op12 = x"E3E" then
+            return asr_imm(rd, rm, to_integer(unsigned(instr_word(11 downto 7))));
+        elsif instr_word(31 downto 24) = x"EA" then
+            return branch_abs(clamp_pc(to_integer(unsigned(instr_word(23 downto 0)))));
+        elsif instr_word(31 downto 24) = x"EB" then
+            return branch_link_abs(clamp_pc(to_integer(unsigned(instr_word(23 downto 0)))));
+        end if;
+
+        return illegal_instr;
+    end function;
+
+    signal instr_word : word_t := (others => '0');
     signal instr : worker_instr_t := blank_instr;
 begin
-    instr <= selected_program(PROGRAM_ID, WORKER_ID, pc_reg);
+    instr_word <= selected_instr_rom(PROGRAM_ID, WORKER_ID, pc_reg);
+    instr <= decode_worker_instr(instr_word);
 
     buf_a_raddr <= std_logic_vector(to_unsigned(instr.idx, 3))
         when instr.op = WOP_LDR_A or instr.op = WOP_STR_A
@@ -712,9 +805,12 @@ begin
                         null;
                     when WOP_HALT =>
                         halted_reg <= '1';
+                    when WOP_ILLEGAL =>
+                        illegal_reg <= '1';
+                        halted_reg <= '1';
                 end case;
 
-                if instr.op /= WOP_HALT then
+                if instr.op /= WOP_HALT and instr.op /= WOP_ILLEGAL then
                     pc_reg <= next_pc;
                 end if;
             end if;
@@ -724,5 +820,5 @@ begin
     halted <= halted_reg;
     illegal <= illegal_reg;
     pc_debug <= std_logic_vector(to_unsigned(pc_reg * 4, 32));
-    instr_debug <= encode_instr(instr, pc_reg);
+    instr_debug <= instr_word;
 end architecture rtl;

@@ -172,7 +172,8 @@ addr 0F  D874
 ## Notes For Presentation
 
 - This version uses four parallel worker cores rather than a memory-mapped butterfly accelerator.
-- Each worker has its own PC, register file, instruction decode, ARM-style ALU/DSP execution, work-memory ports, and halt state.
+- Each worker has its own PC, 32-bit instruction ROM path, decoder, register file, ARM-style ALU/DSP execution, work-memory ports, and halt state.
+- `instr_debug` is the current worker ROM output instruction word, not a reverse-encoded debug-only value.
 - FFT data is stored in the MCU work memory `buf_a/buf_b`, implemented as a small multi-port register array.
 - The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
 - Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.

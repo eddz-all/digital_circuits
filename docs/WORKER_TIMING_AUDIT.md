@@ -14,6 +14,16 @@ cnt_test = 0001C
 Input loading from `test_ROM[128..143]` and output dumping to `verify_RAM[0..15]`
 remain outside the counted instruction window.
 
+The counted worker path is:
+
+```text
+pc_reg -> 32-bit worker instruction ROM -> decoder -> execute
+```
+
+`instr_debug` is the 32-bit ROM output for the current worker PC. The decoder
+then produces the internal execution record used by the ALU, DSP, branch, and
+load/store logic.
+
 ## Safe Optimization
 
 The original twiddle prologue built `-91/-91` with a scalar subtract followed by

@@ -45,7 +45,7 @@ test_ROM[128..143]
 
 ```text
                  +-------------------------+
-                 |   instruction ROM       |
+                 | 32-bit instruction ROM  |
                  |  logical one program    |
                  +-----------+-------------+
                              |
@@ -71,14 +71,14 @@ test_ROM[128..143]
 
 ```text
 PC
-IR 指令寄存器
+32-bit instr_word
 decoder 译码器
 register file，r0-r15
 ALU
 DSP/乘法执行单元
 load/store 单元
 flag/status
-多周期控制 FSM
+execute control
 ```
 
 支持的指令至少包括：
@@ -109,7 +109,15 @@ PKHBT / ASR / SSAT
 硬件上为了四核同时取指，可以复制成四份只读 ROM，或实现为多读口 ROM。
 ```
 
-每个 core 有自己的 `PC`，可以从 ROM 的不同入口取指。程序布局可以是：
+每个 core 有自己的 `PC`，执行路径是：
+
+```text
+pc_reg -> 32-bit worker instruction ROM -> decode_worker_instr -> execute
+```
+
+`instr_debug` 直接显示当前 PC 从 ROM 读出的 32-bit instruction word，而不是由结构化指令反向编码得到的展示值。decoder 从 `instr_word` 解析 `op/rd/rn/rm/imm` 和 `buf_a/buf_b` 的 load-store 地址。
+
+程序布局可以是：
 
 ```text
 core0_stage0_entry
@@ -338,13 +346,14 @@ rtl/mcu4_worker_core.vhd
 ```
 
 4. 共享 `buf_a/buf_b` 多端口工作内存在 `mcu4_multicycle_core` 内保留。
-5. 每个 worker 从自己的 lane-specific 程序执行 FFT stage。
+5. 每个 worker 从 32-bit instruction ROM 读取自己的 lane-specific 程序，经过 decoder 后执行 FFT stage。
 6. `cnt_stop` 由 `all_workers_halted` 产生，不等待输出 dump。
 7. Worker core 已补足课程最低 ARM 风格操作：`ADD/SUB/AND/ORR/MOV/LDR/STR/B/BL`。
-8. GHDL 已验证最低指令自测、FFT 输出和计数。
+8. `instr_debug` 已改为直接暴露 ROM 输出的 32-bit `instr_word`。
+9. GHDL 已验证最低指令自测、FFT 输出和计数。
 
 ## 14. 答辩口径
 
 推荐表述：
 
-> 我们采用四核多周期 ARM 指令执行结构。每个 core 都有 PC、译码器、寄存器组、ALU 和 ARM DSP 指令执行单元。FFT 数据存储在多端口工作内存 `buf_a/buf_b` 中，普通 ARM `LDR/STR` 可以单口访问该内存，四个 core 也可以并行访问。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持的 `SADD16/SSUB16/SMLAD/SMLSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM 指令序列。
+> 我们采用四核 ARM 指令执行结构。每个 core 都有 PC、32-bit instruction ROM、decoder、寄存器组、ALU 和 ARM DSP 风格执行单元。`instr_debug` 显示的就是当前 PC 从 instruction ROM 读出的 32-bit 指令。FFT 数据存储在多端口工作内存 `buf_a/buf_b` 中，普通 ARM `LDR/STR` 可以访问该内存。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持范围内的 `SADD16/SSUB16/SSAX/SMUAD/SMUSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM/ARM-DSP 风格指令序列。
