@@ -37,7 +37,8 @@ If Vivado reports a duplicate clock constraint between `board_top.xdc` and `clk_
 - IP: Clocking Wizard
 - Component name: `clk_wiz_0`
 - Input clock: 50 MHz
-- Output clock: conservative board setting 30 MHz is fine
+- Output clock: try 200 MHz for the performance run; if implementation WNS is
+  negative, fall back to 180 MHz or 166.667 MHz
 - Enable `locked`
 - Reset port exists in the wrapper; RTL ties it to `0`
 
@@ -90,7 +91,8 @@ Trigger suggestion:
 cnt_test != 0
 ```
 
-Then release reset; the counter starts only after the 16 input words have been loaded.
+Then release reset; the counter starts after the 16 input words have been loaded,
+when the first instruction is fetched.
 
 ## Add Simulation Sources
 
@@ -109,7 +111,7 @@ mcu_fft_system_tb
 Expected note:
 
 ```text
-mcu_fft_system_tb cnt_cycles 58
+mcu_fft_system_tb cnt_cycles 35
 mcu_fft_system_tb passed
 ```
 
@@ -145,7 +147,7 @@ This testbench provides simple simulation stubs for `clk_wiz_0`, `test_ROM`,
 Counter:
 
 ```text
-cnt_test = 0003A
+cnt_test = 00023
 ```
 
 Readback values:
@@ -172,8 +174,12 @@ addr 0F  D874
 ## Notes For Presentation
 
 - This version supports the PPT-required baseline instruction families in the decoder: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
-- The FFT is launched by three visible `BL` instructions.
-- Each `BL` jumps to a real instruction-ROM function body with four `DSP_BFLY_START` instructions, one `DSP_BFLY_WAIT`, and `MOV pc, lr`.
-- The four butterfly lanes are multicycle DSP execution units, matching the PPT allowance for hardware acceleration and multicore parallelism.
-- The W1/W3 complex multiply path is split into multiply and sum/subtract cycles to improve Fmax.
-- The counter intentionally excludes input loading, following our final project decision. If the teacher insists on counting input reads from the PPT wording, add the input-load cycles separately.
+- The FFT is launched by one visible `BL fft_kernel` instruction.
+- `BL` jumps to a real instruction-ROM function body made from ARM-style `STR`, `LDR`, `CMP`, `BNE`, and `MOV pc, lr`.
+- The four butterfly lanes are multicycle DSP execution units controlled through memory-mapped `LDR/STR`, matching the PPT allowance for hardware acceleration and multicore parallelism without adding custom visible opcodes.
+- Stage start is selected by MMIO address: `[r0,#0]`, `[r0,#8]`, and `[r0,#12]`. The done mask is read from `[r0,#4]`.
+- Stage commit is explicit and also uses ARM `STR`: `[r0,#16]`, `[r0,#20]`, and `[r0,#24]`.
+- FFT data is stored in the MCU work memory `buf_a/buf_b`, implemented as a small multi-port register array. It is also single-port accessible by ARM `LDR/STR`: `buf_a` starts at `[r0,#64]`, and `buf_b` starts at `[r0,#128]`.
+- The W1/W3 complex multiply path uses four parallel registered 16x16 products, then sum/subtract and pack cycles. This spends more DSP resources to reduce counted cycles.
+- The counter intentionally excludes input loading and output dump. It starts at
+  the first instruction fetch and stops when the final instruction completes.

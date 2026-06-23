@@ -28,16 +28,12 @@ end entity mcu4_multicycle_core;
 architecture rtl of mcu4_multicycle_core is
     type state_t is (
         S_EXEC,
-        S_STAGE_WAIT,
         S_HALT
     );
 
-    type data_mem_t is array (0 to 15) of word_t;
-
     signal state_reg : state_t := S_EXEC;
-    signal pc_reg    : natural range 0 to 31 := 0;
+    signal pc_reg    : natural range 0 to 63 := 0;
     signal regs      : reg_file_t := (others => (others => '0'));
-    signal data_mem  : data_mem_t := (others => (others => '0'));
     signal flag_z    : std_logic := '0';
     signal flag_n    : std_logic := '0';
     signal halted    : std_logic := '0';
@@ -74,7 +70,6 @@ architecture rtl of mcu4_multicycle_core is
     signal lane_even      : lane4_word_array_t;
     signal lane_odd       : lane4_word_array_t;
     signal lane_mode      : lane4_mode_array_t := (others => MODE_W0);
-    signal active_stage   : natural range 0 to 2 := 0;
 
     function alu_eval(
         control : std_logic_vector(3 downto 0);
@@ -102,7 +97,7 @@ architecture rtl of mcu4_multicycle_core is
 begin
     u_rom : entity work.mcu4_instr_rom
         port map (
-            pc_index => std_logic_vector(to_unsigned(pc_reg, 5)),
+            pc_index => std_logic_vector(to_unsigned(pc_reg, 6)),
             instr    => instr
         );
 
@@ -168,9 +163,10 @@ begin
         variable op_a : word_t;
         variable op_b : word_t;
         variable alu_res : word_t;
-        variable mem_idx : natural range 0 to 15;
+        variable mem_idx : natural range 0 to 63;
+        variable work_idx : natural range 0 to 7;
         variable stage_id : natural range 0 to 3;
-        variable lane_id : natural range 0 to 3;
+        variable load_data : word_t;
         variable branch_words : integer;
         variable target_pc : integer;
     begin
@@ -188,7 +184,6 @@ begin
                 state_reg <= S_EXEC;
                 pc_reg <= 0;
                 regs <= (others => (others => '0'));
-                data_mem <= (others => (others => '0'));
                 flag_z <= '0';
                 flag_n <= '0';
                 halted <= '0';
@@ -198,7 +193,6 @@ begin
                 lane_a <= (others => (others => '0'));
                 lane_b <= (others => (others => '0'));
                 lane_mode <= (others => MODE_W0);
-                active_stage <= 0;
             else
                 lane_start <= (others => '0');
 
@@ -221,99 +215,13 @@ begin
                             illegal <= '1';
                             halted <= '1';
                             state_reg <= S_HALT;
-                        elsif instr(27 downto 26) = "11" and instr(25 downto 21) = EXT_BFLY_START then
-                            stage_id := to_integer(unsigned(instr(20 downto 19)));
-                            lane_id := to_integer(unsigned(instr(18 downto 17)));
-                            if lane_id = 0 then
-                                lane_done_seen <= (others => '0');
-                            else
-                                lane_done_seen <= next_done_seen;
-                            end if;
-                            lane_start(lane_id) <= '1';
-
-                            if stage_id = 0 then
-                                case lane_id is
-                                    when 0 =>
-                                        lane_a(0) <= buf_a(0);
-                                        lane_b(0) <= buf_a(1);
-                                        lane_mode(0) <= MODE_W0;
-                                    when 1 =>
-                                        lane_a(1) <= buf_a(2);
-                                        lane_b(1) <= buf_a(3);
-                                        lane_mode(1) <= MODE_W0;
-                                    when 2 =>
-                                        lane_a(2) <= buf_a(4);
-                                        lane_b(2) <= buf_a(5);
-                                        lane_mode(2) <= MODE_W0;
-                                    when others =>
-                                        lane_a(3) <= buf_a(6);
-                                        lane_b(3) <= buf_a(7);
-                                        lane_mode(3) <= MODE_W0;
-                                end case;
-                            elsif stage_id = 1 then
-                                case lane_id is
-                                    when 0 =>
-                                        lane_a(0) <= buf_b(0);
-                                        lane_b(0) <= buf_b(2);
-                                        lane_mode(0) <= MODE_W0;
-                                    when 1 =>
-                                        lane_a(1) <= buf_b(1);
-                                        lane_b(1) <= buf_b(3);
-                                        lane_mode(1) <= MODE_W2;
-                                    when 2 =>
-                                        lane_a(2) <= buf_b(4);
-                                        lane_b(2) <= buf_b(6);
-                                        lane_mode(2) <= MODE_W0;
-                                    when others =>
-                                        lane_a(3) <= buf_b(5);
-                                        lane_b(3) <= buf_b(7);
-                                        lane_mode(3) <= MODE_W2;
-                                end case;
-                            elsif stage_id = 2 then
-                                case lane_id is
-                                    when 0 =>
-                                        lane_a(0) <= buf_a(0);
-                                        lane_b(0) <= buf_a(4);
-                                        lane_mode(0) <= MODE_W0;
-                                    when 1 =>
-                                        lane_a(1) <= buf_a(1);
-                                        lane_b(1) <= buf_a(5);
-                                        lane_mode(1) <= MODE_W1;
-                                    when 2 =>
-                                        lane_a(2) <= buf_a(2);
-                                        lane_b(2) <= buf_a(6);
-                                        lane_mode(2) <= MODE_W2;
-                                    when others =>
-                                        lane_a(3) <= buf_a(3);
-                                        lane_b(3) <= buf_a(7);
-                                        lane_mode(3) <= MODE_W3;
-                                end case;
-                            else
-                                illegal <= '1';
-                                halted <= '1';
-                                state_reg <= S_HALT;
-                            end if;
-
-                            if stage_id <= 2 then
-                                pc_reg <= pc_reg + 1;
-                            end if;
-                        elsif instr(27 downto 26) = "11" and instr(25 downto 21) = EXT_BFLY_WAIT then
-                            stage_id := to_integer(unsigned(instr(20 downto 19)));
-                            if stage_id <= 2 then
-                                active_stage <= stage_id;
-                                state_reg <= S_STAGE_WAIT;
-                            else
-                                illegal <= '1';
-                                halted <= '1';
-                                state_reg <= S_HALT;
-                            end if;
                         elsif branch_taken = '1' then
                             branch_words := to_integer(signed(branch_offset(31 downto 2)));
                             target_pc := pc_reg + 2 + branch_words;
                             if branch_link = '1' then
                                 regs(14) <= std_logic_vector(to_unsigned((pc_reg + 1) * 4, 32));
                             end if;
-                            if target_pc < 0 or target_pc > 31 then
+                            if target_pc < 0 or target_pc > 63 then
                                 illegal <= '1';
                                 halted <= '1';
                                 state_reg <= S_HALT;
@@ -325,14 +233,115 @@ begin
                             end if;
                         else
                             if mem_write = '1' then
-                                mem_idx := to_integer(unsigned(alu_res(5 downto 2)));
-                                data_mem(mem_idx) <= regs(rd_idx);
+                                mem_idx := to_integer(unsigned(alu_res(7 downto 2)));
+                                if mem_idx = MMIO_BFLY_STAGE0_START_WORD
+                                   or mem_idx = MMIO_BFLY_STAGE1_START_WORD
+                                   or mem_idx = MMIO_BFLY_STAGE2_START_WORD then
+                                    if mem_idx = MMIO_BFLY_STAGE0_START_WORD then
+                                        stage_id := 0;
+                                    elsif mem_idx = MMIO_BFLY_STAGE1_START_WORD then
+                                        stage_id := 1;
+                                    else
+                                        stage_id := 2;
+                                    end if;
+
+                                    lane_done_seen <= (others => '0');
+                                    lane_start <= (others => '1');
+
+                                    if stage_id = 0 then
+                                        lane_a(0) <= buf_a(0);
+                                        lane_b(0) <= buf_a(1);
+                                        lane_mode(0) <= MODE_W0;
+                                        lane_a(1) <= buf_a(2);
+                                        lane_b(1) <= buf_a(3);
+                                        lane_mode(1) <= MODE_W0;
+                                        lane_a(2) <= buf_a(4);
+                                        lane_b(2) <= buf_a(5);
+                                        lane_mode(2) <= MODE_W0;
+                                        lane_a(3) <= buf_a(6);
+                                        lane_b(3) <= buf_a(7);
+                                        lane_mode(3) <= MODE_W0;
+                                    elsif stage_id = 1 then
+                                        lane_a(0) <= buf_b(0);
+                                        lane_b(0) <= buf_b(2);
+                                        lane_mode(0) <= MODE_W0;
+                                        lane_a(1) <= buf_b(1);
+                                        lane_b(1) <= buf_b(3);
+                                        lane_mode(1) <= MODE_W2;
+                                        lane_a(2) <= buf_b(4);
+                                        lane_b(2) <= buf_b(6);
+                                        lane_mode(2) <= MODE_W0;
+                                        lane_a(3) <= buf_b(5);
+                                        lane_b(3) <= buf_b(7);
+                                        lane_mode(3) <= MODE_W2;
+                                    elsif stage_id = 2 then
+                                        lane_a(0) <= buf_a(0);
+                                        lane_b(0) <= buf_a(4);
+                                        lane_mode(0) <= MODE_W0;
+                                        lane_a(1) <= buf_a(1);
+                                        lane_b(1) <= buf_a(5);
+                                        lane_mode(1) <= MODE_W1;
+                                        lane_a(2) <= buf_a(2);
+                                        lane_b(2) <= buf_a(6);
+                                        lane_mode(2) <= MODE_W2;
+                                        lane_a(3) <= buf_a(3);
+                                        lane_b(3) <= buf_a(7);
+                                        lane_mode(3) <= MODE_W3;
+                                    end if;
+                                elsif mem_idx = MMIO_BFLY_STAGE0_COMMIT_WORD
+                                      or mem_idx = MMIO_BFLY_STAGE1_COMMIT_WORD
+                                      or mem_idx = MMIO_BFLY_STAGE2_COMMIT_WORD then
+                                    if mem_idx = MMIO_BFLY_STAGE0_COMMIT_WORD then
+                                        stage_id := 0;
+                                    elsif mem_idx = MMIO_BFLY_STAGE1_COMMIT_WORD then
+                                        stage_id := 1;
+                                    else
+                                        stage_id := 2;
+                                    end if;
+
+                                    if stage_id = 0 then
+                                        buf_b(0) <= lane_even(0);
+                                        buf_b(1) <= lane_odd(0);
+                                        buf_b(2) <= lane_even(1);
+                                        buf_b(3) <= lane_odd(1);
+                                        buf_b(4) <= lane_even(2);
+                                        buf_b(5) <= lane_odd(2);
+                                        buf_b(6) <= lane_even(3);
+                                        buf_b(7) <= lane_odd(3);
+                                    elsif stage_id = 1 then
+                                        buf_a(0) <= lane_even(0);
+                                        buf_a(2) <= lane_odd(0);
+                                        buf_a(1) <= lane_even(1);
+                                        buf_a(3) <= lane_odd(1);
+                                        buf_a(4) <= lane_even(2);
+                                        buf_a(6) <= lane_odd(2);
+                                        buf_a(5) <= lane_even(3);
+                                        buf_a(7) <= lane_odd(3);
+                                    else
+                                        buf_b(0) <= lane_even(0);
+                                        buf_b(4) <= lane_odd(0);
+                                        buf_b(1) <= lane_even(1);
+                                        buf_b(5) <= lane_odd(1);
+                                        buf_b(2) <= lane_even(2);
+                                        buf_b(6) <= lane_odd(2);
+                                        buf_b(3) <= lane_even(3);
+                                        buf_b(7) <= lane_odd(3);
+                                    end if;
+                                elsif mem_idx >= WORK_BUF_A_BASE_WORD
+                                      and mem_idx < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
+                                    work_idx := mem_idx - WORK_BUF_A_BASE_WORD;
+                                    buf_a(work_idx) <= regs(rd_idx);
+                                elsif mem_idx >= WORK_BUF_B_BASE_WORD
+                                      and mem_idx < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
+                                    work_idx := mem_idx - WORK_BUF_B_BASE_WORD;
+                                    buf_b(work_idx) <= regs(rd_idx);
+                                end if;
                             end if;
 
                             if reg_write = '1' then
                                 if rd_idx = 15 then
-                                    if to_integer(unsigned(alu_res(6 downto 2))) <= 31 then
-                                        pc_reg <= to_integer(unsigned(alu_res(6 downto 2)));
+                                    if to_integer(unsigned(alu_res(7 downto 2))) <= 63 then
+                                        pc_reg <= to_integer(unsigned(alu_res(7 downto 2)));
                                     else
                                         illegal <= '1';
                                         halted <= '1';
@@ -340,16 +349,30 @@ begin
                                     end if;
                                 else
                                     if mem_read = '1' and mem_to_reg = '1' then
-                                        mem_idx := to_integer(unsigned(alu_res(5 downto 2)));
-                                        regs(rd_idx) <= data_mem(mem_idx);
-                                        alu_res := data_mem(mem_idx);
+                                        mem_idx := to_integer(unsigned(alu_res(7 downto 2)));
+                                        if mem_idx = MMIO_BFLY_STATUS_WORD then
+                                            load_data := (others => '0');
+                                            load_data(3 downto 0) := next_done_seen;
+                                        elsif mem_idx >= WORK_BUF_A_BASE_WORD
+                                              and mem_idx < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
+                                            work_idx := mem_idx - WORK_BUF_A_BASE_WORD;
+                                            load_data := buf_a(work_idx);
+                                        elsif mem_idx >= WORK_BUF_B_BASE_WORD
+                                              and mem_idx < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
+                                            work_idx := mem_idx - WORK_BUF_B_BASE_WORD;
+                                            load_data := buf_b(work_idx);
+                                        else
+                                            load_data := (others => '0');
+                                        end if;
+                                        regs(rd_idx) <= load_data;
+                                        alu_res := load_data;
                                     else
                                         regs(rd_idx) <= alu_res;
                                     end if;
                                 end if;
                             end if;
 
-                            if reg_write = '1' or flag_write = '1' then
+                            if flag_write = '1' then
                                 if alu_res = x"00000000" then
                                     flag_z <= '1';
                                 else
@@ -362,43 +385,6 @@ begin
                                 pc_reg <= pc_reg + 1;
                             end if;
                         end if;
-
-                    when S_STAGE_WAIT =>
-                        next_done_seen := lane_done_seen or lane_done;
-                        lane_done_seen <= next_done_seen;
-                        if next_done_seen = "1111" then
-                            if active_stage = 0 then
-                                buf_b(0) <= lane_even(0);
-                                buf_b(1) <= lane_odd(0);
-                                buf_b(2) <= lane_even(1);
-                                buf_b(3) <= lane_odd(1);
-                                buf_b(4) <= lane_even(2);
-                                buf_b(5) <= lane_odd(2);
-                                buf_b(6) <= lane_even(3);
-                                buf_b(7) <= lane_odd(3);
-                            elsif active_stage = 1 then
-                                buf_a(0) <= lane_even(0);
-                                buf_a(2) <= lane_odd(0);
-                                buf_a(1) <= lane_even(1);
-                                buf_a(3) <= lane_odd(1);
-                                buf_a(4) <= lane_even(2);
-                                buf_a(6) <= lane_odd(2);
-                                buf_a(5) <= lane_even(3);
-                                buf_a(7) <= lane_odd(3);
-                            else
-                                buf_b(0) <= lane_even(0);
-                                buf_b(4) <= lane_odd(0);
-                                buf_b(1) <= lane_even(1);
-                                buf_b(5) <= lane_odd(1);
-                                buf_b(2) <= lane_even(2);
-                                buf_b(6) <= lane_odd(2);
-                                buf_b(3) <= lane_even(3);
-                                buf_b(7) <= lane_odd(3);
-                            end if;
-                            pc_reg <= pc_reg + 1;
-                            state_reg <= S_EXEC;
-                        end if;
-
                     when S_HALT =>
                         halted <= '1';
                         state_reg <= S_HALT;

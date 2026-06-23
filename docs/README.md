@@ -5,23 +5,25 @@ This folder is a self-contained four-core multicycle FFT MCU project.
 ## What This Version Does
 
 - Loads only 16 input samples from `test_ROM[128..143]`.
-- Starts `cnt_test` after all input samples have been loaded and packed.
+- Starts `cnt_test` when the first instruction is fetched after all input
+  samples have been loaded and packed.
 - Executes a visible MCU instruction stream from `mcu4_instr_rom.vhd`.
-- Uses `BL fft_stageN_kernel` instructions to jump into visible ROM-resident stage functions.
-- Writes 16 FFT output words to `verify_RAM[0..15]`.
+- Uses one `BL fft_kernel` instruction to jump into a visible ROM-resident FFT function.
+- Writes 16 FFT output words to `verify_RAM[0..15]` after the instruction
+  counter has stopped.
 - Exposes the same six ILA probes used by the current board-check flow.
 
 The system-level GHDL test passes with:
 
 ```text
-mcu_fft_system_tb cnt_cycles 58
+mcu_fft_system_tb cnt_cycles 35
 mcu_fft_system_tb passed
 ```
 
 So the expected board counter is:
 
 ```text
-cnt_test = 0003A
+cnt_test = 00023
 ```
 
 ## File Map
@@ -62,38 +64,58 @@ The concrete 32-bit instructions are in `rtl/mcu4_instr_rom.vhd`:
 2  E0414001  SUB  r4, r1, r1
 3  E201200F  AND  r2, r1, #15
 4  E1823000  ORR  r3, r2, r0
-5  EB000002  BL   fft_stage0_kernel
-6  EB000007  BL   fft_stage1_kernel
-7  EB00000C  BL   fft_stage2_kernel
-8  EAFFFFFE  B    halt
+5  EB000000  BL   fft_kernel
+6  EAFFFFFE  B    halt
 ```
 
-Each `BL` target is a real function body made of visible 32-bit instructions:
+The `BL` target is a real function body made of visible ARM-style 32-bit
+instructions. The four lanes are controlled as a memory-mapped accelerator.
+`STR` writes one of three stage-start registers, `LDR` reads the done mask, and
+`CMP/BNE` polls until all four lanes finish. After that, another visible `STR`
+commits the stage result into the internal work buffer.
 
 ```text
-9   ED800000  DSP_BFLY_START stage0 lane0
-10  ED820000  DSP_BFLY_START stage0 lane1
-11  ED840000  DSP_BFLY_START stage0 lane2
-12  ED860000  DSP_BFLY_START stage0 lane3
-13  ED600000  DSP_BFLY_WAIT  stage0
-14  E1A0F00E  MOV pc, lr
-
-15  ED880000  DSP_BFLY_START stage1 lane0
-16  ED8A0000  DSP_BFLY_START stage1 lane1
-17  ED8C0000  DSP_BFLY_START stage1 lane2
-18  ED8E0000  DSP_BFLY_START stage1 lane3
-19  ED680000  DSP_BFLY_WAIT  stage1
-20  E1A0F00E  MOV pc, lr
-
-21  ED900000  DSP_BFLY_START stage2 lane0
-22  ED920000  DSP_BFLY_START stage2 lane1
-23  ED940000  DSP_BFLY_START stage2 lane2
-24  ED960000  DSP_BFLY_START stage2 lane3
-25  ED700000  DSP_BFLY_WAIT  stage2
-26  E1A0F00E  MOV pc, lr
+7   E5800000  STR r0, [r0, #0]   ; start stage0
+8   E5905004  LDR r5, [r0, #4]   ; done mask
+9   E355000F  CMP r5, #15
+10  1AFFFFFC  BNE stage0_wait
+11  E5800010  STR r0, [r0, #16]  ; commit stage0
+12  E5800008  STR r0, [r0, #8]   ; start stage1
+...
+22  E1A0F00E  MOV pc, lr
 ```
 
-Addresses 27 to 31 keep concrete `LDR`, `STR`, and DSP-extension examples for report/inspection.
+`r0` stays zero, so it is both the MMIO base address and the dummy write data.
+The low address range is used for worker control and status:
+
+```text
+[r0, #0]   start stage0
+[r0, #4]   read done mask
+[r0, #8]   start stage1
+[r0, #12]  start stage2
+[r0, #16]  commit stage0
+[r0, #20]  commit stage1
+[r0, #24]  commit stage2
+```
+
+The stage writeback is explicit: the MCU issues one `STR` commit instruction
+after each stage's done mask reaches `1111`.
+
+The FFT data memory is the multi-port work-memory register array used by the
+workers. It is still single-port addressable by normal ARM `LDR/STR`
+instructions:
+
+```text
+[r0, #64]..[r0, #92]    buf_a[0..7]
+[r0, #128]..[r0, #156]  buf_b[0..7]
+```
+
+The visible ROM keeps concrete examples:
+
+```text
+23  E5906040  LDR r6, [r0, #64]    ; read buf_a[0]
+24  E5806080  STR r6, [r0, #128]   ; write buf_b[0]
+```
 
 ## Architecture
 
@@ -104,12 +126,24 @@ Addresses 27 to 31 keep concrete `LDR`, `STR`, and DSP-extension examples for re
 - decoder
 - 16 general-purpose registers
 - condition flags
-- branch/link handling with real `BL` targets and `MOV pc, lr` returns
+- branch/link handling with a real `BL` target and `MOV pc, lr` return
+- ARM `LDR/STR` access to worker control registers and the FFT work memory
+- multi-port FFT work memory `buf_a/buf_b`, also single-port accessible by `LDR/STR`
 - four multicycle butterfly lanes
 
-Each lane performs the FFT butterfly over several cycles. For W1 and W3 twiddle factors it uses the same operation shape as ARM DSP instructions such as `SMUAD`, `SMUSD`, `PKHBT`, `SADD16`, and `SSUB16`. The complex multiply path is split into a multiply-register cycle and a sum/subtract cycle, reducing the critical path compared with doing multiply and add in the same cycle.
+Each lane performs the FFT butterfly over several cycles. For W1 and W3 twiddle
+factors it uses the same operation shape as ARM DSP instructions such as
+`SMUAD`, `SMUSD`, `PKHBT`, `SADD16`, and `SSUB16`. The optimized lane uses four
+parallel registered 16x16 products, followed by one sum/subtract cycle and one
+pack cycle. This spends more DSP resources to cut the counted cycles.
 
-This is not the older hardwired four-core FSM path. The top-level system only loads input and dumps output; the FFT stages are launched by the MCU instruction stream, and the stage functions themselves are visible instructions in the instruction ROM.
+This is not the older hardwired four-core FSM path. The top-level system only
+loads input and dumps output; the FFT stages are launched by the MCU instruction
+stream, and the stage functions themselves are visible ARM instruction sequences
+in the instruction ROM. The former separate `data_mem` is removed: `buf_a/buf_b`
+are the MCU's FFT data memory, implemented as a small multi-port register array
+so four workers can read operands in parallel while `LDR/STR` still provide
+single-word software access.
 
 ## Expected Output
 

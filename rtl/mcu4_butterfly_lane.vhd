@@ -24,8 +24,6 @@ architecture rtl of mcu4_butterfly_lane is
         S_IDLE,
         S_TWIDDLE_RE,
         S_TWIDDLE_RE_SUM,
-        S_TWIDDLE_IM_MUL,
-        S_TWIDDLE_IM,
         S_TWIDDLE_PACK,
         S_BUTTERFLY
     );
@@ -43,7 +41,10 @@ architecture rtl of mcu4_butterfly_lane is
     signal tmp_im    : word_t := (others => '0');
     signal prod_lo_reg : signed(31 downto 0) := (others => '0');
     signal prod_hi_reg : signed(31 downto 0) := (others => '0');
+    signal prod_im_lo_reg : signed(31 downto 0) := (others => '0');
+    signal prod_im_hi_reg : signed(31 downto 0) := (others => '0');
     signal prod_sub_reg : std_logic := '0';
+    signal prod_im_sub_reg : std_logic := '0';
     signal even_reg  : word_t := (others => '0');
     signal odd_reg   : word_t := (others => '0');
     signal done_reg  : std_logic := '0';
@@ -51,6 +52,8 @@ architecture rtl of mcu4_butterfly_lane is
     attribute use_dsp : string;
     attribute use_dsp of prod_lo_reg : signal is "yes";
     attribute use_dsp of prod_hi_reg : signal is "yes";
+    attribute use_dsp of prod_im_lo_reg : signal is "yes";
+    attribute use_dsp of prod_im_hi_reg : signal is "yes";
 
     function sadd16(a : word_t; b : word_t) return word_t is
         variable a_lo17 : signed(16 downto 0);
@@ -143,7 +146,10 @@ begin
                 tmp_im <= (others => '0');
                 prod_lo_reg <= (others => '0');
                 prod_hi_reg <= (others => '0');
+                prod_im_lo_reg <= (others => '0');
+                prod_im_hi_reg <= (others => '0');
                 prod_sub_reg <= '0';
+                prod_im_sub_reg <= '0';
                 even_reg <= (others => '0');
                 odd_reg <= (others => '0');
                 done_reg <= '0';
@@ -170,12 +176,18 @@ begin
                             when MODE_W1 =>
                                 prod_lo_reg <= signed(b_reg(15 downto 0)) * signed(PACK_91(15 downto 0));
                                 prod_hi_reg <= signed(b_reg(31 downto 16)) * signed(PACK_91(31 downto 16));
+                                prod_im_lo_reg <= signed(b_reg(15 downto 0)) * signed(PACK_NEG_91(15 downto 0));
+                                prod_im_hi_reg <= signed(b_reg(31 downto 16)) * signed(PACK_NEG_91(31 downto 16));
                                 prod_sub_reg <= '0';
+                                prod_im_sub_reg <= '1';
                                 state_reg <= S_TWIDDLE_RE_SUM;
                             when others =>
                                 prod_lo_reg <= signed(b_reg(15 downto 0)) * signed(PACK_NEG_91(15 downto 0));
                                 prod_hi_reg <= signed(b_reg(31 downto 16)) * signed(PACK_NEG_91(31 downto 16));
+                                prod_im_lo_reg <= signed(b_reg(15 downto 0)) * signed(PACK_NEG_91(15 downto 0));
+                                prod_im_hi_reg <= signed(b_reg(31 downto 16)) * signed(PACK_NEG_91(31 downto 16));
                                 prod_sub_reg <= '1';
+                                prod_im_sub_reg <= '0';
                                 state_reg <= S_TWIDDLE_RE_SUM;
                         end case;
 
@@ -185,23 +197,10 @@ begin
                         else
                             tmp_re <= std_logic_vector(prod_lo_reg + prod_hi_reg);
                         end if;
-                        state_reg <= S_TWIDDLE_IM_MUL;
-
-                    when S_TWIDDLE_IM_MUL =>
-                        prod_lo_reg <= signed(b_reg(15 downto 0)) * signed(PACK_NEG_91(15 downto 0));
-                        prod_hi_reg <= signed(b_reg(31 downto 16)) * signed(PACK_NEG_91(31 downto 16));
-                        if mode_reg = MODE_W1 then
-                            prod_sub_reg <= '1';
+                        if prod_im_sub_reg = '1' then
+                            tmp_im <= std_logic_vector(prod_im_lo_reg - prod_im_hi_reg);
                         else
-                            prod_sub_reg <= '0';
-                        end if;
-                        state_reg <= S_TWIDDLE_IM;
-
-                    when S_TWIDDLE_IM =>
-                        if prod_sub_reg = '1' then
-                            tmp_im <= std_logic_vector(prod_lo_reg - prod_hi_reg);
-                        else
-                            tmp_im <= std_logic_vector(prod_lo_reg + prod_hi_reg);
+                            tmp_im <= std_logic_vector(prod_im_lo_reg + prod_im_hi_reg);
                         end if;
                         state_reg <= S_TWIDDLE_PACK;
 

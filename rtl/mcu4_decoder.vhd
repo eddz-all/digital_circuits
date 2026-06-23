@@ -36,6 +36,7 @@ architecture rtl of mcu4_decoder is
     constant OPC_AND : std_logic_vector(3 downto 0) := "0000";
     constant OPC_SUB : std_logic_vector(3 downto 0) := "0010";
     constant OPC_ADD : std_logic_vector(3 downto 0) := "0100";
+    constant OPC_CMP : std_logic_vector(3 downto 0) := "1010";
     constant OPC_ORR : std_logic_vector(3 downto 0) := "1100";
     constant OPC_MOV : std_logic_vector(3 downto 0) := "1101";
 begin
@@ -90,6 +91,11 @@ begin
                 when OPC_ADD =>
                     alu_control <= ALU_ADD;
                     reg_write <= cond_ok_v;
+                when OPC_CMP =>
+                    alu_control <= ALU_SUB;
+                    flag_write <= cond_ok_v;
+                    reg_write <= '0';
+                    wa <= (others => '0');
                 when OPC_ORR =>
                     alu_control <= ALU_ORR;
                     reg_write <= cond_ok_v;
@@ -106,6 +112,12 @@ begin
             ra1 <= instr(19 downto 16);
             ra2 <= instr(15 downto 12);
             wa  <= instr(15 downto 12);
+
+            if instr(25) /= '0' or instr(24) /= '1' or instr(23) /= '1'
+               or instr(22) /= '0' or instr(21) /= '0' then
+                illegal_v := '1';
+            end if;
+
             if instr(20) = '1' then
                 mem_read <= cond_ok_v;
                 mem_to_reg <= cond_ok_v;
@@ -116,26 +128,6 @@ begin
         elsif instr(27 downto 25) = "101" then
             branch_taken <= cond_ok_v;
             branch_link <= instr(24) and cond_ok_v;
-        elsif instr(27 downto 26) = "11" then
-            -- Project DSP extension slot, used by the documented FFT kernel body.
-            reg_write <= cond_ok_v;
-            case instr(25 downto 21) is
-                when EXT_BFLY_START =>
-                    alu_control <= ALU_ADD; -- SADD16 lane op
-                when EXT_BFLY_WAIT =>
-                    alu_control <= ALU_PASS;
-                    reg_write <= '0';
-                when "01001" =>
-                    alu_control <= ALU_SUB; -- SSUB16 lane op
-                when "00010" =>
-                    alu_control <= ALU_PASS; -- SMUAD lane op
-                when "00011" =>
-                    alu_control <= ALU_PASS; -- SMUSD lane op
-                when "00101" =>
-                    alu_control <= ALU_MOV; -- PKHBT lane op
-                when others =>
-                    illegal_v := '1';
-            end case;
         else
             illegal_v := '1';
         end if;

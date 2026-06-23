@@ -86,6 +86,7 @@ begin
 
     illegal <= core_illegal;
     done <= '1' when state = S_DONE else '0';
+    cnt_stop <= '1' when state = S_RUN and (core_halted = '1' or core_illegal = '1') else '0';
     core_output_raddr <= std_logic_vector(to_unsigned(dump_idx, 6))
         when state = S_DUMP_WRITE
         else (others => '0');
@@ -112,13 +113,11 @@ begin
                 verify_ram_we <= '0';
                 verify_vector_out <= (others => '0');
                 cnt_start <= '0';
-                cnt_stop <= '0';
             else
                 core_input_we <= '0';
                 test_rom_en <= '0';
                 verify_ram_we <= '0';
                 cnt_start <= '0';
-                cnt_stop <= '0';
 
                 case state is
                     when S_LOAD_REQ =>
@@ -164,7 +163,6 @@ begin
                         verify_ram_addr <= std_logic_vector(to_unsigned(dump_idx, 6));
                         verify_vector_out <= core_output_rdata;
                         if dump_idx = last_output then
-                            cnt_stop <= '1';
                             state <= S_DONE;
                         else
                             dump_idx <= dump_idx + 1;

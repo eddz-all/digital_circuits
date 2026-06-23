@@ -120,15 +120,16 @@ begin
                 cnt_active <= '0';
                 cnt_cycles <= 0;
             else
-                if cnt_start = '1' and cnt_active = '0' then
+                if cnt_active = '0' and cnt_start = '1' then
                     cnt_active <= '1';
                     cnt_cycles <= cnt_cycles + 1;
+                    if cnt_stop = '1' then
+                        cnt_active <= '0';
+                    end if;
+                elsif cnt_active = '1' and cnt_stop = '1' then
+                    cnt_active <= '0';
                 elsif cnt_active = '1' then
                     cnt_cycles <= cnt_cycles + 1;
-                end if;
-
-                if cnt_stop = '1' then
-                    cnt_active <= '0';
                 end if;
             end if;
         end if;
@@ -163,8 +164,9 @@ begin
                 severity failure;
         end loop;
 
-        assert cnt_cycles < 96
-            report "four-core multicycle MCU should finish well under 96 counted cycles"
+        assert cnt_cycles = 35
+            report "four-core multicycle MCU expected 35 instruction cycles, got "
+                & integer'image(cnt_cycles)
             severity failure;
 
         report "mcu_fft_system_tb cnt_cycles " & integer'image(cnt_cycles) severity note;

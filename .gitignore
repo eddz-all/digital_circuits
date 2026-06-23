@@ -1,0 +1,10 @@
+*.o
+e~*.o
+work-obj*.cf
+
+/board_top_tb
+/mcu4_multicycle_core_tb
+/mcu_fft_system_tb
+
+*.ghw
+*.vcd
