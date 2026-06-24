@@ -39,7 +39,10 @@ architecture rtl of mcu4_worker_core is
         S_RUN,
         S_DSP_MUL,
         S_DSP_ACC,
-        S_DSP_WB
+        S_DSP_WB,
+        S_DSP_PAIR_MUL_ACC,
+        S_DSP_PAIR_WB_ACC,
+        S_DSP_PAIR_WB
     );
 
     signal state_reg    : worker_state_t := S_FETCH;
@@ -85,16 +88,31 @@ architecture rtl of mcu4_worker_core is
     signal dsp_sub_acc   : std_logic := '0';
     signal dsp_pc_reg    : natural range 0 to 63 := 0;
     signal dsp_instr_reg : word_t := x"E1A00000";
+    signal dsp2_a         : word_t := (others => '0');
+    signal dsp2_b         : word_t := (others => '0');
+    signal dsp2_prod_lo   : signed(31 downto 0) := (others => '0');
+    signal dsp2_prod_hi   : signed(31 downto 0) := (others => '0');
+    signal dsp2_sum       : word_t := (others => '0');
+    signal dsp2_diff      : word_t := (others => '0');
+    signal dsp2_rd        : natural range 0 to 15 := 0;
+    signal dsp2_sub       : std_logic := '0';
+    signal dsp2_sub_acc   : std_logic := '0';
 
     attribute keep : string;
     attribute dont_touch : string;
     attribute use_dsp : string;
     attribute keep of dsp_sub : signal is "true";
     attribute keep of dsp_sub_acc : signal is "true";
+    attribute keep of dsp2_sub : signal is "true";
+    attribute keep of dsp2_sub_acc : signal is "true";
     attribute dont_touch of dsp_sub : signal is "true";
     attribute dont_touch of dsp_sub_acc : signal is "true";
+    attribute dont_touch of dsp2_sub : signal is "true";
+    attribute dont_touch of dsp2_sub_acc : signal is "true";
     attribute use_dsp of dsp_sum : signal is "no";
     attribute use_dsp of dsp_diff : signal is "no";
+    attribute use_dsp of dsp2_sum : signal is "no";
+    attribute use_dsp of dsp2_diff : signal is "no";
 
     function sadd16(a : word_t; b : word_t) return word_t is
         variable a_lo17 : signed(16 downto 0);
@@ -145,6 +163,11 @@ architecture rtl of mcu4_worker_core is
         lo17 := a_lo17 + b_hi17;
         hi17 := a_hi17 - b_lo17;
         return std_logic_vector(hi17(15 downto 0)) & std_logic_vector(lo17(15 downto 0));
+    end function;
+
+    function is_dsp_op(op_value : worker_op_t) return boolean is
+    begin
+        return op_value = WOP_SMUAD or op_value = WOP_SMUSD;
     end function;
 
     function clamp_pc(value : integer) return natural is
@@ -469,7 +492,26 @@ begin
                         dsp_prod_lo <= signed(dsp_a(15 downto 0)) * signed(dsp_b(15 downto 0));
                         dsp_prod_hi <= signed(dsp_a(31 downto 16)) * signed(dsp_b(31 downto 16));
                         dsp_sub_acc <= dsp_sub;
-                        state_reg <= S_DSP_ACC;
+                        -- Pair only independent back-to-back DSP ops; writes still retire in order.
+                        if is_dsp_op(exec_op)
+                           and exec_illegal = '0'
+                           and exec_rn /= dsp_rd
+                           and exec_rm /= dsp_rd
+                           and exec_rd /= dsp_rd then
+                            dsp2_a <= exec_rn_data;
+                            dsp2_b <= exec_rm_data;
+                            dsp2_rd <= exec_rd;
+                            if exec_op = WOP_SMUSD then
+                                dsp2_sub <= '1';
+                            else
+                                dsp2_sub <= '0';
+                            end if;
+                            load_exec_from_decode(false, 0, (others => '0'));
+                            fetch_into_decode;
+                            state_reg <= S_DSP_PAIR_MUL_ACC;
+                        else
+                            state_reg <= S_DSP_ACC;
+                        end if;
 
                     when S_DSP_ACC =>
                         dsp_sum <= std_logic_vector(dsp_prod_lo + dsp_prod_hi);
@@ -487,6 +529,40 @@ begin
                         regs(dsp_rd) <= wb_data;
                         refresh_exec_operands(wb_valid, wb_rd, wb_data);
                         state_reg <= S_RUN;
+
+                    when S_DSP_PAIR_MUL_ACC =>
+                        dsp_sum <= std_logic_vector(dsp_prod_lo + dsp_prod_hi);
+                        dsp_diff <= std_logic_vector(dsp_prod_lo - dsp_prod_hi);
+                        dsp2_prod_lo <= signed(dsp2_a(15 downto 0)) * signed(dsp2_b(15 downto 0));
+                        dsp2_prod_hi <= signed(dsp2_a(31 downto 16)) * signed(dsp2_b(31 downto 16));
+                        dsp2_sub_acc <= dsp2_sub;
+                        state_reg <= S_DSP_PAIR_WB_ACC;
+
+                    when S_DSP_PAIR_WB_ACC =>
+                        if dsp_sub_acc = '1' then
+                            wb_data := dsp_diff;
+                        else
+                            wb_data := dsp_sum;
+                        end if;
+                        wb_valid := true;
+                        wb_rd := dsp_rd;
+                        regs(dsp_rd) <= wb_data;
+                        refresh_exec_operands(wb_valid, wb_rd, wb_data);
+                        dsp2_sum <= std_logic_vector(dsp2_prod_lo + dsp2_prod_hi);
+                        dsp2_diff <= std_logic_vector(dsp2_prod_lo - dsp2_prod_hi);
+                        state_reg <= S_DSP_PAIR_WB;
+
+                    when S_DSP_PAIR_WB =>
+                        if dsp2_sub_acc = '1' then
+                            wb_data := dsp2_diff;
+                        else
+                            wb_data := dsp2_sum;
+                        end if;
+                        wb_valid := true;
+                        wb_rd := dsp2_rd;
+                        regs(dsp2_rd) <= wb_data;
+                        refresh_exec_operands(wb_valid, wb_rd, wb_data);
+                        state_reg <= S_RUN;
                 end case;
             end if;
         end if;
@@ -496,6 +572,9 @@ begin
     illegal <= illegal_reg;
     pc_debug <= std_logic_vector(to_unsigned(dsp_pc_reg * 4, 32))
         when state_reg = S_DSP_MUL or state_reg = S_DSP_ACC or state_reg = S_DSP_WB
+             or state_reg = S_DSP_PAIR_MUL_ACC
+             or state_reg = S_DSP_PAIR_WB_ACC
+             or state_reg = S_DSP_PAIR_WB
         else std_logic_vector(to_unsigned(exec_pc_reg * 4, 32))
         when state_reg = S_RUN
         else std_logic_vector(to_unsigned(instr_pc_reg * 4, 32))
@@ -503,6 +582,9 @@ begin
         else std_logic_vector(to_unsigned(pc_fetch_reg * 4, 32));
     instr_debug <= dsp_instr_reg
         when state_reg = S_DSP_MUL or state_reg = S_DSP_ACC or state_reg = S_DSP_WB
+             or state_reg = S_DSP_PAIR_MUL_ACC
+             or state_reg = S_DSP_PAIR_WB_ACC
+             or state_reg = S_DSP_PAIR_WB
         else exec_instr
         when state_reg = S_RUN
         else instr_reg;
