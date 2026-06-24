@@ -122,19 +122,20 @@ begin
                 end if;
             end if;
 
-            if rst = '0' then
-                for i in 0 to 3 loop
-                    if worker_buf_a_we(i) = '1' then
-                        waddr := to_integer(unsigned(worker_buf_a_waddr(i)));
-                        buf_a(waddr) <= worker_buf_a_wdata(i);
-                    end if;
+            -- Worker write enables are already suppressed outside S_RUN. Avoid
+            -- using the top-level reset as a data-path gate for every buffer
+            -- bit; that reset fanout was one of the 200 MHz critical paths.
+            for i in 0 to 3 loop
+                if worker_buf_a_we(i) = '1' then
+                    waddr := to_integer(unsigned(worker_buf_a_waddr(i)));
+                    buf_a(waddr) <= worker_buf_a_wdata(i);
+                end if;
 
-                    if worker_buf_b_we(i) = '1' then
-                        waddr := to_integer(unsigned(worker_buf_b_waddr(i)));
-                        buf_b(waddr) <= worker_buf_b_wdata(i);
-                    end if;
-                end loop;
-            end if;
+                if worker_buf_b_we(i) = '1' then
+                    waddr := to_integer(unsigned(worker_buf_b_waddr(i)));
+                    buf_b(waddr) <= worker_buf_b_wdata(i);
+                end if;
+            end loop;
         end if;
     end process;
 
