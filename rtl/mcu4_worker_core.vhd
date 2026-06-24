@@ -48,7 +48,6 @@ architecture rtl of mcu4_worker_core is
     signal state_reg    : worker_state_t := S_FETCH;
     signal pc_fetch_reg : natural range 0 to 63 := 0;
     signal pc_index     : std_logic_vector(5 downto 0) := (others => '0');
-    signal dec_pc_index : std_logic_vector(5 downto 0) := (others => '0');
     signal instr_reg    : word_t := x"E1A00000";
     signal instr_pc_reg : natural range 0 to 63 := 0;
     signal regs        : reg_file_t := (others => (others => '0'));
@@ -56,6 +55,14 @@ architecture rtl of mcu4_worker_core is
     signal illegal_reg : std_logic := '0';
 
     signal instr_word  : word_t := (others => '0');
+    signal fetch_dec_op      : worker_op_t := WOP_NOP;
+    signal fetch_dec_rd      : natural range 0 to 15 := 0;
+    signal fetch_dec_rn      : natural range 0 to 15 := 0;
+    signal fetch_dec_rm      : natural range 0 to 15 := 0;
+    signal fetch_dec_imm     : integer range -4096 to 4095 := 0;
+    signal fetch_dec_idx     : natural range 0 to 7 := 0;
+    signal fetch_dec_illegal : std_logic := '0';
+
     signal dec_op      : worker_op_t := WOP_NOP;
     signal dec_rd      : natural range 0 to 15 := 0;
     signal dec_rn      : natural range 0 to 15 := 0;
@@ -200,7 +207,6 @@ architecture rtl of mcu4_worker_core is
     end function;
 begin
     pc_index <= std_logic_vector(to_unsigned(pc_fetch_reg, 6));
-    dec_pc_index <= std_logic_vector(to_unsigned(instr_pc_reg, 6));
 
     u_instr_rom : entity work.mcu4_worker_instr_rom
         generic map (
@@ -214,15 +220,15 @@ begin
 
     u_decoder : entity work.mcu4_worker_decoder
         port map (
-            instr_word => instr_reg,
-            pc_index   => dec_pc_index,
-            op         => dec_op,
-            rd         => dec_rd,
-            rn         => dec_rn,
-            rm         => dec_rm,
-            imm        => dec_imm,
-            idx        => dec_idx,
-            illegal    => dec_illegal
+            instr_word => instr_word,
+            pc_index   => pc_index,
+            op         => fetch_dec_op,
+            rd         => fetch_dec_rd,
+            rn         => fetch_dec_rn,
+            rm         => fetch_dec_rm,
+            imm        => fetch_dec_imm,
+            idx        => fetch_dec_idx,
+            illegal    => fetch_dec_illegal
         );
 
     buf_a_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
@@ -298,6 +304,60 @@ begin
             exec_rd_data <= rd_value;
         end procedure;
 
+        procedure load_exec_from_decode_dual(
+            constant forward_a_valid : in boolean;
+            constant forward_a_rd    : in natural range 0 to 15;
+            constant forward_a_data  : in word_t;
+            constant forward_b_valid : in boolean;
+            constant forward_b_rd    : in natural range 0 to 15;
+            constant forward_b_data  : in word_t
+        ) is
+            variable rn_value : word_t;
+            variable rm_value : word_t;
+            variable rd_value : word_t;
+        begin
+            rn_value := regs(dec_rn);
+            rm_value := regs(dec_rm);
+            rd_value := regs(dec_rd);
+
+            if forward_a_valid then
+                if forward_a_rd = dec_rn then
+                    rn_value := forward_a_data;
+                end if;
+                if forward_a_rd = dec_rm then
+                    rm_value := forward_a_data;
+                end if;
+                if forward_a_rd = dec_rd then
+                    rd_value := forward_a_data;
+                end if;
+            end if;
+
+            if forward_b_valid then
+                if forward_b_rd = dec_rn then
+                    rn_value := forward_b_data;
+                end if;
+                if forward_b_rd = dec_rm then
+                    rm_value := forward_b_data;
+                end if;
+                if forward_b_rd = dec_rd then
+                    rd_value := forward_b_data;
+                end if;
+            end if;
+
+            exec_op <= dec_op;
+            exec_rd <= dec_rd;
+            exec_rn <= dec_rn;
+            exec_rm <= dec_rm;
+            exec_imm <= dec_imm;
+            exec_idx <= dec_idx;
+            exec_illegal <= dec_illegal;
+            exec_instr <= instr_reg;
+            exec_pc_reg <= instr_pc_reg;
+            exec_rn_data <= rn_value;
+            exec_rm_data <= rm_value;
+            exec_rd_data <= rd_value;
+        end procedure;
+
         procedure refresh_exec_operands(
             constant forward_valid : in boolean;
             constant forward_rd    : in natural range 0 to 15;
@@ -332,6 +392,13 @@ begin
         begin
             instr_reg <= instr_word;
             instr_pc_reg <= pc_fetch_reg;
+            dec_op <= fetch_dec_op;
+            dec_rd <= fetch_dec_rd;
+            dec_rn <= fetch_dec_rn;
+            dec_rm <= fetch_dec_rm;
+            dec_imm <= fetch_dec_imm;
+            dec_idx <= fetch_dec_idx;
+            dec_illegal <= fetch_dec_illegal;
             pc_fetch_reg <= next_seq_pc(pc_fetch_reg);
         end procedure;
     begin
@@ -475,6 +542,13 @@ begin
                                 exec_pc_reg <= branch_target;
                                 instr_reg <= x"E1A00000";
                                 instr_pc_reg <= branch_target;
+                                dec_op <= WOP_NOP;
+                                dec_rd <= 0;
+                                dec_rn <= 0;
+                                dec_rm <= 0;
+                                dec_imm <= 0;
+                                dec_idx <= 0;
+                                dec_illegal <= '0';
                                 pc_fetch_reg <= branch_target;
                                 state_reg <= S_FETCH;
                             else
@@ -558,10 +632,27 @@ begin
                         else
                             wb_data := dsp2_sum;
                         end if;
-                        wb_valid := true;
-                        wb_rd := dsp2_rd;
-                        regs(dsp2_rd) <= wb_data;
-                        refresh_exec_operands(wb_valid, wb_rd, wb_data);
+
+                        -- The common FFT DSP pair is followed by ASR of the
+                        -- first result; retire it with the second DSP writeback.
+                        if exec_op = WOP_ASR
+                           and exec_illegal = '0'
+                           and exec_rn = dsp_rd
+                           and exec_rd /= dsp2_rd then
+                            res := std_logic_vector(shift_right(signed(exec_rn_data), exec_imm));
+                            regs(dsp2_rd) <= wb_data;
+                            regs(exec_rd) <= res;
+                            load_exec_from_decode_dual(
+                                true, dsp2_rd, wb_data,
+                                true, exec_rd, res
+                            );
+                            fetch_into_decode;
+                        else
+                            wb_valid := true;
+                            wb_rd := dsp2_rd;
+                            regs(dsp2_rd) <= wb_data;
+                            refresh_exec_operands(wb_valid, wb_rd, wb_data);
+                        end if;
                         state_reg <= S_RUN;
                 end case;
             end if;
