@@ -66,6 +66,14 @@ architecture rtl of mcu4_worker_core is
     );
 
     signal state_reg    : worker_state_t := S_FETCH;
+    signal exec_state_reg : worker_state_t := S_FETCH;
+    signal run_ctrl_rf    : std_logic := '0';
+    signal run_ctrl_exec  : std_logic := '0';
+    signal run_ctrl_mem   : std_logic := '0';
+    signal run_ctrl_pair  : std_logic := '0';
+    signal run_ctrl_debug : std_logic := '0';
+    signal decode_ctrl_debug : std_logic := '0';
+    signal dsp_ctrl_debug    : std_logic := '0';
     signal pc_fetch_reg : natural range 0 to 63 := 0;
     signal pc_index     : std_logic_vector(5 downto 0) := (others => '0');
     signal pc_pair_index : std_logic_vector(5 downto 0) := (others => '0');
@@ -155,9 +163,34 @@ architecture rtl of mcu4_worker_core is
     attribute fsm_encoding : string;
     attribute max_fanout : integer;
     attribute fsm_encoding of state_reg : signal is "one_hot";
+    attribute fsm_encoding of exec_state_reg : signal is "one_hot";
     attribute max_fanout of state_reg : signal is 64;
+    attribute max_fanout of exec_state_reg : signal is 64;
+    attribute max_fanout of run_ctrl_rf : signal is 64;
+    attribute max_fanout of run_ctrl_exec : signal is 64;
+    attribute max_fanout of run_ctrl_mem : signal is 32;
+    attribute max_fanout of run_ctrl_pair : signal is 32;
+    attribute max_fanout of run_ctrl_debug : signal is 32;
+    attribute max_fanout of decode_ctrl_debug : signal is 32;
+    attribute max_fanout of dsp_ctrl_debug : signal is 32;
     attribute max_fanout of rf_wb_we : signal is 32;
     attribute max_fanout of rf_wb2_we : signal is 32;
+    attribute keep of exec_state_reg : signal is "true";
+    attribute keep of run_ctrl_rf : signal is "true";
+    attribute keep of run_ctrl_exec : signal is "true";
+    attribute keep of run_ctrl_mem : signal is "true";
+    attribute keep of run_ctrl_pair : signal is "true";
+    attribute keep of run_ctrl_debug : signal is "true";
+    attribute keep of decode_ctrl_debug : signal is "true";
+    attribute keep of dsp_ctrl_debug : signal is "true";
+    attribute dont_touch of exec_state_reg : signal is "true";
+    attribute dont_touch of run_ctrl_rf : signal is "true";
+    attribute dont_touch of run_ctrl_exec : signal is "true";
+    attribute dont_touch of run_ctrl_mem : signal is "true";
+    attribute dont_touch of run_ctrl_pair : signal is "true";
+    attribute dont_touch of run_ctrl_debug : signal is "true";
+    attribute dont_touch of decode_ctrl_debug : signal is "true";
+    attribute dont_touch of dsp_ctrl_debug : signal is "true";
     attribute keep of dsp_sub : signal is "true";
     attribute keep of dsp_sub_acc : signal is "true";
     attribute keep of dsp2_sub : signal is "true";
@@ -229,6 +262,16 @@ architecture rtl of mcu4_worker_core is
     function is_dsp_op(op_value : worker_op_t) return boolean is
     begin
         return op_value = WOP_SMUAD or op_value = WOP_SMUSD;
+    end function;
+
+    function is_dsp_state(state_value : worker_state_t) return boolean is
+    begin
+        return state_value = S_DSP_MUL
+            or state_value = S_DSP_ACC
+            or state_value = S_DSP_WB
+            or state_value = S_DSP_PAIR_MUL_ACC
+            or state_value = S_DSP_PAIR_WB_ACC
+            or state_value = S_DSP_PAIR_WB;
     end function;
 
     function clamp_pc(value : integer) return natural is
@@ -366,21 +409,21 @@ begin
         );
 
     buf_a_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
-        when state_reg = S_RUN and (exec_op = WOP_LDR_A or exec_op = WOP_STR_A)
+        when run_ctrl_mem = '1' and (exec_op = WOP_LDR_A or exec_op = WOP_STR_A)
         else (others => '0');
     buf_a_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
-        when state_reg = S_RUN and exec_pair_kind = WPAIR_LDR_A
+        when run_ctrl_pair = '1' and exec_pair_kind = WPAIR_LDR_A
         else (others => '0');
     buf_b_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
-        when state_reg = S_RUN and (exec_op = WOP_LDR_B or exec_op = WOP_STR_B)
+        when run_ctrl_mem = '1' and (exec_op = WOP_LDR_B or exec_op = WOP_STR_B)
         else (others => '0');
     buf_b_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
-        when state_reg = S_RUN and exec_pair_kind = WPAIR_LDR_B
+        when run_ctrl_pair = '1' and exec_pair_kind = WPAIR_LDR_B
         else (others => '0');
 
     buf_a_we <= '1' when halted_reg = '0'
                          and illegal_reg = '0'
-                         and state_reg = S_RUN
+                         and run_ctrl_mem = '1'
                          and exec_illegal = '0'
                          and exec_op = WOP_STR_A
                 else '0';
@@ -388,7 +431,7 @@ begin
     buf_a_wdata <= exec_rd_data;
     buf_a_we2 <= '1' when halted_reg = '0'
                           and illegal_reg = '0'
-                          and state_reg = S_RUN
+                          and run_ctrl_pair = '1'
                           and exec_illegal = '0'
                           and exec_pair_kind = WPAIR_STR_A
                  else '0';
@@ -397,7 +440,7 @@ begin
 
     buf_b_we <= '1' when halted_reg = '0'
                          and illegal_reg = '0'
-                         and state_reg = S_RUN
+                         and run_ctrl_mem = '1'
                          and exec_illegal = '0'
                          and exec_op = WOP_STR_B
                 else '0';
@@ -405,7 +448,7 @@ begin
     buf_b_wdata <= exec_rd_data;
     buf_b_we2 <= '1' when halted_reg = '0'
                           and illegal_reg = '0'
-                          and state_reg = S_RUN
+                          and run_ctrl_pair = '1'
                           and exec_illegal = '0'
                           and exec_pair_kind = WPAIR_STR_B
                  else '0';
@@ -695,6 +738,39 @@ begin
             );
             pc_fetch_reg <= next_seq_pc(pc_fetch_reg);
         end procedure;
+
+        procedure set_worker_state(
+            constant next_state : in worker_state_t
+        ) is
+        begin
+            state_reg <= next_state;
+            exec_state_reg <= next_state;
+            if next_state = S_RUN then
+                run_ctrl_rf <= '1';
+                run_ctrl_exec <= '1';
+                run_ctrl_mem <= '1';
+                run_ctrl_pair <= '1';
+                run_ctrl_debug <= '1';
+            else
+                run_ctrl_rf <= '0';
+                run_ctrl_exec <= '0';
+                run_ctrl_mem <= '0';
+                run_ctrl_pair <= '0';
+                run_ctrl_debug <= '0';
+            end if;
+
+            if next_state = S_DECODE then
+                decode_ctrl_debug <= '1';
+            else
+                decode_ctrl_debug <= '0';
+            end if;
+
+            if is_dsp_state(next_state) then
+                dsp_ctrl_debug <= '1';
+            else
+                dsp_ctrl_debug <= '0';
+            end if;
+        end procedure;
     begin
         if rising_edge(clk) then
             wb_valid := false;
@@ -714,7 +790,7 @@ begin
             rf_next2_data := (others => '0');
 
             if rst = '1' then
-                state_reg <= S_FETCH;
+                set_worker_state(S_FETCH);
                 pc_fetch_reg <= 0;
                 halted_reg <= '0';
                 illegal_reg <= '0';
@@ -743,13 +819,13 @@ begin
                 rf_wb2_we <= (others => '0');
 
                 if halted_reg = '0' and illegal_reg = '0' then
-                    case state_reg is
+                    case exec_state_reg is
                     when S_FETCH =>
                         fetch_into_decode(
                             false, 0, (others => '0'),
                             false, 0, (others => '0')
                         );
-                        state_reg <= S_DECODE;
+                        set_worker_state(S_DECODE);
 
                     when S_DECODE =>
                         load_exec_from_decode(false, 0, (others => '0'));
@@ -757,9 +833,10 @@ begin
                             false, 0, (others => '0'),
                             false, 0, (others => '0')
                         );
-                        state_reg <= S_RUN;
+                        set_worker_state(S_RUN);
 
                     when S_RUN =>
+                        if run_ctrl_exec = '1' then
                         if exec_illegal = '1' then
                             illegal_reg <= '1';
                             halted_reg <= '1';
@@ -808,13 +885,13 @@ begin
                             end case;
 
                             if pair_valid then
-                                if wb_valid then
+                                if wb_valid and run_ctrl_rf = '1' then
                                     rf_next_valid := true;
                                     rf_next_we(wb_rd) := '1';
                                     rf_next_rd := wb_rd;
                                     rf_next_data := wb_data;
                                 end if;
-                                if wb2_valid then
+                                if wb2_valid and run_ctrl_rf = '1' then
                                     rf_next2_valid := true;
                                     rf_next2_we(wb2_rd) := '1';
                                     rf_next2_rd := wb2_rd;
@@ -824,7 +901,7 @@ begin
                                     wb_valid, wb_rd, wb_data,
                                     wb2_valid, wb2_rd, wb2_data
                                 );
-                                state_reg <= S_RUN;
+                                set_worker_state(S_RUN);
                             else
                                 case exec_op is
                                     when WOP_NOP =>
@@ -924,7 +1001,7 @@ begin
                                         halted_reg <= '1';
                                 end case;
 
-                                if wb_valid then
+                                if wb_valid and run_ctrl_rf = '1' then
                                     rf_next_valid := true;
                                     rf_next_we(wb_rd) := '1';
                                     rf_next_rd := wb_rd;
@@ -950,7 +1027,7 @@ begin
                                     exec_pair_kind <= WPAIR_NONE;
                                     dsp_pair_ready <= '0';
                                     pc_fetch_reg <= branch_target;
-                                    state_reg <= S_FETCH;
+                                    set_worker_state(S_FETCH);
                                 else
                                     load_exec_from_decode(wb_valid, wb_rd, wb_data);
                                     fetch_into_decode(
@@ -958,12 +1035,13 @@ begin
                                         false, 0, (others => '0')
                                     );
                                     if start_dsp then
-                                        state_reg <= S_DSP_MUL;
+                                        set_worker_state(S_DSP_MUL);
                                     else
-                                        state_reg <= S_RUN;
+                                        set_worker_state(S_RUN);
                                     end if;
                                 end if;
                             end if;
+                        end if;
                         end if;
 
                     when S_DSP_MUL =>
@@ -986,15 +1064,15 @@ begin
                                 false, 0, (others => '0'),
                                 false, 0, (others => '0')
                             );
-                            state_reg <= S_DSP_PAIR_MUL_ACC;
+                            set_worker_state(S_DSP_PAIR_MUL_ACC);
                         else
-                            state_reg <= S_DSP_ACC;
+                            set_worker_state(S_DSP_ACC);
                         end if;
 
                     when S_DSP_ACC =>
                         dsp_sum <= std_logic_vector(dsp_prod_lo + dsp_prod_hi);
                         dsp_diff <= std_logic_vector(dsp_prod_lo - dsp_prod_hi);
-                        state_reg <= S_DSP_WB;
+                        set_worker_state(S_DSP_WB);
 
                     when S_DSP_WB =>
                         if dsp_sub_acc = '1' then
@@ -1009,7 +1087,7 @@ begin
                         rf_next_rd := wb_rd;
                         rf_next_data := wb_data;
                         refresh_exec_operands(wb_valid, wb_rd, wb_data);
-                        state_reg <= S_RUN;
+                        set_worker_state(S_RUN);
 
                     when S_DSP_PAIR_MUL_ACC =>
                         dsp_sum <= std_logic_vector(dsp_prod_lo + dsp_prod_hi);
@@ -1017,7 +1095,7 @@ begin
                         dsp2_prod_lo <= signed(dsp2_a(15 downto 0)) * signed(dsp2_b(15 downto 0));
                         dsp2_prod_hi <= signed(dsp2_a(31 downto 16)) * signed(dsp2_b(31 downto 16));
                         dsp2_sub_acc <= dsp2_sub;
-                        state_reg <= S_DSP_PAIR_WB_ACC;
+                        set_worker_state(S_DSP_PAIR_WB_ACC);
 
                     when S_DSP_PAIR_WB_ACC =>
                         if dsp_sub_acc = '1' then
@@ -1044,7 +1122,7 @@ begin
                         end if;
                         dsp2_sum <= std_logic_vector(dsp2_prod_lo + dsp2_prod_hi);
                         dsp2_diff <= std_logic_vector(dsp2_prod_lo - dsp2_prod_hi);
-                        state_reg <= S_DSP_PAIR_WB;
+                        set_worker_state(S_DSP_PAIR_WB);
 
                     when S_DSP_PAIR_WB =>
                         if dsp2_sub_acc = '1' then
@@ -1082,7 +1160,7 @@ begin
                             rf_next_data := wb_data;
                             refresh_exec_operands(wb_valid, wb_rd, wb_data);
                         end if;
-                        state_reg <= S_RUN;
+                        set_worker_state(S_RUN);
                     end case;
                 end if;
 
@@ -1106,21 +1184,15 @@ begin
     halted <= halted_reg;
     illegal <= illegal_reg;
     pc_debug <= std_logic_vector(to_unsigned(dsp_pc_reg * 4, 32))
-        when state_reg = S_DSP_MUL or state_reg = S_DSP_ACC or state_reg = S_DSP_WB
-             or state_reg = S_DSP_PAIR_MUL_ACC
-             or state_reg = S_DSP_PAIR_WB_ACC
-             or state_reg = S_DSP_PAIR_WB
+        when dsp_ctrl_debug = '1'
         else std_logic_vector(to_unsigned(exec_pc_reg * 4, 32))
-        when state_reg = S_RUN
+        when run_ctrl_debug = '1'
         else std_logic_vector(to_unsigned(instr_pc_reg * 4, 32))
-        when state_reg = S_DECODE
+        when decode_ctrl_debug = '1'
         else std_logic_vector(to_unsigned(pc_fetch_reg * 4, 32));
     instr_debug <= dsp_instr_reg
-        when state_reg = S_DSP_MUL or state_reg = S_DSP_ACC or state_reg = S_DSP_WB
-             or state_reg = S_DSP_PAIR_MUL_ACC
-             or state_reg = S_DSP_PAIR_WB_ACC
-             or state_reg = S_DSP_PAIR_WB
+        when dsp_ctrl_debug = '1'
         else exec_instr
-        when state_reg = S_RUN
+        when run_ctrl_debug = '1'
         else instr_reg;
 end architecture rtl;
