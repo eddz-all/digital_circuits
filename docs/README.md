@@ -18,14 +18,14 @@ project.
 The system-level GHDL test passes with:
 
 ```text
-mcu_fft_system_tb cnt_cycles 34
+mcu_fft_system_tb cnt_cycles 32
 mcu_fft_system_tb passed
 ```
 
 So the expected board counter is:
 
 ```text
-cnt_test = 00022
+cnt_test = 00020
 ```
 
 ## File Map
@@ -107,9 +107,11 @@ MOV, LDR, STR, SADD16, SSUB16, SSAX, SMUAD, SMUSD, ASR, PKHBT
 
 For timing, normal straight-line instructions keep one-instruction-per-cycle
 throughput after fetch/decode fill. `SMUAD` and `SMUSD` are internally split
-into operand latch, DSP multiply, and add/sub writeback stages, so the visible
-instruction stream remains ARM/ARM-DSP style while the critical path is much
-shorter for high-frequency implementation.
+into multiply, accumulate, and writeback stages. Back-to-back independent DSP
+instructions can use a local pair pipeline, and the common following `ASR` can
+retire with the second DSP writeback. The visible instruction stream remains
+ARM/ARM-DSP style; these are micro-architectural scheduling optimizations, not
+FFT-specific opcodes.
 
 The fixed twiddle constants `91/-91` are immediate constants in the worker
 program. `+91/+91` is built with `PKHBT`, and `-91/-91` is built with
@@ -131,6 +133,18 @@ Signed decimal:
 -3456 -6134 6784 -350 -8064 5878 -6528 -1442
 -5888 12668 11264 8076 2816 3204 5632 -10124
 ```
+
+## Assembly Listing
+
+The human-readable worker program is committed in:
+
+```text
+asm/mcu4_fft_workers_cnt32.s
+```
+
+The file is a documentation source matching `rtl/mcu4_worker_instr_rom.vhd`.
+Vivado still uses the VHDL ROM encoders directly; no external assembler is
+required for this project.
 
 ## Local Simulation
 

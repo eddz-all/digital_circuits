@@ -111,7 +111,7 @@ mcu_fft_system_tb
 Expected note:
 
 ```text
-mcu_fft_system_tb cnt_cycles 34
+mcu_fft_system_tb cnt_cycles 32
 mcu_fft_system_tb passed
 ```
 
@@ -147,7 +147,7 @@ This testbench provides simple simulation stubs for `clk_wiz_0`, `test_ROM`,
 Counter:
 
 ```text
-cnt_test = 00022
+cnt_test = 00020
 ```
 
 Readback values:

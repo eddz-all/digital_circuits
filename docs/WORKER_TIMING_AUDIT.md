@@ -7,8 +7,8 @@ This audit records the safe optimization applied to the four-worker FFT program.
 The counted instruction window is expected to be:
 
 ```text
-mcu_fft_system_tb cnt_cycles 34
-cnt_test = 00022
+mcu_fft_system_tb cnt_cycles 32
+cnt_test = 00020
 ```
 
 Input loading from `test_ROM[128..143]` and output dumping to `verify_RAM[0..15]`
@@ -17,16 +17,18 @@ remain outside the counted instruction window.
 The worker path is now explicit:
 
 ```text
-fetch PC -> 32-bit instruction ROM -> instruction register
-current instruction -> decoder -> decode register -> execute
+fetch PC -> 32-bit instruction ROM -> fetch-side decoder
+fetch decode register -> execute register -> execute
 ```
 
-The instruction and decode registers break the previous PC-to-execute and
-instruction-to-execute critical paths. Straight-line code still overlaps fetch,
-decode and execute after pipeline fill. `SMUAD` and `SMUSD` then use extra
-internal DSP stages to avoid a two-DSP plus writeback path in a single clock.
+The fetch-side decode registers reduce the instruction-to-operand critical path.
+Straight-line code still overlaps fetch, decode and execute after pipeline fill.
+`SMUAD` and `SMUSD` use extra internal DSP stages to avoid a two-DSP plus
+writeback path in a single clock. Independent back-to-back DSP instructions can
+enter a local pair pipeline, and the common following `ASR` can retire with the
+second DSP writeback.
 
-## Safe Optimization
+## Safe Optimizations
 
 The original twiddle prologue built `-91/-91` with a scalar subtract followed by
 `PKHBT`. The current prologue builds packed `+91/+91` first, then uses standard
@@ -41,6 +43,17 @@ SSUB16 r4, r0, r3          ; 0xFFA5FFA5
 
 This removes one counted instruction without adding a custom opcode, hiding a
 constant in hardware, or changing `LDR`, `STR`, or `MOV` semantics.
+
+The later timing/count optimizations also stay inside the visible ARM/ARM-DSP
+program model:
+
+```text
+DSP pair pipeline: overlaps independent SMUAD/SMUSD execution.
+ASR overlap: retires the existing ASR instruction with the second DSP writeback.
+```
+
+They do not add a new instruction, change the ROM program, or implement a
+butterfly-specific accelerator.
 
 ## Remaining Bottleneck
 
