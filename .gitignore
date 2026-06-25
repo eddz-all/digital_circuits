@@ -4,7 +4,11 @@ work-obj*.cf
 
 /board_top_tb
 /mcu4_multicycle_core_tb
+/mcu4_worker_core_min_arm_tb
 /mcu_fft_system_tb
 
 *.ghw
 *.vcd
+
+.dir-locals.el
+vhdl_ls.toml
