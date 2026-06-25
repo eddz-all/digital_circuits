@@ -340,11 +340,12 @@ architecture rtl of mcu4_worker_instr_rom is
             when 10 => return enc_str_b(9, 0);
             when 11 => return enc_branch(13, 11, false);
             when 12 => return enc_str_b(1, 1);
-            when 13 => return enc_branch(16, 13, true);
-            when 14 => return enc_str_b(10, 2);
-            when 15 => return x"EAFFFFFE";
-            when 16 => return enc_alu(WOP_ADD, 10, 9, 4);
-            when 17 => return enc_mov_reg(REG_PC, REG_LR);
+            when 13 => return enc_branch(17, 13, true);
+            when 14 => return enc_str_b(1, 1);
+            when 15 => return enc_str_b(10, 2);
+            when 16 => return x"EAFFFFFE";
+            when 17 => return enc_alu(WOP_ADD, 10, 9, 4);
+            when 18 => return enc_mov_reg(REG_PC, REG_LR);
             when others => return x"EAFFFFFE";
         end case;
     end function;

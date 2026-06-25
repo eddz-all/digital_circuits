@@ -7,8 +7,8 @@ This audit records the safe optimization applied to the four-worker FFT program.
 The counted instruction window is expected to be:
 
 ```text
-mcu_fft_system_tb cnt_cycles 25
-cnt_test = 00019
+mcu_fft_system_tb cnt_cycles 22
+cnt_test = 00016
 ```
 
 Input loading from `test_ROM[128..143]` and output dumping to `verify_RAM[0..15]`
@@ -26,8 +26,15 @@ Straight-line code still overlaps fetch, decode and execute after pipeline fill.
 `SMUAD` and `SMUSD` use extra internal DSP stages to avoid a two-DSP plus
 writeback path in a single clock. Independent back-to-back DSP instructions can
 enter a local pair pipeline, and the common following `ASR` can retire with the
-second DSP writeback. Safe adjacent `MOV/MOV`, `LDR/LDR`, and `SADD16/SSUB16`
-pairs can also retire together.
+second DSP writeback. Safe adjacent `MOV/MOV`, `LDR/LDR`, `STR/STR`, and
+`SADD16/SSUB16` pairs can also retire together.
+The paired `STR/STR` path stages the second store source operand in the decode
+register, cutting the direct register-file-to-second-buffer-write-data path.
+Dual-issue eligibility is also staged as a pair-kind register, so `S_RUN` no
+longer has to recompute opcode, register, and buffer-address match conditions
+before selecting the paired retire path.
+For the DSP pair tail, the overlapped `ASR` result is precomputed in
+`S_DSP_PAIR_WB_ACC` and staged for use in `S_DSP_PAIR_WB`.
 
 ## Safe Optimizations
 
@@ -49,9 +56,12 @@ The later timing/count optimizations also stay inside the visible ARM/ARM-DSP
 program model:
 
 ```text
-Local dual issue: retires safe MOV/MOV, LDR/LDR, and SADD16/SSUB16 pairs together.
+Local dual issue: retires safe MOV/MOV, LDR/LDR, STR/STR, and SADD16/SSUB16 pairs together.
 DSP pair pipeline: overlaps independent SMUAD/SMUSD execution.
 ASR overlap: retires the existing ASR instruction with the second DSP writeback.
+ASR result staging: precomputes the overlapped ASR result one DSP tail state earlier.
+Store operand staging: drives the paired STR second write port from a decode-stage register.
+Pair eligibility staging: drives paired retire control from a prequalified pair-kind register.
 ```
 
 They do not add a new instruction, change the ROM program, or implement a
@@ -74,8 +84,8 @@ STR
 STR
 ```
 
-The `LDR/LDR` and `SADD16/SSUB16` pairs now retire in one counted cycle each,
-but the W1/W3 lane still contains the DSP pair, pack, and two stores. Worker0
+The `LDR/LDR`, `STR/STR`, and `SADD16/SSUB16` pairs now retire in one counted
+cycle each, but the W1/W3 lane still contains the DSP pair and pack. Worker0
 and worker2 finish earlier and still contain padding near the end of stage2.
 Removing only those padding cycles does not reduce system `cnt`, because the
 system waits for all workers to halt.

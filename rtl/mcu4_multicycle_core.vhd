@@ -44,10 +44,16 @@ architecture rtl of mcu4_multicycle_core is
 
     signal worker_buf_a_we    : worker_flag_array_t := (others => '0');
     signal worker_buf_b_we    : worker_flag_array_t := (others => '0');
+    signal worker_buf_a_we2   : worker_flag_array_t := (others => '0');
+    signal worker_buf_b_we2   : worker_flag_array_t := (others => '0');
     signal worker_buf_a_waddr : worker_addr_array_t := (others => (others => '0'));
     signal worker_buf_b_waddr : worker_addr_array_t := (others => (others => '0'));
+    signal worker_buf_a_waddr2 : worker_addr_array_t := (others => (others => '0'));
+    signal worker_buf_b_waddr2 : worker_addr_array_t := (others => (others => '0'));
     signal worker_buf_a_wdata : lane4_word_array_t := (others => (others => '0'));
     signal worker_buf_b_wdata : lane4_word_array_t := (others => (others => '0'));
+    signal worker_buf_a_wdata2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_buf_b_wdata2 : lane4_word_array_t := (others => (others => '0'));
 
     signal worker_halted : std_logic_vector(3 downto 0) := (others => '0');
     signal worker_illegal : std_logic_vector(3 downto 0) := (others => '0');
@@ -94,9 +100,15 @@ begin
                 buf_a_we    => worker_buf_a_we(i),
                 buf_a_waddr => worker_buf_a_waddr(i),
                 buf_a_wdata => worker_buf_a_wdata(i),
+                buf_a_we2    => worker_buf_a_we2(i),
+                buf_a_waddr2 => worker_buf_a_waddr2(i),
+                buf_a_wdata2 => worker_buf_a_wdata2(i),
                 buf_b_we    => worker_buf_b_we(i),
                 buf_b_waddr => worker_buf_b_waddr(i),
                 buf_b_wdata => worker_buf_b_wdata(i),
+                buf_b_we2    => worker_buf_b_we2(i),
+                buf_b_waddr2 => worker_buf_b_waddr2(i),
+                buf_b_wdata2 => worker_buf_b_wdata2(i),
                 halted      => worker_halted(i),
                 illegal     => worker_illegal(i),
                 pc_debug    => worker_pc_debug(i),
@@ -141,9 +153,19 @@ begin
                     buf_a(waddr) <= worker_buf_a_wdata(i);
                 end if;
 
+                if worker_buf_a_we2(i) = '1' then
+                    waddr := to_integer(unsigned(worker_buf_a_waddr2(i)));
+                    buf_a(waddr) <= worker_buf_a_wdata2(i);
+                end if;
+
                 if worker_buf_b_we(i) = '1' then
                     waddr := to_integer(unsigned(worker_buf_b_waddr(i)));
                     buf_b(waddr) <= worker_buf_b_wdata(i);
+                end if;
+
+                if worker_buf_b_we2(i) = '1' then
+                    waddr := to_integer(unsigned(worker_buf_b_waddr2(i)));
+                    buf_b(waddr) <= worker_buf_b_wdata2(i);
                 end if;
             end loop;
         end if;

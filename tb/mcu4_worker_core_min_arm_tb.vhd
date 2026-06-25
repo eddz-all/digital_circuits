@@ -22,9 +22,15 @@ architecture sim of mcu4_worker_core_min_arm_tb is
     signal buf_a_we    : std_logic;
     signal buf_a_waddr : std_logic_vector(2 downto 0);
     signal buf_a_wdata : std_logic_vector(31 downto 0);
+    signal buf_a_we2    : std_logic;
+    signal buf_a_waddr2 : std_logic_vector(2 downto 0);
+    signal buf_a_wdata2 : std_logic_vector(31 downto 0);
     signal buf_b_we    : std_logic;
     signal buf_b_waddr : std_logic_vector(2 downto 0);
     signal buf_b_wdata : std_logic_vector(31 downto 0);
+    signal buf_b_we2    : std_logic;
+    signal buf_b_waddr2 : std_logic_vector(2 downto 0);
+    signal buf_b_wdata2 : std_logic_vector(31 downto 0);
 
     signal halted      : std_logic;
     signal illegal     : std_logic;
@@ -32,6 +38,7 @@ architecture sim of mcu4_worker_core_min_arm_tb is
     signal instr_debug : std_logic_vector(31 downto 0);
 
     signal saw_buf_b0 : std_logic := '0';
+    signal saw_buf_b1 : std_logic := '0';
     signal saw_buf_b2 : std_logic := '0';
 begin
     clk <= not clk after 5 ns;
@@ -58,9 +65,15 @@ begin
             buf_a_we    => buf_a_we,
             buf_a_waddr => buf_a_waddr,
             buf_a_wdata => buf_a_wdata,
+            buf_a_we2    => buf_a_we2,
+            buf_a_waddr2 => buf_a_waddr2,
+            buf_a_wdata2 => buf_a_wdata2,
             buf_b_we    => buf_b_we,
             buf_b_waddr => buf_b_waddr,
             buf_b_wdata => buf_b_wdata,
+            buf_b_we2    => buf_b_we2,
+            buf_b_waddr2 => buf_b_waddr2,
+            buf_b_wdata2 => buf_b_wdata2,
             halted      => halted,
             illegal     => illegal,
             pc_debug    => pc_debug,
@@ -73,6 +86,9 @@ begin
             assert buf_a_we = '0'
                 report "minimum ARM self-test unexpectedly wrote buf_a"
                 severity failure;
+            assert buf_a_we2 = '0'
+                report "minimum ARM self-test unexpectedly wrote buf_a second port"
+                severity failure;
 
             if rst = '0' and buf_b_we = '1' then
                 case to_integer(unsigned(buf_b_waddr)) is
@@ -81,6 +97,11 @@ begin
                             report "ADD/AND/ORR/MOV/LDR/STR result write mismatch at buf_b[0]"
                             severity failure;
                         saw_buf_b0 <= '1';
+                    when 1 =>
+                        assert buf_b_wdata = x"00000007"
+                            report "STR/STR first result write mismatch at buf_b[1]"
+                            severity failure;
+                        saw_buf_b1 <= '1';
                     when 2 =>
                         assert buf_b_wdata = x"0000000F"
                             report "BL/MOV pc,lr return result write mismatch at buf_b[2]"
@@ -90,6 +111,26 @@ begin
                         assert false
                             report "unexpected STR target buf_b["
                                 & integer'image(to_integer(unsigned(buf_b_waddr))) & "]"
+                            severity failure;
+                end case;
+            end if;
+
+            if rst = '0' and buf_b_we2 = '1' then
+                case to_integer(unsigned(buf_b_waddr2)) is
+                    when 1 =>
+                        assert buf_b_wdata2 = x"00000007"
+                            report "STR/STR first result write mismatch at buf_b[1] second port"
+                            severity failure;
+                        saw_buf_b1 <= '1';
+                    when 2 =>
+                        assert buf_b_wdata2 = x"0000000F"
+                            report "STR/STR second result write mismatch at buf_b[2] second port"
+                            severity failure;
+                        saw_buf_b2 <= '1';
+                    when others =>
+                        assert false
+                            report "unexpected STR second-port target buf_b["
+                                & integer'image(to_integer(unsigned(buf_b_waddr2))) & "]"
                             severity failure;
                 end case;
             end if;
@@ -120,6 +161,9 @@ begin
             severity failure;
         assert saw_buf_b0 = '1'
             report "minimum ARM self-test did not execute LDR/STR data path"
+            severity failure;
+        assert saw_buf_b1 = '1'
+            report "minimum ARM self-test did not execute first STR/STR store"
             severity failure;
         assert saw_buf_b2 = '1'
             report "minimum ARM self-test did not return from BL"
