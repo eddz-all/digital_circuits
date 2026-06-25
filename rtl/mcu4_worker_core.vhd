@@ -48,6 +48,7 @@ architecture rtl of mcu4_worker_core is
     signal state_reg    : worker_state_t := S_FETCH;
     signal pc_fetch_reg : natural range 0 to 63 := 0;
     signal pc_index     : std_logic_vector(5 downto 0) := (others => '0');
+    signal pc_pair_index : std_logic_vector(5 downto 0) := (others => '0');
     signal instr_reg    : word_t := x"E1A00000";
     signal instr_pc_reg : natural range 0 to 63 := 0;
     signal regs        : reg_file_t := (others => (others => '0'));
@@ -62,6 +63,14 @@ architecture rtl of mcu4_worker_core is
     signal fetch_dec_imm     : integer range -4096 to 4095 := 0;
     signal fetch_dec_idx     : natural range 0 to 7 := 0;
     signal fetch_dec_illegal : std_logic := '0';
+    signal instr_pair_word  : word_t := (others => '0');
+    signal fetch_pair_dec_op      : worker_op_t := WOP_NOP;
+    signal fetch_pair_dec_rd      : natural range 0 to 15 := 0;
+    signal fetch_pair_dec_rn      : natural range 0 to 15 := 0;
+    signal fetch_pair_dec_rm      : natural range 0 to 15 := 0;
+    signal fetch_pair_dec_imm     : integer range -4096 to 4095 := 0;
+    signal fetch_pair_dec_idx     : natural range 0 to 7 := 0;
+    signal fetch_pair_dec_illegal : std_logic := '0';
 
     signal dec_op      : worker_op_t := WOP_NOP;
     signal dec_rd      : natural range 0 to 15 := 0;
@@ -195,6 +204,14 @@ architecture rtl of mcu4_worker_core is
         return 63;
     end function;
 
+    function next_pair_pc(value : natural) return natural is
+    begin
+        if value < 62 then
+            return value + 2;
+        end if;
+        return 63;
+    end function;
+
     function word_to_pc(value : word_t) return natural is
         variable idx : natural range 0 to 63 := 0;
     begin
@@ -207,6 +224,7 @@ architecture rtl of mcu4_worker_core is
     end function;
 begin
     pc_index <= std_logic_vector(to_unsigned(pc_fetch_reg, 6));
+    pc_pair_index <= std_logic_vector(to_unsigned(next_seq_pc(pc_fetch_reg), 6));
 
     u_instr_rom : entity work.mcu4_worker_instr_rom
         generic map (
@@ -229,6 +247,29 @@ begin
             imm        => fetch_dec_imm,
             idx        => fetch_dec_idx,
             illegal    => fetch_dec_illegal
+        );
+
+    u_instr_pair_rom : entity work.mcu4_worker_instr_rom
+        generic map (
+            WORKER_ID  => WORKER_ID,
+            PROGRAM_ID => PROGRAM_ID
+        )
+        port map (
+            pc_index => pc_pair_index,
+            instr    => instr_pair_word
+        );
+
+    u_pair_decoder : entity work.mcu4_worker_decoder
+        port map (
+            instr_word => instr_pair_word,
+            pc_index   => pc_pair_index,
+            op         => fetch_pair_dec_op,
+            rd         => fetch_pair_dec_rd,
+            rn         => fetch_pair_dec_rn,
+            rm         => fetch_pair_dec_rm,
+            imm        => fetch_pair_dec_imm,
+            idx        => fetch_pair_dec_idx,
+            illegal    => fetch_pair_dec_illegal
         );
 
     buf_a_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
@@ -264,6 +305,10 @@ begin
         variable wb_valid : boolean;
         variable wb_rd : natural range 0 to 15;
         variable wb_data : word_t;
+        variable wb2_valid : boolean;
+        variable wb2_rd : natural range 0 to 15;
+        variable wb2_data : word_t;
+        variable pair_valid : boolean;
 
         procedure load_exec_from_decode(
             constant forward_valid : in boolean;
@@ -358,6 +403,71 @@ begin
             exec_rd_data <= rd_value;
         end procedure;
 
+        procedure load_exec_from_fetch_dual(
+            constant forward_a_valid : in boolean;
+            constant forward_a_rd    : in natural range 0 to 15;
+            constant forward_a_data  : in word_t;
+            constant forward_b_valid : in boolean;
+            constant forward_b_rd    : in natural range 0 to 15;
+            constant forward_b_data  : in word_t
+        ) is
+            variable rn_value : word_t;
+            variable rm_value : word_t;
+            variable rd_value : word_t;
+        begin
+            rn_value := regs(fetch_dec_rn);
+            rm_value := regs(fetch_dec_rm);
+            rd_value := regs(fetch_dec_rd);
+
+            if forward_a_valid then
+                if forward_a_rd = fetch_dec_rn then
+                    rn_value := forward_a_data;
+                end if;
+                if forward_a_rd = fetch_dec_rm then
+                    rm_value := forward_a_data;
+                end if;
+                if forward_a_rd = fetch_dec_rd then
+                    rd_value := forward_a_data;
+                end if;
+            end if;
+
+            if forward_b_valid then
+                if forward_b_rd = fetch_dec_rn then
+                    rn_value := forward_b_data;
+                end if;
+                if forward_b_rd = fetch_dec_rm then
+                    rm_value := forward_b_data;
+                end if;
+                if forward_b_rd = fetch_dec_rd then
+                    rd_value := forward_b_data;
+                end if;
+            end if;
+
+            exec_op <= fetch_dec_op;
+            exec_rd <= fetch_dec_rd;
+            exec_rn <= fetch_dec_rn;
+            exec_rm <= fetch_dec_rm;
+            exec_imm <= fetch_dec_imm;
+            exec_idx <= fetch_dec_idx;
+            exec_illegal <= fetch_dec_illegal;
+            exec_instr <= instr_word;
+            exec_pc_reg <= pc_fetch_reg;
+            exec_rn_data <= rn_value;
+            exec_rm_data <= rm_value;
+            exec_rd_data <= rd_value;
+
+            instr_reg <= instr_pair_word;
+            instr_pc_reg <= next_seq_pc(pc_fetch_reg);
+            dec_op <= fetch_pair_dec_op;
+            dec_rd <= fetch_pair_dec_rd;
+            dec_rn <= fetch_pair_dec_rn;
+            dec_rm <= fetch_pair_dec_rm;
+            dec_imm <= fetch_pair_dec_imm;
+            dec_idx <= fetch_pair_dec_idx;
+            dec_illegal <= fetch_pair_dec_illegal;
+            pc_fetch_reg <= next_pair_pc(pc_fetch_reg);
+        end procedure;
+
         procedure refresh_exec_operands(
             constant forward_valid : in boolean;
             constant forward_rd    : in natural range 0 to 15;
@@ -406,6 +516,10 @@ begin
             wb_valid := false;
             wb_rd := 0;
             wb_data := (others => '0');
+            wb2_valid := false;
+            wb2_rd := 0;
+            wb2_data := (others => '0');
+            pair_valid := false;
 
             if rst = '1' then
                 state_reg <= S_FETCH;
@@ -435,129 +549,165 @@ begin
                             branch_target := 0;
                             start_dsp := false;
 
-                            case exec_op is
-                                when WOP_NOP =>
-                                    null;
-                                when WOP_MOV_IMM =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := std_logic_vector(to_signed(exec_imm, 32));
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_MOV_REG =>
-                                    if exec_rd = REG_PC then
-                                        branch_taken := true;
-                                        branch_target := word_to_pc(exec_rm_data);
-                                    else
+                            if dec_illegal = '0'
+                               and exec_op = WOP_MOV_IMM
+                               and dec_op = WOP_MOV_IMM
+                               and exec_rd /= dec_rd then
+                                pair_valid := true;
+                                wb_valid := true;
+                                wb_rd := exec_rd;
+                                wb_data := std_logic_vector(to_signed(exec_imm, 32));
+                                wb2_valid := true;
+                                wb2_rd := dec_rd;
+                                wb2_data := std_logic_vector(to_signed(dec_imm, 32));
+                            elsif dec_illegal = '0'
+                                  and exec_op = WOP_SADD16
+                                  and dec_op = WOP_SSUB16
+                                  and exec_rn = dec_rn
+                                  and exec_rm = dec_rm
+                                  and exec_rd /= dec_rd then
+                                pair_valid := true;
+                                wb_valid := true;
+                                wb_rd := exec_rd;
+                                wb_data := sadd16(exec_rn_data, exec_rm_data);
+                                wb2_valid := true;
+                                wb2_rd := dec_rd;
+                                wb2_data := ssub16(exec_rn_data, exec_rm_data);
+                            end if;
+
+                            if pair_valid then
+                                regs(wb_rd) <= wb_data;
+                                regs(wb2_rd) <= wb2_data;
+                                load_exec_from_fetch_dual(
+                                    wb_valid, wb_rd, wb_data,
+                                    wb2_valid, wb2_rd, wb2_data
+                                );
+                                state_reg <= S_RUN;
+                            else
+                                case exec_op is
+                                    when WOP_NOP =>
+                                        null;
+                                    when WOP_MOV_IMM =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
-                                        wb_data := exec_rm_data;
+                                        wb_data := std_logic_vector(to_signed(exec_imm, 32));
                                         regs(exec_rd) <= wb_data;
-                                    end if;
-                                when WOP_ADD =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := std_logic_vector(signed(exec_rn_data) + signed(exec_rm_data));
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_SUB =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := std_logic_vector(signed(exec_rn_data) - signed(exec_rm_data));
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_AND =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := exec_rn_data and exec_rm_data;
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_ORR =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := exec_rn_data or exec_rm_data;
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_PKHBT =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := pkhbt_shift(exec_rn_data, exec_rm_data, exec_imm);
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_LDR_A =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := buf_a_rdata;
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_LDR_B =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := buf_b_rdata;
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_SADD16 =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := sadd16(exec_rn_data, exec_rm_data);
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_SSUB16 =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := ssub16(exec_rn_data, exec_rm_data);
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_SSAX =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    wb_data := ssax(exec_rn_data, exec_rm_data);
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_SMUAD | WOP_SMUSD =>
-                                    dsp_a <= exec_rn_data;
-                                    dsp_b <= exec_rm_data;
-                                    dsp_rd <= exec_rd;
-                                    if exec_op = WOP_SMUSD then
-                                        dsp_sub <= '1';
-                                    else
-                                        dsp_sub <= '0';
-                                    end if;
-                                    dsp_pc_reg <= exec_pc_reg;
-                                    dsp_instr_reg <= exec_instr;
-                                    start_dsp := true;
-                                when WOP_ASR =>
-                                    wb_valid := true;
-                                    wb_rd := exec_rd;
-                                    res := std_logic_vector(shift_right(signed(exec_rn_data), exec_imm));
-                                    wb_data := res;
-                                    regs(exec_rd) <= wb_data;
-                                when WOP_B =>
-                                    branch_taken := true;
-                                    branch_target := clamp_pc(exec_imm);
-                                when WOP_BL =>
-                                    regs(REG_LR) <= std_logic_vector(to_unsigned(next_seq_pc(exec_pc_reg) * 4, 32));
-                                    branch_taken := true;
-                                    branch_target := clamp_pc(exec_imm);
-                                when WOP_STR_A | WOP_STR_B =>
-                                    null;
-                                when WOP_HALT =>
-                                    halted_reg <= '1';
-                            end case;
+                                    when WOP_MOV_REG =>
+                                        if exec_rd = REG_PC then
+                                            branch_taken := true;
+                                            branch_target := word_to_pc(exec_rm_data);
+                                        else
+                                            wb_valid := true;
+                                            wb_rd := exec_rd;
+                                            wb_data := exec_rm_data;
+                                            regs(exec_rd) <= wb_data;
+                                        end if;
+                                    when WOP_ADD =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := std_logic_vector(signed(exec_rn_data) + signed(exec_rm_data));
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_SUB =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := std_logic_vector(signed(exec_rn_data) - signed(exec_rm_data));
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_AND =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := exec_rn_data and exec_rm_data;
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_ORR =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := exec_rn_data or exec_rm_data;
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_PKHBT =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := pkhbt_shift(exec_rn_data, exec_rm_data, exec_imm);
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_LDR_A =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := buf_a_rdata;
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_LDR_B =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := buf_b_rdata;
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_SADD16 =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := sadd16(exec_rn_data, exec_rm_data);
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_SSUB16 =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := ssub16(exec_rn_data, exec_rm_data);
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_SSAX =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        wb_data := ssax(exec_rn_data, exec_rm_data);
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_SMUAD | WOP_SMUSD =>
+                                        dsp_a <= exec_rn_data;
+                                        dsp_b <= exec_rm_data;
+                                        dsp_rd <= exec_rd;
+                                        if exec_op = WOP_SMUSD then
+                                            dsp_sub <= '1';
+                                        else
+                                            dsp_sub <= '0';
+                                        end if;
+                                        dsp_pc_reg <= exec_pc_reg;
+                                        dsp_instr_reg <= exec_instr;
+                                        start_dsp := true;
+                                    when WOP_ASR =>
+                                        wb_valid := true;
+                                        wb_rd := exec_rd;
+                                        res := std_logic_vector(shift_right(signed(exec_rn_data), exec_imm));
+                                        wb_data := res;
+                                        regs(exec_rd) <= wb_data;
+                                    when WOP_B =>
+                                        branch_taken := true;
+                                        branch_target := clamp_pc(exec_imm);
+                                    when WOP_BL =>
+                                        regs(REG_LR) <= std_logic_vector(to_unsigned(next_seq_pc(exec_pc_reg) * 4, 32));
+                                        branch_taken := true;
+                                        branch_target := clamp_pc(exec_imm);
+                                    when WOP_STR_A | WOP_STR_B =>
+                                        null;
+                                    when WOP_HALT =>
+                                        halted_reg <= '1';
+                                end case;
 
-                            if exec_op = WOP_HALT then
-                                null;
-                            elsif branch_taken then
-                                exec_op <= WOP_NOP;
-                                exec_instr <= x"E1A00000";
-                                exec_pc_reg <= branch_target;
-                                instr_reg <= x"E1A00000";
-                                instr_pc_reg <= branch_target;
-                                dec_op <= WOP_NOP;
-                                dec_rd <= 0;
-                                dec_rn <= 0;
-                                dec_rm <= 0;
-                                dec_imm <= 0;
-                                dec_idx <= 0;
-                                dec_illegal <= '0';
-                                pc_fetch_reg <= branch_target;
-                                state_reg <= S_FETCH;
-                            else
-                                load_exec_from_decode(wb_valid, wb_rd, wb_data);
-                                fetch_into_decode;
-                                if start_dsp then
-                                    state_reg <= S_DSP_MUL;
+                                if exec_op = WOP_HALT then
+                                    null;
+                                elsif branch_taken then
+                                    exec_op <= WOP_NOP;
+                                    exec_instr <= x"E1A00000";
+                                    exec_pc_reg <= branch_target;
+                                    instr_reg <= x"E1A00000";
+                                    instr_pc_reg <= branch_target;
+                                    dec_op <= WOP_NOP;
+                                    dec_rd <= 0;
+                                    dec_rn <= 0;
+                                    dec_rm <= 0;
+                                    dec_imm <= 0;
+                                    dec_idx <= 0;
+                                    dec_illegal <= '0';
+                                    pc_fetch_reg <= branch_target;
+                                    state_reg <= S_FETCH;
                                 else
-                                    state_reg <= S_RUN;
+                                    load_exec_from_decode(wb_valid, wb_rd, wb_data);
+                                    fetch_into_decode;
+                                    if start_dsp then
+                                        state_reg <= S_DSP_MUL;
+                                    else
+                                        state_reg <= S_RUN;
+                                    end if;
                                 end if;
                             end if;
                         end if;

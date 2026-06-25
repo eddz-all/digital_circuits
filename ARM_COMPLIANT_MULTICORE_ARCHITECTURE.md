@@ -320,10 +320,10 @@ cnt_stop  = all_cores_halted
 当前 GHDL 结果：
 
 ```text
-mcu_fft_system_tb cnt_cycles = 32
+mcu_fft_system_tb cnt_cycles = 28
 ```
 
-该版本给 worker 加入取指/译码寄存，并把 `SMUAD/SMUSD` 拆成多周期 DSP 执行。独立连续 DSP 指令使用局部 pair pipeline，后续常见 `ASR` 可以和第二个 DSP 写回同拍退休。若能保持 216 MHz 以上频率，最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器版本。
+该版本给 worker 加入取指/译码寄存，并把 `SMUAD/SMUSD` 拆成多周期 DSP 执行。独立连续 DSP 指令使用局部 pair pipeline，后续常见 `ASR` 可以和第二个 DSP 写回同拍退休。安全相邻的 `MOV/MOV` 和 `SADD16/SSUB16` 也可以局部双发射同拍退休。若能保持 216 MHz 以上频率，最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器版本。
 
 ## 13. 当前实现状态
 

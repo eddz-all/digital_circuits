@@ -111,7 +111,7 @@ mcu_fft_system_tb
 Expected note:
 
 ```text
-mcu_fft_system_tb cnt_cycles 32
+mcu_fft_system_tb cnt_cycles 28
 mcu_fft_system_tb passed
 ```
 
@@ -147,7 +147,7 @@ This testbench provides simple simulation stubs for `clk_wiz_0`, `test_ROM`,
 Counter:
 
 ```text
-cnt_test = 00020
+cnt_test = 0001C
 ```
 
 Readback values:
@@ -179,6 +179,7 @@ addr 0F  D874
 - The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
 - Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
 - `SMUAD` and `SMUSD` are internally multi-cycle to shorten the DSP critical path for 200 MHz-class timing.
+- Safe adjacent `MOV/MOV` and `SADD16/SSUB16` instruction pairs can retire together; this is local dual issue, not a new FFT opcode.
 - The `91/-91` twiddle constants are immediate constants initialized by worker instructions, not hidden constants in a special butterfly unit.
 - The counter intentionally excludes input loading and output dump. It starts at
   the first instruction fetch and stops when the final instruction completes.
