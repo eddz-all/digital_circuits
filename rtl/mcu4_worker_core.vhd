@@ -72,6 +72,14 @@ architecture rtl of mcu4_worker_core is
     signal instr_reg    : word_t := x"E1A00000";
     signal instr_pc_reg : natural range 0 to 63 := 0;
     signal regs        : reg_file_t := (others => (others => '0'));
+    signal rf_wb_valid  : std_logic := '0';
+    signal rf_wb_we     : std_logic_vector(15 downto 0) := (others => '0');
+    signal rf_wb_rd     : natural range 0 to 15 := 0;
+    signal rf_wb_data   : word_t := (others => '0');
+    signal rf_wb2_valid : std_logic := '0';
+    signal rf_wb2_we    : std_logic_vector(15 downto 0) := (others => '0');
+    signal rf_wb2_rd    : natural range 0 to 15 := 0;
+    signal rf_wb2_data  : word_t := (others => '0');
     signal halted_reg  : std_logic := '0';
     signal illegal_reg : std_logic := '0';
 
@@ -148,6 +156,8 @@ architecture rtl of mcu4_worker_core is
     attribute max_fanout : integer;
     attribute fsm_encoding of state_reg : signal is "one_hot";
     attribute max_fanout of state_reg : signal is 64;
+    attribute max_fanout of rf_wb_we : signal is 32;
+    attribute max_fanout of rf_wb2_we : signal is 32;
     attribute keep of dsp_sub : signal is "true";
     attribute keep of dsp_sub_acc : signal is "true";
     attribute keep of dsp2_sub : signal is "true";
@@ -414,6 +424,14 @@ begin
         variable wb2_rd : natural range 0 to 15;
         variable wb2_data : word_t;
         variable pair_valid : boolean;
+        variable rf_next_valid : boolean;
+        variable rf_next_we : std_logic_vector(15 downto 0);
+        variable rf_next_rd : natural range 0 to 15;
+        variable rf_next_data : word_t;
+        variable rf_next2_valid : boolean;
+        variable rf_next2_we : std_logic_vector(15 downto 0);
+        variable rf_next2_rd : natural range 0 to 15;
+        variable rf_next2_data : word_t;
 
         impure function forwarded_reg_value(
             constant reg_idx         : natural range 0 to 15;
@@ -427,6 +445,14 @@ begin
             variable value : word_t;
         begin
             value := regs(reg_idx);
+
+            if rf_wb_valid = '1' and rf_wb_rd = reg_idx then
+                value := rf_wb_data;
+            end if;
+
+            if rf_wb2_valid = '1' and rf_wb2_rd = reg_idx then
+                value := rf_wb2_data;
+            end if;
 
             if forward_a_valid and forward_a_rd = reg_idx then
                 value := forward_a_data;
@@ -448,21 +474,21 @@ begin
             variable rm_value : word_t;
             variable rd_value : word_t;
         begin
-            rn_value := regs(dec_rn);
-            rm_value := regs(dec_rm);
-            rd_value := regs(dec_rd);
-
-            if forward_valid then
-                if forward_rd = dec_rn then
-                    rn_value := forward_data;
-                end if;
-                if forward_rd = dec_rm then
-                    rm_value := forward_data;
-                end if;
-                if forward_rd = dec_rd then
-                    rd_value := forward_data;
-                end if;
-            end if;
+            rn_value := forwarded_reg_value(
+                dec_rn,
+                forward_valid, forward_rd, forward_data,
+                false, 0, (others => '0')
+            );
+            rm_value := forwarded_reg_value(
+                dec_rm,
+                forward_valid, forward_rd, forward_data,
+                false, 0, (others => '0')
+            );
+            rd_value := forwarded_reg_value(
+                dec_rd,
+                forward_valid, forward_rd, forward_data,
+                false, 0, (others => '0')
+            );
 
             exec_op <= dec_op;
             exec_rd <= dec_rd;
@@ -492,33 +518,21 @@ begin
             variable rm_value : word_t;
             variable rd_value : word_t;
         begin
-            rn_value := regs(dec_rn);
-            rm_value := regs(dec_rm);
-            rd_value := regs(dec_rd);
-
-            if forward_a_valid then
-                if forward_a_rd = dec_rn then
-                    rn_value := forward_a_data;
-                end if;
-                if forward_a_rd = dec_rm then
-                    rm_value := forward_a_data;
-                end if;
-                if forward_a_rd = dec_rd then
-                    rd_value := forward_a_data;
-                end if;
-            end if;
-
-            if forward_b_valid then
-                if forward_b_rd = dec_rn then
-                    rn_value := forward_b_data;
-                end if;
-                if forward_b_rd = dec_rm then
-                    rm_value := forward_b_data;
-                end if;
-                if forward_b_rd = dec_rd then
-                    rd_value := forward_b_data;
-                end if;
-            end if;
+            rn_value := forwarded_reg_value(
+                dec_rn,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            rm_value := forwarded_reg_value(
+                dec_rm,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            rd_value := forwarded_reg_value(
+                dec_rd,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
 
             exec_op <= dec_op;
             exec_rd <= dec_rd;
@@ -548,33 +562,21 @@ begin
             variable rm_value : word_t;
             variable rd_value : word_t;
         begin
-            rn_value := regs(fetch_dec_rn);
-            rm_value := regs(fetch_dec_rm);
-            rd_value := regs(fetch_dec_rd);
-
-            if forward_a_valid then
-                if forward_a_rd = fetch_dec_rn then
-                    rn_value := forward_a_data;
-                end if;
-                if forward_a_rd = fetch_dec_rm then
-                    rm_value := forward_a_data;
-                end if;
-                if forward_a_rd = fetch_dec_rd then
-                    rd_value := forward_a_data;
-                end if;
-            end if;
-
-            if forward_b_valid then
-                if forward_b_rd = fetch_dec_rn then
-                    rn_value := forward_b_data;
-                end if;
-                if forward_b_rd = fetch_dec_rm then
-                    rm_value := forward_b_data;
-                end if;
-                if forward_b_rd = fetch_dec_rd then
-                    rd_value := forward_b_data;
-                end if;
-            end if;
+            rn_value := forwarded_reg_value(
+                fetch_dec_rn,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            rm_value := forwarded_reg_value(
+                fetch_dec_rm,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            rd_value := forwarded_reg_value(
+                fetch_dec_rd,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
 
             exec_op <= fetch_dec_op;
             exec_rd <= fetch_dec_rd;
@@ -631,21 +633,21 @@ begin
             variable rm_value : word_t;
             variable rd_value : word_t;
         begin
-            rn_value := regs(exec_rn);
-            rm_value := regs(exec_rm);
-            rd_value := regs(exec_rd);
-
-            if forward_valid then
-                if forward_rd = exec_rn then
-                    rn_value := forward_data;
-                end if;
-                if forward_rd = exec_rm then
-                    rm_value := forward_data;
-                end if;
-                if forward_rd = exec_rd then
-                    rd_value := forward_data;
-                end if;
-            end if;
+            rn_value := forwarded_reg_value(
+                exec_rn,
+                forward_valid, forward_rd, forward_data,
+                false, 0, (others => '0')
+            );
+            rm_value := forwarded_reg_value(
+                exec_rm,
+                forward_valid, forward_rd, forward_data,
+                false, 0, (others => '0')
+            );
+            rd_value := forwarded_reg_value(
+                exec_rd,
+                forward_valid, forward_rd, forward_data,
+                false, 0, (others => '0')
+            );
 
             exec_rn_data <= rn_value;
             exec_rm_data <= rm_value;
@@ -702,6 +704,14 @@ begin
             wb2_rd := 0;
             wb2_data := (others => '0');
             pair_valid := false;
+            rf_next_valid := false;
+            rf_next_we := (others => '0');
+            rf_next_rd := 0;
+            rf_next_data := (others => '0');
+            rf_next2_valid := false;
+            rf_next2_we := (others => '0');
+            rf_next2_rd := 0;
+            rf_next2_data := (others => '0');
 
             if rst = '1' then
                 state_reg <= S_FETCH;
@@ -710,11 +720,30 @@ begin
                 illegal_reg <= '0';
                 exec_pair_kind <= WPAIR_NONE;
                 dsp_pair_ready <= '0';
+                rf_wb_valid <= '0';
+                rf_wb_we <= (others => '0');
+                rf_wb2_valid <= '0';
+                rf_wb2_we <= (others => '0');
                 -- Data-path registers are overwritten by fetch/decode or by
                 -- the program prologue before use. Leaving them out of reset
                 -- keeps the core reset fanout small enough for higher clocks.
-            elsif halted_reg = '0' and illegal_reg = '0' then
-                case state_reg is
+            else
+                for rf_idx in 0 to 15 loop
+                    if rf_wb_we(rf_idx) = '1' then
+                        regs(rf_idx) <= rf_wb_data;
+                    end if;
+                    if rf_wb2_we(rf_idx) = '1' then
+                        regs(rf_idx) <= rf_wb2_data;
+                    end if;
+                end loop;
+
+                rf_wb_valid <= '0';
+                rf_wb_we <= (others => '0');
+                rf_wb2_valid <= '0';
+                rf_wb2_we <= (others => '0');
+
+                if halted_reg = '0' and illegal_reg = '0' then
+                    case state_reg is
                     when S_FETCH =>
                         fetch_into_decode(
                             false, 0, (others => '0'),
@@ -780,10 +809,16 @@ begin
 
                             if pair_valid then
                                 if wb_valid then
-                                    regs(wb_rd) <= wb_data;
+                                    rf_next_valid := true;
+                                    rf_next_we(wb_rd) := '1';
+                                    rf_next_rd := wb_rd;
+                                    rf_next_data := wb_data;
                                 end if;
                                 if wb2_valid then
-                                    regs(wb2_rd) <= wb2_data;
+                                    rf_next2_valid := true;
+                                    rf_next2_we(wb2_rd) := '1';
+                                    rf_next2_rd := wb2_rd;
+                                    rf_next2_data := wb2_data;
                                 end if;
                                 load_exec_from_fetch_dual(
                                     wb_valid, wb_rd, wb_data,
@@ -798,7 +833,6 @@ begin
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := std_logic_vector(to_signed(exec_imm, 32));
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_MOV_REG =>
                                         if exec_rd = REG_PC then
                                             branch_taken := true;
@@ -807,58 +841,47 @@ begin
                                             wb_valid := true;
                                             wb_rd := exec_rd;
                                             wb_data := exec_rm_data;
-                                            regs(exec_rd) <= wb_data;
                                         end if;
                                     when WOP_ADD =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := std_logic_vector(signed(exec_rn_data) + signed(exec_rm_data));
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_SUB =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := std_logic_vector(signed(exec_rn_data) - signed(exec_rm_data));
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_AND =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := exec_rn_data and exec_rm_data;
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_ORR =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := exec_rn_data or exec_rm_data;
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_PKHBT =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := pkhbt_shift(exec_rn_data, exec_rm_data, exec_imm);
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_LDR_A =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := buf_a_rdata;
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_LDR_B =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := buf_b_rdata;
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_SADD16 =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := sadd16(exec_rn_data, exec_rm_data);
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_SSUB16 =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := ssub16(exec_rn_data, exec_rm_data);
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_SSAX =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := ssax(exec_rn_data, exec_rm_data);
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_SMUAD | WOP_SMUSD =>
                                         dsp_a <= exec_dsp_a;
                                         dsp_b <= exec_dsp_b;
@@ -886,12 +909,13 @@ begin
                                         wb_rd := exec_rd;
                                         res := std_logic_vector(shift_right(signed(exec_rn_data), exec_imm));
                                         wb_data := res;
-                                        regs(exec_rd) <= wb_data;
                                     when WOP_B =>
                                         branch_taken := true;
                                         branch_target := clamp_pc(exec_imm);
                                     when WOP_BL =>
-                                        regs(REG_LR) <= std_logic_vector(to_unsigned(next_seq_pc(exec_pc_reg) * 4, 32));
+                                        wb_valid := true;
+                                        wb_rd := REG_LR;
+                                        wb_data := std_logic_vector(to_unsigned(next_seq_pc(exec_pc_reg) * 4, 32));
                                         branch_taken := true;
                                         branch_target := clamp_pc(exec_imm);
                                     when WOP_STR_A | WOP_STR_B =>
@@ -899,6 +923,13 @@ begin
                                     when WOP_HALT =>
                                         halted_reg <= '1';
                                 end case;
+
+                                if wb_valid then
+                                    rf_next_valid := true;
+                                    rf_next_we(wb_rd) := '1';
+                                    rf_next_rd := wb_rd;
+                                    rf_next_data := wb_data;
+                                end if;
 
                                 if exec_op = WOP_HALT then
                                     null;
@@ -973,7 +1004,10 @@ begin
                         end if;
                         wb_valid := true;
                         wb_rd := dsp_rd;
-                        regs(dsp_rd) <= wb_data;
+                        rf_next_valid := true;
+                        rf_next_we(wb_rd) := '1';
+                        rf_next_rd := wb_rd;
+                        rf_next_data := wb_data;
                         refresh_exec_operands(wb_valid, wb_rd, wb_data);
                         state_reg <= S_RUN;
 
@@ -993,7 +1027,10 @@ begin
                         end if;
                         wb_valid := true;
                         wb_rd := dsp_rd;
-                        regs(dsp_rd) <= wb_data;
+                        rf_next_valid := true;
+                        rf_next_we(wb_rd) := '1';
+                        rf_next_rd := wb_rd;
+                        rf_next_data := wb_data;
                         refresh_exec_operands(wb_valid, wb_rd, wb_data);
                         if exec_op = WOP_ASR
                            and exec_illegal = '0'
@@ -1020,8 +1057,14 @@ begin
                         -- first result; retire it with the second DSP writeback.
                         if dsp_pair_asr_valid = '1' then
                             res := dsp_pair_asr_result;
-                            regs(dsp2_rd) <= wb_data;
-                            regs(exec_rd) <= res;
+                            rf_next_valid := true;
+                            rf_next_we(dsp2_rd) := '1';
+                            rf_next_rd := dsp2_rd;
+                            rf_next_data := wb_data;
+                            rf_next2_valid := true;
+                            rf_next2_we(exec_rd) := '1';
+                            rf_next2_rd := exec_rd;
+                            rf_next2_data := res;
                             load_exec_from_decode_dual(
                                 true, dsp2_rd, wb_data,
                                 true, exec_rd, res
@@ -1033,11 +1076,29 @@ begin
                         else
                             wb_valid := true;
                             wb_rd := dsp2_rd;
-                            regs(dsp2_rd) <= wb_data;
+                            rf_next_valid := true;
+                            rf_next_we(wb_rd) := '1';
+                            rf_next_rd := wb_rd;
+                            rf_next_data := wb_data;
                             refresh_exec_operands(wb_valid, wb_rd, wb_data);
                         end if;
                         state_reg <= S_RUN;
-                end case;
+                    end case;
+                end if;
+
+                if rf_next_valid then
+                    rf_wb_valid <= '1';
+                    rf_wb_we <= rf_next_we;
+                    rf_wb_rd <= rf_next_rd;
+                    rf_wb_data <= rf_next_data;
+                end if;
+
+                if rf_next2_valid then
+                    rf_wb2_valid <= '1';
+                    rf_wb2_we <= rf_next2_we;
+                    rf_wb2_rd <= rf_next2_rd;
+                    rf_wb2_data <= rf_next2_data;
+                end if;
             end if;
         end if;
     end process;
