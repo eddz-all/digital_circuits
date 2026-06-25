@@ -144,6 +144,10 @@ architecture rtl of mcu4_worker_core is
     attribute keep : string;
     attribute dont_touch : string;
     attribute use_dsp : string;
+    attribute fsm_encoding : string;
+    attribute max_fanout : integer;
+    attribute fsm_encoding of state_reg : signal is "one_hot";
+    attribute max_fanout of state_reg : signal is 64;
     attribute keep of dsp_sub : signal is "true";
     attribute keep of dsp_sub_acc : signal is "true";
     attribute keep of dsp2_sub : signal is "true";
