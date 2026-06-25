@@ -113,6 +113,8 @@ architecture rtl of mcu4_worker_core is
     signal exec_rn_data : word_t := (others => '0');
     signal exec_rm_data : word_t := (others => '0');
     signal exec_rd_data : word_t := (others => '0');
+    signal exec_dsp_a    : word_t := (others => '0');
+    signal exec_dsp_b    : word_t := (others => '0');
     signal exec_pair_kind : worker_pair_t := WPAIR_NONE;
 
     signal dsp_a         : word_t := (others => '0');
@@ -135,6 +137,7 @@ architecture rtl of mcu4_worker_core is
     signal dsp2_rd        : natural range 0 to 15 := 0;
     signal dsp2_sub       : std_logic := '0';
     signal dsp2_sub_acc   : std_logic := '0';
+    signal dsp_pair_ready : std_logic := '0';
     signal dsp_pair_asr_valid  : std_logic := '0';
     signal dsp_pair_asr_result : word_t := (others => '0');
 
@@ -145,10 +148,14 @@ architecture rtl of mcu4_worker_core is
     attribute keep of dsp_sub_acc : signal is "true";
     attribute keep of dsp2_sub : signal is "true";
     attribute keep of dsp2_sub_acc : signal is "true";
+    attribute keep of exec_dsp_a : signal is "true";
+    attribute keep of exec_dsp_b : signal is "true";
     attribute dont_touch of dsp_sub : signal is "true";
     attribute dont_touch of dsp_sub_acc : signal is "true";
     attribute dont_touch of dsp2_sub : signal is "true";
     attribute dont_touch of dsp2_sub_acc : signal is "true";
+    attribute dont_touch of exec_dsp_a : signal is "true";
+    attribute dont_touch of exec_dsp_b : signal is "true";
     attribute use_dsp of dsp_sum : signal is "no";
     attribute use_dsp of dsp_diff : signal is "no";
     attribute use_dsp of dsp2_sum : signal is "no";
@@ -465,6 +472,8 @@ begin
             exec_rn_data <= rn_value;
             exec_rm_data <= rm_value;
             exec_rd_data <= rd_value;
+            exec_dsp_a <= rn_value;
+            exec_dsp_b <= rm_value;
         end procedure;
 
         procedure load_exec_from_decode_dual(
@@ -519,6 +528,8 @@ begin
             exec_rn_data <= rn_value;
             exec_rm_data <= rm_value;
             exec_rd_data <= rd_value;
+            exec_dsp_a <= rn_value;
+            exec_dsp_b <= rm_value;
         end procedure;
 
         procedure load_exec_from_fetch_dual(
@@ -573,6 +584,8 @@ begin
             exec_rn_data <= rn_value;
             exec_rm_data <= rm_value;
             exec_rd_data <= rd_value;
+            exec_dsp_a <= rn_value;
+            exec_dsp_b <= rm_value;
 
             instr_reg <= instr_pair_word;
             instr_pc_reg <= next_seq_pc(pc_fetch_reg);
@@ -633,6 +646,8 @@ begin
             exec_rn_data <= rn_value;
             exec_rm_data <= rm_value;
             exec_rd_data <= rd_value;
+            exec_dsp_a <= rn_value;
+            exec_dsp_b <= rm_value;
         end procedure;
 
         procedure fetch_into_decode(
@@ -690,6 +705,7 @@ begin
                 halted_reg <= '0';
                 illegal_reg <= '0';
                 exec_pair_kind <= WPAIR_NONE;
+                dsp_pair_ready <= '0';
                 -- Data-path registers are overwritten by fetch/decode or by
                 -- the program prologue before use. Leaving them out of reset
                 -- keeps the core reset fanout small enough for higher clocks.
@@ -840,13 +856,23 @@ begin
                                         wb_data := ssax(exec_rn_data, exec_rm_data);
                                         regs(exec_rd) <= wb_data;
                                     when WOP_SMUAD | WOP_SMUSD =>
-                                        dsp_a <= exec_rn_data;
-                                        dsp_b <= exec_rm_data;
+                                        dsp_a <= exec_dsp_a;
+                                        dsp_b <= exec_dsp_b;
                                         dsp_rd <= exec_rd;
                                         if exec_op = WOP_SMUSD then
                                             dsp_sub <= '1';
                                         else
                                             dsp_sub <= '0';
+                                        end if;
+                                        -- Precompute pair eligibility before exec_* is reused by the paired DSP.
+                                        if is_dsp_op(dec_op)
+                                           and dec_illegal = '0'
+                                           and dec_rn /= exec_rd
+                                           and dec_rm /= exec_rd
+                                           and dec_rd /= exec_rd then
+                                            dsp_pair_ready <= '1';
+                                        else
+                                            dsp_pair_ready <= '0';
                                         end if;
                                         dsp_pc_reg <= exec_pc_reg;
                                         dsp_instr_reg <= exec_instr;
@@ -887,6 +913,7 @@ begin
                                     dec_illegal <= '0';
                                     dec_rd_data <= (others => '0');
                                     exec_pair_kind <= WPAIR_NONE;
+                                    dsp_pair_ready <= '0';
                                     pc_fetch_reg <= branch_target;
                                     state_reg <= S_FETCH;
                                 else
@@ -908,14 +935,11 @@ begin
                         dsp_prod_lo <= signed(dsp_a(15 downto 0)) * signed(dsp_b(15 downto 0));
                         dsp_prod_hi <= signed(dsp_a(31 downto 16)) * signed(dsp_b(31 downto 16));
                         dsp_sub_acc <= dsp_sub;
-                        -- Pair only independent back-to-back DSP ops; writes still retire in order.
-                        if is_dsp_op(exec_op)
-                           and exec_illegal = '0'
-                           and exec_rn /= dsp_rd
-                           and exec_rm /= dsp_rd
-                           and exec_rd /= dsp_rd then
-                            dsp2_a <= exec_rn_data;
-                            dsp2_b <= exec_rm_data;
+                        -- Signal reads use the previous cycle's precomputed value here.
+                        dsp_pair_ready <= '0';
+                        if dsp_pair_ready = '1' then
+                            dsp2_a <= exec_dsp_a;
+                            dsp2_b <= exec_dsp_b;
                             dsp2_rd <= exec_rd;
                             if exec_op = WOP_SMUSD then
                                 dsp2_sub <= '1';
