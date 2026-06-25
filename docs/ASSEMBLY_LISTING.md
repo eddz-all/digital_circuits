@@ -9,7 +9,7 @@ rtl/mcu4_worker_instr_rom.vhd
 A readable assembly copy is also committed in:
 
 ```text
-asm/mcu4_fft_workers_cnt28.s
+asm/mcu4_fft_workers_cnt25.s
 ```
 
 That file documents the ROM program; the canonical instruction encodings are
@@ -23,8 +23,8 @@ lane-specific memory addresses.
 The current counted result is:
 
 ```text
-mcu_fft_system_tb cnt_cycles 28
-cnt_test = 0001C
+mcu_fft_system_tb cnt_cycles 25
+cnt_test = 00019
 ```
 
 The execution path is:
@@ -37,9 +37,9 @@ decode register -> register/ALU/DSP/load-store execute
 `instr_debug` is now the actual 32-bit instruction ROM word, not a reverse
 encoding of a pre-decoded control record.
 
-Safe adjacent `MOV/MOV` and `SADD16/SSUB16` pairs can retire in the same counted
-cycle. The instruction words and program order remain visible; this is a local
-dual-issue optimization in the worker core.
+Safe adjacent `MOV/MOV`, `LDR/LDR`, and `SADD16/SSUB16` pairs can retire in the
+same counted cycle. The instruction words and program order remain visible;
+this is a local dual-issue optimization in the worker core.
 
 The worker core also implements the course minimum ARM-style operations:
 
@@ -126,7 +126,7 @@ visible instruction program:
 
 ```text
 fetch-side predecode registers
-local dual issue for safe MOV/MOV and SADD16/SSUB16 pairs
+local dual issue for safe MOV/MOV, LDR/LDR, and SADD16/SSUB16 pairs
 local pair pipeline for independent back-to-back SMUAD/SMUSD
 ASR retirement overlapped with the second DSP writeback when dependencies allow
 ```

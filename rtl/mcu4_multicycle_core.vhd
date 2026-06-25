@@ -35,8 +35,12 @@ architecture rtl of mcu4_multicycle_core is
 
     signal worker_buf_a_raddr : worker_addr_array_t := (others => (others => '0'));
     signal worker_buf_b_raddr : worker_addr_array_t := (others => (others => '0'));
+    signal worker_buf_a_raddr2 : worker_addr_array_t := (others => (others => '0'));
+    signal worker_buf_b_raddr2 : worker_addr_array_t := (others => (others => '0'));
     signal worker_buf_a_rdata : lane4_word_array_t := (others => (others => '0'));
     signal worker_buf_b_rdata : lane4_word_array_t := (others => (others => '0'));
+    signal worker_buf_a_rdata2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_buf_b_rdata2 : lane4_word_array_t := (others => (others => '0'));
 
     signal worker_buf_a_we    : worker_flag_array_t := (others => '0');
     signal worker_buf_b_we    : worker_flag_array_t := (others => '0');
@@ -67,6 +71,8 @@ begin
     gen_worker_read_data : for i in 0 to 3 generate
         worker_buf_a_rdata(i) <= buf_a(safe_addr3(worker_buf_a_raddr(i)));
         worker_buf_b_rdata(i) <= buf_b(safe_addr3(worker_buf_b_raddr(i)));
+        worker_buf_a_rdata2(i) <= buf_a(safe_addr3(worker_buf_a_raddr2(i)));
+        worker_buf_b_rdata2(i) <= buf_b(safe_addr3(worker_buf_b_raddr2(i)));
     end generate;
 
     gen_workers : for i in 0 to 3 generate
@@ -79,8 +85,12 @@ begin
                 rst         => rst,
                 buf_a_raddr => worker_buf_a_raddr(i),
                 buf_a_rdata => worker_buf_a_rdata(i),
+                buf_a_raddr2 => worker_buf_a_raddr2(i),
+                buf_a_rdata2 => worker_buf_a_rdata2(i),
                 buf_b_raddr => worker_buf_b_raddr(i),
                 buf_b_rdata => worker_buf_b_rdata(i),
+                buf_b_raddr2 => worker_buf_b_raddr2(i),
+                buf_b_rdata2 => worker_buf_b_rdata2(i),
                 buf_a_we    => worker_buf_a_we(i),
                 buf_a_waddr => worker_buf_a_waddr(i),
                 buf_a_wdata => worker_buf_a_wdata(i),

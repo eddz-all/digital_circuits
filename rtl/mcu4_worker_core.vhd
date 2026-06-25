@@ -15,8 +15,12 @@ entity mcu4_worker_core is
 
         buf_a_raddr : out std_logic_vector(2 downto 0);
         buf_a_rdata : in  word_t;
+        buf_a_raddr2 : out std_logic_vector(2 downto 0);
+        buf_a_rdata2 : in  word_t;
         buf_b_raddr : out std_logic_vector(2 downto 0);
         buf_b_rdata : in  word_t;
+        buf_b_raddr2 : out std_logic_vector(2 downto 0);
+        buf_b_rdata2 : in  word_t;
 
         buf_a_we    : out std_logic;
         buf_a_waddr : out std_logic_vector(2 downto 0);
@@ -275,8 +279,22 @@ begin
     buf_a_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
         when state_reg = S_RUN and (exec_op = WOP_LDR_A or exec_op = WOP_STR_A)
         else (others => '0');
+    buf_a_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
+        when state_reg = S_RUN
+             and exec_op = WOP_LDR_A
+             and dec_op = WOP_LDR_A
+             and dec_illegal = '0'
+             and exec_rd /= dec_rd
+        else (others => '0');
     buf_b_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
         when state_reg = S_RUN and (exec_op = WOP_LDR_B or exec_op = WOP_STR_B)
+        else (others => '0');
+    buf_b_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
+        when state_reg = S_RUN
+             and exec_op = WOP_LDR_B
+             and dec_op = WOP_LDR_B
+             and dec_illegal = '0'
+             and exec_rd /= dec_rd
         else (others => '0');
 
     buf_a_we <= '1' when halted_reg = '0'
@@ -560,6 +578,28 @@ begin
                                 wb2_valid := true;
                                 wb2_rd := dec_rd;
                                 wb2_data := std_logic_vector(to_signed(dec_imm, 32));
+                            elsif dec_illegal = '0'
+                                  and exec_op = WOP_LDR_A
+                                  and dec_op = WOP_LDR_A
+                                  and exec_rd /= dec_rd then
+                                pair_valid := true;
+                                wb_valid := true;
+                                wb_rd := exec_rd;
+                                wb_data := buf_a_rdata;
+                                wb2_valid := true;
+                                wb2_rd := dec_rd;
+                                wb2_data := buf_a_rdata2;
+                            elsif dec_illegal = '0'
+                                  and exec_op = WOP_LDR_B
+                                  and dec_op = WOP_LDR_B
+                                  and exec_rd /= dec_rd then
+                                pair_valid := true;
+                                wb_valid := true;
+                                wb_rd := exec_rd;
+                                wb_data := buf_b_rdata;
+                                wb2_valid := true;
+                                wb2_rd := dec_rd;
+                                wb2_data := buf_b_rdata2;
                             elsif dec_illegal = '0'
                                   and exec_op = WOP_SADD16
                                   and dec_op = WOP_SSUB16

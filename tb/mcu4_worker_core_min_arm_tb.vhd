@@ -12,8 +12,12 @@ architecture sim of mcu4_worker_core_min_arm_tb is
 
     signal buf_a_raddr : std_logic_vector(2 downto 0);
     signal buf_a_rdata : std_logic_vector(31 downto 0);
+    signal buf_a_raddr2 : std_logic_vector(2 downto 0);
+    signal buf_a_rdata2 : std_logic_vector(31 downto 0);
     signal buf_b_raddr : std_logic_vector(2 downto 0);
     signal buf_b_rdata : std_logic_vector(31 downto 0) := (others => '0');
+    signal buf_b_raddr2 : std_logic_vector(2 downto 0);
+    signal buf_b_rdata2 : std_logic_vector(31 downto 0) := (others => '0');
 
     signal buf_a_we    : std_logic;
     signal buf_a_waddr : std_logic_vector(2 downto 0);
@@ -33,6 +37,7 @@ begin
     clk <= not clk after 5 ns;
 
     buf_a_rdata <= x"00000005" when buf_a_raddr = "000" else (others => '0');
+    buf_a_rdata2 <= x"00000005" when buf_a_raddr2 = "000" else (others => '0');
 
     dut : entity work.mcu4_worker_core
         generic map (
@@ -44,8 +49,12 @@ begin
             rst         => rst,
             buf_a_raddr => buf_a_raddr,
             buf_a_rdata => buf_a_rdata,
+            buf_a_raddr2 => buf_a_raddr2,
+            buf_a_rdata2 => buf_a_rdata2,
             buf_b_raddr => buf_b_raddr,
             buf_b_rdata => buf_b_rdata,
+            buf_b_raddr2 => buf_b_raddr2,
+            buf_b_rdata2 => buf_b_rdata2,
             buf_a_we    => buf_a_we,
             buf_a_waddr => buf_a_waddr,
             buf_a_wdata => buf_a_wdata,

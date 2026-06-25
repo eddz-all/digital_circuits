@@ -18,14 +18,14 @@ project.
 The system-level GHDL test passes with:
 
 ```text
-mcu_fft_system_tb cnt_cycles 28
+mcu_fft_system_tb cnt_cycles 25
 mcu_fft_system_tb passed
 ```
 
 So the expected board counter is:
 
 ```text
-cnt_test = 0001C
+cnt_test = 00019
 ```
 
 ## File Map
@@ -109,7 +109,7 @@ For timing, normal straight-line instructions keep one-instruction-per-cycle
 throughput after fetch/decode fill. `SMUAD` and `SMUSD` are internally split
 into multiply, accumulate, and writeback stages. Back-to-back independent DSP
 instructions can use a local pair pipeline, and the common following `ASR` can
-retire with the second DSP writeback. Safe adjacent `MOV/MOV` and
+retire with the second DSP writeback. Safe adjacent `MOV/MOV`, `LDR/LDR`, and
 `SADD16/SSUB16` pairs can also retire together. The visible instruction stream
 remains ARM/ARM-DSP style; these are micro-architectural scheduling
 optimizations, not FFT-specific opcodes.
@@ -140,7 +140,7 @@ Signed decimal:
 The human-readable worker program is committed in:
 
 ```text
-asm/mcu4_fft_workers_cnt28.s
+asm/mcu4_fft_workers_cnt25.s
 ```
 
 The file is a documentation source matching `rtl/mcu4_worker_instr_rom.vhd`.

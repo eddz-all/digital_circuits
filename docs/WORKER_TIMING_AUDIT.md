@@ -7,8 +7,8 @@ This audit records the safe optimization applied to the four-worker FFT program.
 The counted instruction window is expected to be:
 
 ```text
-mcu_fft_system_tb cnt_cycles 28
-cnt_test = 0001C
+mcu_fft_system_tb cnt_cycles 25
+cnt_test = 00019
 ```
 
 Input loading from `test_ROM[128..143]` and output dumping to `verify_RAM[0..15]`
@@ -26,8 +26,8 @@ Straight-line code still overlaps fetch, decode and execute after pipeline fill.
 `SMUAD` and `SMUSD` use extra internal DSP stages to avoid a two-DSP plus
 writeback path in a single clock. Independent back-to-back DSP instructions can
 enter a local pair pipeline, and the common following `ASR` can retire with the
-second DSP writeback. Safe adjacent `MOV/MOV` and `SADD16/SSUB16` pairs can
-also retire together.
+second DSP writeback. Safe adjacent `MOV/MOV`, `LDR/LDR`, and `SADD16/SSUB16`
+pairs can also retire together.
 
 ## Safe Optimizations
 
@@ -49,7 +49,7 @@ The later timing/count optimizations also stay inside the visible ARM/ARM-DSP
 program model:
 
 ```text
-Local dual issue: retires safe MOV/MOV and SADD16/SSUB16 pairs together.
+Local dual issue: retires safe MOV/MOV, LDR/LDR, and SADD16/SSUB16 pairs together.
 DSP pair pipeline: overlaps independent SMUAD/SMUSD execution.
 ASR overlap: retires the existing ASR instruction with the second DSP writeback.
 ```
@@ -74,9 +74,9 @@ STR
 STR
 ```
 
-The `SADD16/SSUB16` pair now retires in one counted cycle, but the W1/W3 lane
-still contains the two loads, DSP pair, pack, and two stores. Worker0 and
-worker2 finish earlier and still contain padding near the end of stage2.
+The `LDR/LDR` and `SADD16/SSUB16` pairs now retire in one counted cycle each,
+but the W1/W3 lane still contains the DSP pair, pack, and two stores. Worker0
+and worker2 finish earlier and still contain padding near the end of stage2.
 Removing only those padding cycles does not reduce system `cnt`, because the
 system waits for all workers to halt.
 
