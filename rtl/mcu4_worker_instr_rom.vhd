@@ -11,7 +11,14 @@ entity mcu4_worker_instr_rom is
     );
     port (
         pc_index : in  std_logic_vector(5 downto 0);
-        instr    : out word_t
+        instr       : out word_t;
+        dec_op      : out worker_op_t;
+        dec_rd      : out natural range 0 to 15;
+        dec_rn      : out natural range 0 to 15;
+        dec_rm      : out natural range 0 to 15;
+        dec_imm     : out integer range -4096 to 4095;
+        dec_idx     : out natural range 0 to 7;
+        dec_illegal : out std_logic
     );
 end entity mcu4_worker_instr_rom;
 
@@ -349,15 +356,190 @@ architecture rtl of mcu4_worker_instr_rom is
             when others => return x"EAFFFFFE";
         end case;
     end function;
+
+    procedure decode_instr_word(
+        constant instr_value : in word_t;
+        constant pc_value_in : in std_logic_vector(5 downto 0);
+        variable op_value      : out worker_op_t;
+        variable rd_value      : out natural range 0 to 15;
+        variable rn_value      : out natural range 0 to 15;
+        variable rm_value      : out natural range 0 to 15;
+        variable imm_value     : out integer range -4096 to 4095;
+        variable idx_value     : out natural range 0 to 7;
+        variable illegal_value : out std_logic
+    ) is
+        variable word_addr : natural range 0 to 1023;
+        variable target_pc : integer range -4096 to 4095;
+        variable branch_off : integer range -8388608 to 8388607;
+        variable pc_value : integer range 0 to 63;
+    begin
+        op_value := WOP_NOP;
+        rd_value := 0;
+        rn_value := 0;
+        rm_value := 0;
+        imm_value := 0;
+        idx_value := 0;
+        illegal_value := '0';
+
+        pc_value := to_integer(unsigned(pc_value_in));
+
+        if instr_value = x"EAFFFFFE" then
+            op_value := WOP_HALT;
+        elsif instr_value(31 downto 20) = x"E3A" then
+            op_value := WOP_MOV_IMM;
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            imm_value := to_integer(unsigned(instr_value(11 downto 0)));
+        elsif instr_value(31 downto 20) = x"E3E" then
+            op_value := WOP_ASR;
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rn_value := to_integer(unsigned(instr_value(3 downto 0)));
+            imm_value := to_integer(unsigned(instr_value(11 downto 7)));
+        elsif instr_value(31 downto 20) = x"E1A" then
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+            if instr_value(15 downto 12) = x"0" and instr_value(3 downto 0) = x"0" then
+                op_value := WOP_NOP;
+            else
+                op_value := WOP_MOV_REG;
+            end if;
+        elsif instr_value(31 downto 20) = x"E08" then
+            op_value := WOP_ADD;
+            rn_value := to_integer(unsigned(instr_value(19 downto 16)));
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+        elsif instr_value(31 downto 20) = x"E04" then
+            op_value := WOP_SUB;
+            rn_value := to_integer(unsigned(instr_value(19 downto 16)));
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+        elsif instr_value(31 downto 20) = x"E00" then
+            op_value := WOP_AND;
+            rn_value := to_integer(unsigned(instr_value(19 downto 16)));
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+        elsif instr_value(31 downto 20) = x"E18" then
+            op_value := WOP_ORR;
+            rn_value := to_integer(unsigned(instr_value(19 downto 16)));
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+        elsif instr_value(31 downto 20) = x"ECA" then
+            op_value := WOP_PKHBT;
+            rn_value := to_integer(unsigned(instr_value(19 downto 16)));
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+            imm_value := to_integer(unsigned(instr_value(11 downto 7)));
+        elsif instr_value(31 downto 20) = x"E59" then
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            word_addr := to_integer(unsigned(instr_value(11 downto 0))) / 4;
+            if word_addr >= WORK_BUF_A_BASE_WORD
+               and word_addr < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
+                op_value := WOP_LDR_A;
+                idx_value := word_addr - WORK_BUF_A_BASE_WORD;
+            elsif word_addr >= WORK_BUF_B_BASE_WORD
+                  and word_addr < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
+                op_value := WOP_LDR_B;
+                idx_value := word_addr - WORK_BUF_B_BASE_WORD;
+            else
+                illegal_value := '1';
+            end if;
+        elsif instr_value(31 downto 20) = x"E58" then
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            word_addr := to_integer(unsigned(instr_value(11 downto 0))) / 4;
+            if word_addr >= WORK_BUF_A_BASE_WORD
+               and word_addr < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
+                op_value := WOP_STR_A;
+                idx_value := word_addr - WORK_BUF_A_BASE_WORD;
+            elsif word_addr >= WORK_BUF_B_BASE_WORD
+                  and word_addr < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
+                op_value := WOP_STR_B;
+                idx_value := word_addr - WORK_BUF_B_BASE_WORD;
+            else
+                illegal_value := '1';
+            end if;
+        elsif instr_value(31 downto 24) = x"ED" then
+            case instr_value(23 downto 20) is
+                when x"8" =>
+                    op_value := WOP_SADD16;
+                when x"2" =>
+                    op_value := WOP_SSUB16;
+                when x"0" =>
+                    op_value := WOP_SSAX;
+                when others =>
+                    illegal_value := '1';
+            end case;
+            rn_value := to_integer(unsigned(instr_value(19 downto 16)));
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+        elsif instr_value(31 downto 24) = x"EC" then
+            case instr_value(23 downto 20) is
+                when x"4" =>
+                    op_value := WOP_SMUAD;
+                when x"6" =>
+                    op_value := WOP_SMUSD;
+                when others =>
+                    illegal_value := '1';
+            end case;
+            rn_value := to_integer(unsigned(instr_value(19 downto 16)));
+            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
+            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+        elsif instr_value(31 downto 24) = x"EA"
+              or instr_value(31 downto 24) = x"EB" then
+            branch_off := to_integer(signed(instr_value(23 downto 0)));
+            target_pc := pc_value + 2 + branch_off;
+            if target_pc < 0 or target_pc > 63 then
+                illegal_value := '1';
+                imm_value := 0;
+            else
+                imm_value := target_pc;
+            end if;
+
+            if instr_value(31 downto 24) = x"EB" then
+                op_value := WOP_BL;
+            else
+                op_value := WOP_B;
+            end if;
+        else
+            illegal_value := '1';
+        end if;
+    end procedure;
 begin
     process(pc_index)
         variable pc : natural range 0 to 63;
+        variable instr_value : word_t;
+        variable op_value : worker_op_t;
+        variable rd_value : natural range 0 to 15;
+        variable rn_value : natural range 0 to 15;
+        variable rm_value : natural range 0 to 15;
+        variable imm_value : integer range -4096 to 4095;
+        variable idx_value : natural range 0 to 7;
+        variable illegal_value : std_logic;
     begin
         pc := to_integer(unsigned(pc_index));
         if PROGRAM_ID = 1 then
-            instr <= selftest_program_word(pc);
+            instr_value := selftest_program_word(pc);
         else
-            instr <= fft_program_word(WORKER_ID, pc);
+            instr_value := fft_program_word(WORKER_ID, pc);
         end if;
+
+        decode_instr_word(
+            instr_value,
+            pc_index,
+            op_value,
+            rd_value,
+            rn_value,
+            rm_value,
+            imm_value,
+            idx_value,
+            illegal_value
+        );
+
+        instr <= instr_value;
+        dec_op <= op_value;
+        dec_rd <= rd_value;
+        dec_rn <= rn_value;
+        dec_rm <= rm_value;
+        dec_imm <= imm_value;
+        dec_idx <= idx_value;
+        dec_illegal <= illegal_value;
     end process;
 end architecture rtl;
