@@ -74,6 +74,10 @@ architecture rtl of mcu4_worker_core is
     signal run_ctrl_debug : std_logic := '0';
     signal decode_ctrl_debug : std_logic := '0';
     signal dsp_ctrl_debug    : std_logic := '0';
+    signal rst_ctrl_local : std_logic := '1';
+    signal rst_exec_local : std_logic := '1';
+    signal rst_rf_local   : std_logic := '1';
+    signal rst_mem_local  : std_logic := '1';
     signal pc_fetch_reg : natural range 0 to 63 := 0;
     signal pc_index     : std_logic_vector(5 downto 0) := (others => '0');
     signal pc_pair_index : std_logic_vector(5 downto 0) := (others => '0');
@@ -173,6 +177,10 @@ architecture rtl of mcu4_worker_core is
     attribute max_fanout of run_ctrl_debug : signal is 32;
     attribute max_fanout of decode_ctrl_debug : signal is 32;
     attribute max_fanout of dsp_ctrl_debug : signal is 32;
+    attribute max_fanout of rst_ctrl_local : signal is 32;
+    attribute max_fanout of rst_exec_local : signal is 64;
+    attribute max_fanout of rst_rf_local : signal is 32;
+    attribute max_fanout of rst_mem_local : signal is 32;
     attribute max_fanout of rf_wb_we : signal is 32;
     attribute max_fanout of rf_wb2_we : signal is 32;
     attribute keep of exec_state_reg : signal is "true";
@@ -183,6 +191,10 @@ architecture rtl of mcu4_worker_core is
     attribute keep of run_ctrl_debug : signal is "true";
     attribute keep of decode_ctrl_debug : signal is "true";
     attribute keep of dsp_ctrl_debug : signal is "true";
+    attribute keep of rst_ctrl_local : signal is "true";
+    attribute keep of rst_exec_local : signal is "true";
+    attribute keep of rst_rf_local : signal is "true";
+    attribute keep of rst_mem_local : signal is "true";
     attribute dont_touch of exec_state_reg : signal is "true";
     attribute dont_touch of run_ctrl_rf : signal is "true";
     attribute dont_touch of run_ctrl_exec : signal is "true";
@@ -191,6 +203,10 @@ architecture rtl of mcu4_worker_core is
     attribute dont_touch of run_ctrl_debug : signal is "true";
     attribute dont_touch of decode_ctrl_debug : signal is "true";
     attribute dont_touch of dsp_ctrl_debug : signal is "true";
+    attribute dont_touch of rst_ctrl_local : signal is "true";
+    attribute dont_touch of rst_exec_local : signal is "true";
+    attribute dont_touch of rst_rf_local : signal is "true";
+    attribute dont_touch of rst_mem_local : signal is "true";
     attribute keep of dsp_sub : signal is "true";
     attribute keep of dsp_sub_acc : signal is "true";
     attribute keep of dsp2_sub : signal is "true";
@@ -359,6 +375,11 @@ architecture rtl of mcu4_worker_core is
         return WPAIR_NONE;
     end function;
 begin
+    rst_ctrl_local <= rst;
+    rst_exec_local <= rst;
+    rst_rf_local <= rst;
+    rst_mem_local <= rst;
+
     pc_index <= std_logic_vector(to_unsigned(pc_fetch_reg, 6));
     pc_pair_index <= std_logic_vector(to_unsigned(next_seq_pc(pc_fetch_reg), 6));
 
@@ -421,7 +442,8 @@ begin
         when run_ctrl_pair = '1' and exec_pair_kind = WPAIR_LDR_B
         else (others => '0');
 
-    buf_a_we <= '1' when halted_reg = '0'
+    buf_a_we <= '1' when rst_mem_local = '0'
+                         and halted_reg = '0'
                          and illegal_reg = '0'
                          and run_ctrl_mem = '1'
                          and exec_illegal = '0'
@@ -429,7 +451,8 @@ begin
                 else '0';
     buf_a_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
     buf_a_wdata <= exec_rd_data;
-    buf_a_we2 <= '1' when halted_reg = '0'
+    buf_a_we2 <= '1' when rst_mem_local = '0'
+                          and halted_reg = '0'
                           and illegal_reg = '0'
                           and run_ctrl_pair = '1'
                           and exec_illegal = '0'
@@ -438,7 +461,8 @@ begin
     buf_a_waddr2 <= std_logic_vector(to_unsigned(dec_idx, 3));
     buf_a_wdata2 <= dec_rd_data;
 
-    buf_b_we <= '1' when halted_reg = '0'
+    buf_b_we <= '1' when rst_mem_local = '0'
+                         and halted_reg = '0'
                          and illegal_reg = '0'
                          and run_ctrl_mem = '1'
                          and exec_illegal = '0'
@@ -446,7 +470,8 @@ begin
                 else '0';
     buf_b_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
     buf_b_wdata <= exec_rd_data;
-    buf_b_we2 <= '1' when halted_reg = '0'
+    buf_b_we2 <= '1' when rst_mem_local = '0'
+                          and halted_reg = '0'
                           and illegal_reg = '0'
                           and run_ctrl_pair = '1'
                           and exec_illegal = '0'
@@ -789,7 +814,7 @@ begin
             rf_next2_rd := 0;
             rf_next2_data := (others => '0');
 
-            if rst = '1' then
+            if rst_ctrl_local = '1' then
                 set_worker_state(S_FETCH);
                 pc_fetch_reg <= 0;
                 halted_reg <= '0';
@@ -803,7 +828,9 @@ begin
                 -- Data-path registers are overwritten by fetch/decode or by
                 -- the program prologue before use. Leaving them out of reset
                 -- keeps the core reset fanout small enough for higher clocks.
-            else
+            end if;
+
+            if rst_rf_local = '0' then
                 for rf_idx in 0 to 15 loop
                     if rf_wb_we(rf_idx) = '1' then
                         regs(rf_idx) <= rf_wb_data;
@@ -817,7 +844,9 @@ begin
                 rf_wb_we <= (others => '0');
                 rf_wb2_valid <= '0';
                 rf_wb2_we <= (others => '0');
+            end if;
 
+            if rst_exec_local = '0' then
                 if halted_reg = '0' and illegal_reg = '0' then
                     case exec_state_reg is
                     when S_FETCH =>
@@ -1163,7 +1192,9 @@ begin
                         set_worker_state(S_RUN);
                     end case;
                 end if;
+            end if;
 
+            if rst_rf_local = '0' then
                 if rf_next_valid then
                     rf_wb_valid <= '1';
                     rf_wb_we <= rf_next_we;
