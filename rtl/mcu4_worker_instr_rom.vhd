@@ -502,6 +502,274 @@ architecture rtl of mcu4_worker_instr_rom is
             illegal_value := '1';
         end if;
     end procedure;
+
+    procedure decode_fft_pc(
+        constant wid      : in natural;
+        constant pc       : in natural;
+        variable op_value      : out worker_op_t;
+        variable rd_value      : out natural range 0 to 15;
+        variable rn_value      : out natural range 0 to 15;
+        variable rm_value      : out natural range 0 to 15;
+        variable imm_value     : out integer range -4096 to 4095;
+        variable idx_value     : out natural range 0 to 7;
+        variable illegal_value : out std_logic
+    ) is
+    begin
+        op_value := WOP_NOP;
+        rd_value := 0;
+        rn_value := 0;
+        rm_value := 0;
+        imm_value := 0;
+        idx_value := 0;
+        illegal_value := '0';
+
+        case pc is
+            when 0 =>
+                op_value := WOP_MOV_IMM;
+                rd_value := REG_ZERO;
+            when 1 =>
+                op_value := WOP_MOV_IMM;
+                rd_value := REG_POS91;
+                imm_value := 91;
+            when 2 =>
+                op_value := WOP_PKHBT;
+                rd_value := REG_PACK91;
+                rn_value := REG_POS91;
+                rm_value := REG_POS91;
+                imm_value := 16;
+            when 3 =>
+                op_value := WOP_SSUB16;
+                rd_value := REG_PACKN91;
+                rn_value := REG_ZERO;
+                rm_value := REG_PACK91;
+            when 4 =>
+                op_value := WOP_LDR_A;
+                rd_value := REG_A;
+                idx_value := wid * 2;
+            when 5 =>
+                op_value := WOP_LDR_A;
+                rd_value := REG_B;
+                idx_value := wid * 2 + 1;
+            when 6 =>
+                op_value := WOP_SADD16;
+                rd_value := REG_EVEN;
+                rn_value := REG_A;
+                rm_value := REG_B;
+            when 7 =>
+                op_value := WOP_SSUB16;
+                rd_value := REG_ODD;
+                rn_value := REG_A;
+                rm_value := REG_B;
+            when 8 =>
+                op_value := WOP_STR_B;
+                rd_value := REG_EVEN;
+                idx_value := wid * 2;
+            when 9 =>
+                op_value := WOP_STR_B;
+                rd_value := REG_ODD;
+                idx_value := wid * 2 + 1;
+            when 10 =>
+                op_value := WOP_LDR_B;
+                rd_value := REG_A;
+                if wid = 0 or wid = 1 then
+                    idx_value := wid;
+                else
+                    idx_value := wid + 2;
+                end if;
+            when 11 =>
+                op_value := WOP_LDR_B;
+                rd_value := REG_B;
+                if wid = 0 or wid = 1 then
+                    idx_value := wid + 2;
+                else
+                    idx_value := wid + 4;
+                end if;
+            when 12 =>
+                if wid = 1 or wid = 3 then
+                    op_value := WOP_SSAX;
+                    rd_value := REG_T;
+                    rn_value := REG_ZERO;
+                    rm_value := REG_B;
+                else
+                    op_value := WOP_SADD16;
+                    rd_value := REG_EVEN;
+                    rn_value := REG_A;
+                    rm_value := REG_B;
+                end if;
+            when 13 =>
+                if wid = 1 or wid = 3 then
+                    op_value := WOP_SADD16;
+                    rd_value := REG_EVEN;
+                    rn_value := REG_A;
+                    rm_value := REG_T;
+                else
+                    op_value := WOP_SSUB16;
+                    rd_value := REG_ODD;
+                    rn_value := REG_A;
+                    rm_value := REG_B;
+                end if;
+            when 14 =>
+                if wid = 1 or wid = 3 then
+                    op_value := WOP_SSUB16;
+                    rd_value := REG_ODD;
+                    rn_value := REG_A;
+                    rm_value := REG_T;
+                else
+                    op_value := WOP_STR_A;
+                    rd_value := REG_EVEN;
+                    idx_value := 4 * (wid / 2);
+                end if;
+            when 15 =>
+                op_value := WOP_STR_A;
+                if wid = 0 then
+                    rd_value := REG_ODD;
+                    idx_value := 2;
+                elsif wid = 1 then
+                    rd_value := REG_EVEN;
+                    idx_value := 1;
+                elsif wid = 2 then
+                    rd_value := REG_ODD;
+                    idx_value := 6;
+                else
+                    rd_value := REG_EVEN;
+                    idx_value := 5;
+                end if;
+            when 16 =>
+                if wid = 1 or wid = 3 then
+                    op_value := WOP_STR_A;
+                    rd_value := REG_ODD;
+                    if wid = 1 then
+                        idx_value := 3;
+                    else
+                        idx_value := 7;
+                    end if;
+                end if;
+            when 17 =>
+                op_value := WOP_LDR_A;
+                rd_value := REG_A;
+                idx_value := wid;
+            when 18 =>
+                op_value := WOP_LDR_A;
+                rd_value := REG_B;
+                idx_value := wid + 4;
+            when 19 =>
+                if wid = 0 then
+                    op_value := WOP_SADD16;
+                    rd_value := REG_EVEN;
+                    rn_value := REG_A;
+                    rm_value := REG_B;
+                elsif wid = 2 then
+                    op_value := WOP_SSAX;
+                    rd_value := REG_T;
+                    rn_value := REG_ZERO;
+                    rm_value := REG_B;
+                elsif wid = 1 then
+                    op_value := WOP_SMUAD;
+                    rd_value := REG_TMP_RE;
+                    rn_value := REG_B;
+                    rm_value := REG_PACK91;
+                else
+                    op_value := WOP_SMUSD;
+                    rd_value := REG_TMP_RE;
+                    rn_value := REG_B;
+                    rm_value := REG_PACKN91;
+                end if;
+            when 20 =>
+                if wid = 0 then
+                    op_value := WOP_SSUB16;
+                    rd_value := REG_ODD;
+                    rn_value := REG_A;
+                    rm_value := REG_B;
+                elsif wid = 2 then
+                    op_value := WOP_SADD16;
+                    rd_value := REG_EVEN;
+                    rn_value := REG_A;
+                    rm_value := REG_T;
+                elsif wid = 1 then
+                    op_value := WOP_SMUSD;
+                    rd_value := REG_TMP_IM;
+                    rn_value := REG_B;
+                    rm_value := REG_PACKN91;
+                else
+                    op_value := WOP_SMUAD;
+                    rd_value := REG_TMP_IM;
+                    rn_value := REG_B;
+                    rm_value := REG_PACKN91;
+                end if;
+            when 21 =>
+                if wid = 0 then
+                    op_value := WOP_STR_B;
+                    rd_value := REG_EVEN;
+                    idx_value := 0;
+                elsif wid = 2 then
+                    op_value := WOP_SSUB16;
+                    rd_value := REG_ODD;
+                    rn_value := REG_A;
+                    rm_value := REG_T;
+                else
+                    op_value := WOP_ASR;
+                    rd_value := REG_TMP_RE;
+                    rn_value := REG_TMP_RE;
+                    imm_value := 7;
+                end if;
+            when 22 =>
+                if wid = 0 then
+                    op_value := WOP_STR_B;
+                    rd_value := REG_ODD;
+                    idx_value := 4;
+                elsif wid = 2 then
+                    op_value := WOP_STR_B;
+                    rd_value := REG_EVEN;
+                    idx_value := 2;
+                else
+                    op_value := WOP_PKHBT;
+                    rd_value := REG_T;
+                    rn_value := REG_TMP_RE;
+                    rm_value := REG_TMP_IM;
+                    imm_value := 9;
+                end if;
+            when 23 =>
+                if wid = 2 then
+                    op_value := WOP_STR_B;
+                    rd_value := REG_ODD;
+                    idx_value := 6;
+                elsif wid = 1 or wid = 3 then
+                    op_value := WOP_SADD16;
+                    rd_value := REG_EVEN;
+                    rn_value := REG_A;
+                    rm_value := REG_T;
+                end if;
+            when 24 =>
+                if wid = 1 or wid = 3 then
+                    op_value := WOP_SSUB16;
+                    rd_value := REG_ODD;
+                    rn_value := REG_A;
+                    rm_value := REG_T;
+                end if;
+            when 25 =>
+                if wid = 1 or wid = 3 then
+                    op_value := WOP_STR_B;
+                    rd_value := REG_EVEN;
+                    if wid = 1 then
+                        idx_value := 1;
+                    else
+                        idx_value := 3;
+                    end if;
+                end if;
+            when 26 =>
+                if wid = 1 or wid = 3 then
+                    op_value := WOP_STR_B;
+                    rd_value := REG_ODD;
+                    if wid = 1 then
+                        idx_value := 5;
+                    else
+                        idx_value := 7;
+                    end if;
+                end if;
+            when others =>
+                op_value := WOP_HALT;
+        end case;
+    end procedure;
 begin
     process(pc_index)
         variable pc : natural range 0 to 63;
@@ -517,21 +785,31 @@ begin
         pc := to_integer(unsigned(pc_index));
         if PROGRAM_ID = 1 then
             instr_value := selftest_program_word(pc);
+            decode_instr_word(
+                instr_value,
+                pc_index,
+                op_value,
+                rd_value,
+                rn_value,
+                rm_value,
+                imm_value,
+                idx_value,
+                illegal_value
+            );
         else
             instr_value := fft_program_word(WORKER_ID, pc);
+            decode_fft_pc(
+                WORKER_ID,
+                pc,
+                op_value,
+                rd_value,
+                rn_value,
+                rm_value,
+                imm_value,
+                idx_value,
+                illegal_value
+            );
         end if;
-
-        decode_instr_word(
-            instr_value,
-            pc_index,
-            op_value,
-            rd_value,
-            rn_value,
-            rm_value,
-            imm_value,
-            idx_value,
-            illegal_value
-        );
 
         instr <= instr_value;
         dec_op <= op_value;

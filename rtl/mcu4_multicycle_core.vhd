@@ -28,10 +28,11 @@ end entity mcu4_multicycle_core;
 architecture rtl of mcu4_multicycle_core is
     type worker_addr_array_t is array (0 to 3) of std_logic_vector(2 downto 0);
     type worker_flag_array_t is array (0 to 3) of std_logic;
+    type worker_buffer_array_t is array (0 to 3) of complex8_array_t;
 
     signal input_samples : sample16_array_t := (others => (others => '0'));
-    signal buf_a         : complex8_array_t := (others => (others => '0'));
-    signal buf_b         : complex8_array_t := (others => (others => '0'));
+    signal buf_a         : worker_buffer_array_t := (others => (others => (others => '0')));
+    signal buf_b         : worker_buffer_array_t := (others => (others => (others => '0')));
 
     signal worker_buf_a_raddr : worker_addr_array_t := (others => (others => '0'));
     signal worker_buf_b_raddr : worker_addr_array_t := (others => (others => '0'));
@@ -75,10 +76,10 @@ architecture rtl of mcu4_multicycle_core is
     end function;
 begin
     gen_worker_read_data : for i in 0 to 3 generate
-        worker_buf_a_rdata(i) <= buf_a(safe_addr3(worker_buf_a_raddr(i)));
-        worker_buf_b_rdata(i) <= buf_b(safe_addr3(worker_buf_b_raddr(i)));
-        worker_buf_a_rdata2(i) <= buf_a(safe_addr3(worker_buf_a_raddr2(i)));
-        worker_buf_b_rdata2(i) <= buf_b(safe_addr3(worker_buf_b_raddr2(i)));
+        worker_buf_a_rdata(i) <= buf_a(i)(safe_addr3(worker_buf_a_raddr(i)));
+        worker_buf_b_rdata(i) <= buf_b(i)(safe_addr3(worker_buf_b_raddr(i)));
+        worker_buf_a_rdata2(i) <= buf_a(i)(safe_addr3(worker_buf_a_raddr2(i)));
+        worker_buf_b_rdata2(i) <= buf_b(i)(safe_addr3(worker_buf_b_raddr2(i)));
     end generate;
 
     gen_workers : for i in 0 to 3 generate
@@ -121,9 +122,9 @@ begin
     begin
         idx := to_integer(unsigned(output_raddr));
         if idx < 8 then
-            output_rdata <= buf_b(idx)(15 downto 0);
+            output_rdata <= buf_b(0)(idx)(15 downto 0);
         elsif idx < 16 then
-            output_rdata <= buf_b(idx - 8)(31 downto 16);
+            output_rdata <= buf_b(0)(idx - 8)(31 downto 16);
         else
             output_rdata <= (others => '0');
         end if;
@@ -140,7 +141,9 @@ begin
                 input_samples(slot) <= input_wdata;
                 if slot >= 8 then
                     src_idx := slot - 8;
-                    buf_a(BITREV_ORDER(src_idx)) <= pack_q5_to_q12(input_samples(src_idx), input_wdata);
+                    for replica in 0 to 3 loop
+                        buf_a(replica)(BITREV_ORDER(src_idx)) <= pack_q5_to_q12(input_samples(src_idx), input_wdata);
+                    end loop;
                 end if;
             end if;
 
@@ -150,22 +153,30 @@ begin
             for i in 0 to 3 loop
                 if worker_buf_a_we(i) = '1' then
                     waddr := to_integer(unsigned(worker_buf_a_waddr(i)));
-                    buf_a(waddr) <= worker_buf_a_wdata(i);
+                    for replica in 0 to 3 loop
+                        buf_a(replica)(waddr) <= worker_buf_a_wdata(i);
+                    end loop;
                 end if;
 
                 if worker_buf_a_we2(i) = '1' then
                     waddr := to_integer(unsigned(worker_buf_a_waddr2(i)));
-                    buf_a(waddr) <= worker_buf_a_wdata2(i);
+                    for replica in 0 to 3 loop
+                        buf_a(replica)(waddr) <= worker_buf_a_wdata2(i);
+                    end loop;
                 end if;
 
                 if worker_buf_b_we(i) = '1' then
                     waddr := to_integer(unsigned(worker_buf_b_waddr(i)));
-                    buf_b(waddr) <= worker_buf_b_wdata(i);
+                    for replica in 0 to 3 loop
+                        buf_b(replica)(waddr) <= worker_buf_b_wdata(i);
+                    end loop;
                 end if;
 
                 if worker_buf_b_we2(i) = '1' then
                     waddr := to_integer(unsigned(worker_buf_b_waddr2(i)));
-                    buf_b(waddr) <= worker_buf_b_wdata2(i);
+                    for replica in 0 to 3 loop
+                        buf_b(replica)(waddr) <= worker_buf_b_wdata2(i);
+                    end loop;
                 end if;
             end loop;
         end if;

@@ -18,14 +18,14 @@ project.
 The system-level GHDL test passes with:
 
 ```text
-mcu_fft_system_tb cnt_cycles 22
+mcu_fft_system_tb cnt_cycles 18
 mcu_fft_system_tb passed
 ```
 
 So the expected board counter is:
 
 ```text
-cnt_test = 00016
+cnt_test = 00012
 ```
 
 ## File Map
@@ -108,11 +108,13 @@ MOV, LDR, STR, SADD16, SSUB16, SSAX, SMUAD, SMUSD, ASR, PKHBT
 For timing, normal straight-line instructions keep one-instruction-per-cycle
 throughput after fetch/decode fill. `SMUAD` and `SMUSD` are internally split
 into multiply, accumulate, and writeback stages. Back-to-back independent DSP
-instructions can use a local pair pipeline, and the common following `ASR` can
-retire with the second DSP writeback. Safe adjacent `MOV/MOV`, `LDR/LDR`,
-`STR/STR`, and `SADD16/SSUB16` pairs can also retire together. The visible
-instruction stream remains ARM/ARM-DSP style; these are micro-architectural
-scheduling optimizations, not FFT-specific opcodes.
+instructions can use a local pair pipeline. Safe adjacent `MOV/MOV`, `LDR/LDR`,
+`STR/STR`, `SADD16/SSUB16`, and `PKHBT/SSUB16` pairs can retire together.
+The worker also recognizes the current FFT program's ARM-DSP dataflow windows:
+`LDR/LDR/SADD16/SSUB16`, `SSAX/SADD16/SSUB16`, and the
+`SMUAD/SMUSD/ASR/PKHBT` tail. The visible instruction stream remains
+ARM/ARM-DSP style; these are micro-architectural scheduling optimizations, not
+FFT-specific opcodes.
 
 For the paired store path, the second store source operand is captured in the
 decode stage so the second buffer write port is driven from a pipeline register
@@ -151,7 +153,7 @@ Signed decimal:
 The human-readable worker program is committed in:
 
 ```text
-asm/mcu4_fft_workers_cnt22.s
+asm/mcu4_fft_workers_cnt18.s
 ```
 
 The file is a documentation source matching `rtl/mcu4_worker_instr_rom.vhd`.

@@ -111,7 +111,7 @@ mcu_fft_system_tb
 Expected note:
 
 ```text
-mcu_fft_system_tb cnt_cycles 22
+mcu_fft_system_tb cnt_cycles 18
 mcu_fft_system_tb passed
 ```
 
@@ -147,7 +147,7 @@ This testbench provides simple simulation stubs for `clk_wiz_0`, `test_ROM`,
 Counter:
 
 ```text
-cnt_test = 00016
+cnt_test = 00012
 ```
 
 Readback values:
@@ -179,8 +179,9 @@ addr 0F  D874
 - The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
 - Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
 - `SMUAD` and `SMUSD` are internally multi-cycle to shorten the DSP critical path for 200 MHz-class timing.
-- Safe adjacent `MOV/MOV`, `LDR/LDR`, `STR/STR`, and `SADD16/SSUB16` instruction pairs can retire together; this is local dual issue, not a new FFT opcode.
-- The overlapped DSP-tail `ASR` result is precomputed and staged before it retires with the second DSP writeback.
+- Safe adjacent `MOV/MOV`, `LDR/LDR`, `STR/STR`, `SADD16/SSUB16`, and `PKHBT/SSUB16` instruction pairs can retire together; this is local dual issue, not a new FFT opcode.
+- The worker also recognizes the current ARM-DSP dataflow windows `LDR/LDR/SADD16/SSUB16`, `SSAX/SADD16/SSUB16`, and `SMUAD/SMUSD/ASR/PKHBT`.
+- The DSP-tail `ASR` result is precomputed and staged before it retires through the fused tail.
 - The paired `STR/STR` second write data is staged in the worker decode register to avoid a direct register-file-to-buffer-write-data path.
 - Local dual-issue eligibility is staged as a pair-kind register before the execute cycle.
 - The `91/-91` twiddle constants are immediate constants initialized by worker instructions, not hidden constants in a special butterfly unit.

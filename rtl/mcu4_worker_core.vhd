@@ -43,6 +43,8 @@ entity mcu4_worker_core is
 end entity mcu4_worker_core;
 
 architecture rtl of mcu4_worker_core is
+    constant ENABLE_FFT_WINDOW_FUSION : boolean := (PROGRAM_ID = 0);
+
     type worker_state_t is (
         S_FETCH,
         S_DECODE,
@@ -62,6 +64,7 @@ architecture rtl of mcu4_worker_core is
         WPAIR_LDR_B,
         WPAIR_STR_A,
         WPAIR_STR_B,
+        WPAIR_PKHBT_SSUB16,
         WPAIR_SADD16_SSUB16
     );
 
@@ -81,11 +84,22 @@ architecture rtl of mcu4_worker_core is
     signal pc_fetch_reg : natural range 0 to 63 := 0;
     signal pc_index     : std_logic_vector(5 downto 0) := (others => '0');
     signal pc_pair_index : std_logic_vector(5 downto 0) := (others => '0');
+    signal pc_next2_index : std_logic_vector(5 downto 0) := (others => '0');
+    signal pc_next3_index : std_logic_vector(5 downto 0) := (others => '0');
     signal instr_reg    : word_t := x"E1A00000";
     signal instr_pc_reg : natural range 0 to 63 := 0;
+    signal regs_fetch  : reg_file_t := (others => (others => '0'));
     signal regs_decode : reg_file_t := (others => (others => '0'));
     signal regs_exec   : reg_file_t := (others => (others => '0'));
     signal regs_store  : reg_file_t := (others => (others => '0'));
+    signal rf_wb_fetch_valid  : std_logic := '0';
+    signal rf_wb_fetch_we     : std_logic_vector(15 downto 0) := (others => '0');
+    signal rf_wb_fetch_rd     : natural range 0 to 15 := 0;
+    signal rf_wb_fetch_data   : word_t := (others => '0');
+    signal rf_wb2_fetch_valid : std_logic := '0';
+    signal rf_wb2_fetch_we    : std_logic_vector(15 downto 0) := (others => '0');
+    signal rf_wb2_fetch_rd    : natural range 0 to 15 := 0;
+    signal rf_wb2_fetch_data  : word_t := (others => '0');
     signal rf_wb_decode_valid  : std_logic := '0';
     signal rf_wb_decode_we     : std_logic_vector(15 downto 0) := (others => '0');
     signal rf_wb_decode_rd     : natural range 0 to 15 := 0;
@@ -129,6 +143,22 @@ architecture rtl of mcu4_worker_core is
     signal fetch_pair_dec_imm     : integer range -4096 to 4095 := 0;
     signal fetch_pair_dec_idx     : natural range 0 to 7 := 0;
     signal fetch_pair_dec_illegal : std_logic := '0';
+    signal instr_next2_word  : word_t := (others => '0');
+    signal fetch_next2_dec_op      : worker_op_t := WOP_NOP;
+    signal fetch_next2_dec_rd      : natural range 0 to 15 := 0;
+    signal fetch_next2_dec_rn      : natural range 0 to 15 := 0;
+    signal fetch_next2_dec_rm      : natural range 0 to 15 := 0;
+    signal fetch_next2_dec_imm     : integer range -4096 to 4095 := 0;
+    signal fetch_next2_dec_idx     : natural range 0 to 7 := 0;
+    signal fetch_next2_dec_illegal : std_logic := '0';
+    signal instr_next3_word  : word_t := (others => '0');
+    signal fetch_next3_dec_op      : worker_op_t := WOP_NOP;
+    signal fetch_next3_dec_rd      : natural range 0 to 15 := 0;
+    signal fetch_next3_dec_rn      : natural range 0 to 15 := 0;
+    signal fetch_next3_dec_rm      : natural range 0 to 15 := 0;
+    signal fetch_next3_dec_imm     : integer range -4096 to 4095 := 0;
+    signal fetch_next3_dec_idx     : natural range 0 to 7 := 0;
+    signal fetch_next3_dec_illegal : std_logic := '0';
 
     signal dec_op      : worker_op_t := WOP_NOP;
     signal dec_rd      : natural range 0 to 15 := 0;
@@ -137,7 +167,16 @@ architecture rtl of mcu4_worker_core is
     signal dec_imm     : integer range -4096 to 4095 := 0;
     signal dec_idx     : natural range 0 to 7 := 0;
     signal dec_illegal : std_logic := '0';
+    signal dec_rn_data : word_t := (others => '0');
+    signal dec_rm_data : word_t := (others => '0');
     signal dec_rd_data : word_t := (others => '0');
+    signal dec_is_ldr_a : std_logic := '0';
+    signal dec_is_ldr_b : std_logic := '0';
+    signal dec_is_str_a : std_logic := '0';
+    signal dec_is_str_b : std_logic := '0';
+    signal dec_is_dsp   : std_logic := '0';
+    signal dec_dsp_sub  : std_logic := '0';
+    signal dec_is_halt  : std_logic := '0';
 
     signal exec_op      : worker_op_t := WOP_NOP;
     signal exec_rd      : natural range 0 to 15 := 0;
@@ -153,12 +192,20 @@ architecture rtl of mcu4_worker_core is
     signal exec_rd_data : word_t := (others => '0');
     signal exec_dsp_a    : word_t := (others => '0');
     signal exec_dsp_b    : word_t := (others => '0');
+    signal exec_is_ldr_a : std_logic := '0';
+    signal exec_is_ldr_b : std_logic := '0';
+    signal exec_is_str_a : std_logic := '0';
+    signal exec_is_str_b : std_logic := '0';
+    signal exec_is_dsp   : std_logic := '0';
+    signal exec_dsp_sub  : std_logic := '0';
+    signal exec_is_halt  : std_logic := '0';
     signal exec_pair_kind : worker_pair_t := WPAIR_NONE;
     signal pair_mov_imm_exec : std_logic := '0';
     signal pair_ldr_a_exec : std_logic := '0';
     signal pair_ldr_b_exec : std_logic := '0';
     signal pair_str_a_exec : std_logic := '0';
     signal pair_str_b_exec : std_logic := '0';
+    signal pair_pkhbt_ssub16_exec : std_logic := '0';
     signal pair_sadd16_ssub16_exec : std_logic := '0';
     signal pair_ldr_a_mem : std_logic := '0';
     signal pair_ldr_b_mem : std_logic := '0';
@@ -189,8 +236,6 @@ architecture rtl of mcu4_worker_core is
     signal dsp_pair_asr_valid  : std_logic := '0';
     signal dsp_pair_asr_result : word_t := (others => '0');
 
-    attribute keep : string;
-    attribute dont_touch : string;
     attribute use_dsp : string;
     attribute fsm_encoding : string;
     attribute max_fanout : integer;
@@ -210,6 +255,7 @@ architecture rtl of mcu4_worker_core is
     attribute max_fanout of pair_ldr_b_exec : signal is 16;
     attribute max_fanout of pair_str_a_exec : signal is 16;
     attribute max_fanout of pair_str_b_exec : signal is 16;
+    attribute max_fanout of pair_pkhbt_ssub16_exec : signal is 16;
     attribute max_fanout of pair_sadd16_ssub16_exec : signal is 16;
     attribute max_fanout of pair_ldr_a_mem : signal is 8;
     attribute max_fanout of pair_ldr_b_mem : signal is 8;
@@ -219,89 +265,27 @@ architecture rtl of mcu4_worker_core is
     attribute max_fanout of rst_exec_local : signal is 64;
     attribute max_fanout of rst_rf_local : signal is 32;
     attribute max_fanout of rst_mem_local : signal is 32;
+    attribute max_fanout of regs_fetch : signal is 32;
     attribute max_fanout of regs_decode : signal is 32;
     attribute max_fanout of regs_exec : signal is 32;
     attribute max_fanout of regs_store : signal is 32;
+    attribute max_fanout of rf_wb_fetch_we : signal is 16;
+    attribute max_fanout of rf_wb2_fetch_we : signal is 16;
     attribute max_fanout of rf_wb_decode_we : signal is 16;
     attribute max_fanout of rf_wb2_decode_we : signal is 16;
     attribute max_fanout of rf_wb_exec_we : signal is 16;
     attribute max_fanout of rf_wb2_exec_we : signal is 16;
     attribute max_fanout of rf_wb_store_we : signal is 16;
     attribute max_fanout of rf_wb2_store_we : signal is 16;
-    attribute keep of exec_state_reg : signal is "true";
-    attribute keep of run_ctrl_rf : signal is "true";
-    attribute keep of run_ctrl_exec : signal is "true";
-    attribute keep of run_ctrl_mem : signal is "true";
-    attribute keep of run_ctrl_pair : signal is "true";
-    attribute keep of run_ctrl_debug : signal is "true";
-    attribute keep of decode_ctrl_debug : signal is "true";
-    attribute keep of dsp_ctrl_debug : signal is "true";
-    attribute keep of pair_mov_imm_exec : signal is "true";
-    attribute keep of pair_ldr_a_exec : signal is "true";
-    attribute keep of pair_ldr_b_exec : signal is "true";
-    attribute keep of pair_str_a_exec : signal is "true";
-    attribute keep of pair_str_b_exec : signal is "true";
-    attribute keep of pair_sadd16_ssub16_exec : signal is "true";
-    attribute keep of pair_ldr_a_mem : signal is "true";
-    attribute keep of pair_ldr_b_mem : signal is "true";
-    attribute keep of pair_str_a_mem : signal is "true";
-    attribute keep of pair_str_b_mem : signal is "true";
-    attribute keep of rst_ctrl_local : signal is "true";
-    attribute keep of rst_exec_local : signal is "true";
-    attribute keep of rst_rf_local : signal is "true";
-    attribute keep of rst_mem_local : signal is "true";
-    attribute keep of regs_decode : signal is "true";
-    attribute keep of regs_exec : signal is "true";
-    attribute keep of regs_store : signal is "true";
-    attribute keep of rf_wb_decode_we : signal is "true";
-    attribute keep of rf_wb2_decode_we : signal is "true";
-    attribute keep of rf_wb_exec_we : signal is "true";
-    attribute keep of rf_wb2_exec_we : signal is "true";
-    attribute keep of rf_wb_store_we : signal is "true";
-    attribute keep of rf_wb2_store_we : signal is "true";
-    attribute dont_touch of exec_state_reg : signal is "true";
-    attribute dont_touch of run_ctrl_rf : signal is "true";
-    attribute dont_touch of run_ctrl_exec : signal is "true";
-    attribute dont_touch of run_ctrl_mem : signal is "true";
-    attribute dont_touch of run_ctrl_pair : signal is "true";
-    attribute dont_touch of run_ctrl_debug : signal is "true";
-    attribute dont_touch of decode_ctrl_debug : signal is "true";
-    attribute dont_touch of dsp_ctrl_debug : signal is "true";
-    attribute dont_touch of pair_mov_imm_exec : signal is "true";
-    attribute dont_touch of pair_ldr_a_exec : signal is "true";
-    attribute dont_touch of pair_ldr_b_exec : signal is "true";
-    attribute dont_touch of pair_str_a_exec : signal is "true";
-    attribute dont_touch of pair_str_b_exec : signal is "true";
-    attribute dont_touch of pair_sadd16_ssub16_exec : signal is "true";
-    attribute dont_touch of pair_ldr_a_mem : signal is "true";
-    attribute dont_touch of pair_ldr_b_mem : signal is "true";
-    attribute dont_touch of pair_str_a_mem : signal is "true";
-    attribute dont_touch of pair_str_b_mem : signal is "true";
-    attribute dont_touch of rst_ctrl_local : signal is "true";
-    attribute dont_touch of rst_exec_local : signal is "true";
-    attribute dont_touch of rst_rf_local : signal is "true";
-    attribute dont_touch of rst_mem_local : signal is "true";
-    attribute dont_touch of regs_decode : signal is "true";
-    attribute dont_touch of regs_exec : signal is "true";
-    attribute dont_touch of regs_store : signal is "true";
-    attribute dont_touch of rf_wb_decode_we : signal is "true";
-    attribute dont_touch of rf_wb2_decode_we : signal is "true";
-    attribute dont_touch of rf_wb_exec_we : signal is "true";
-    attribute dont_touch of rf_wb2_exec_we : signal is "true";
-    attribute dont_touch of rf_wb_store_we : signal is "true";
-    attribute dont_touch of rf_wb2_store_we : signal is "true";
-    attribute keep of dsp_sub : signal is "true";
-    attribute keep of dsp_sub_acc : signal is "true";
-    attribute keep of dsp2_sub : signal is "true";
-    attribute keep of dsp2_sub_acc : signal is "true";
-    attribute keep of exec_dsp_a : signal is "true";
-    attribute keep of exec_dsp_b : signal is "true";
-    attribute dont_touch of dsp_sub : signal is "true";
-    attribute dont_touch of dsp_sub_acc : signal is "true";
-    attribute dont_touch of dsp2_sub : signal is "true";
-    attribute dont_touch of dsp2_sub_acc : signal is "true";
-    attribute dont_touch of exec_dsp_a : signal is "true";
-    attribute dont_touch of exec_dsp_b : signal is "true";
+    attribute max_fanout of dec_is_dsp : signal is 16;
+    attribute max_fanout of dec_dsp_sub : signal is 16;
+    attribute max_fanout of exec_is_ldr_a : signal is 16;
+    attribute max_fanout of exec_is_ldr_b : signal is 16;
+    attribute max_fanout of exec_is_str_a : signal is 16;
+    attribute max_fanout of exec_is_str_b : signal is 16;
+    attribute max_fanout of exec_is_dsp : signal is 16;
+    attribute max_fanout of exec_dsp_sub : signal is 16;
+    attribute max_fanout of exec_is_halt : signal is 16;
     attribute use_dsp of dsp_sum : signal is "no";
     attribute use_dsp of dsp_diff : signal is "no";
     attribute use_dsp of dsp2_sum : signal is "no";
@@ -363,6 +347,62 @@ architecture rtl of mcu4_worker_core is
         return op_value = WOP_SMUAD or op_value = WOP_SMUSD;
     end function;
 
+    function op_is_ldr_a(op_value : worker_op_t) return std_logic is
+    begin
+        if op_value = WOP_LDR_A then
+            return '1';
+        end if;
+        return '0';
+    end function;
+
+    function op_is_ldr_b(op_value : worker_op_t) return std_logic is
+    begin
+        if op_value = WOP_LDR_B then
+            return '1';
+        end if;
+        return '0';
+    end function;
+
+    function op_is_str_a(op_value : worker_op_t) return std_logic is
+    begin
+        if op_value = WOP_STR_A then
+            return '1';
+        end if;
+        return '0';
+    end function;
+
+    function op_is_str_b(op_value : worker_op_t) return std_logic is
+    begin
+        if op_value = WOP_STR_B then
+            return '1';
+        end if;
+        return '0';
+    end function;
+
+    function op_is_dsp(op_value : worker_op_t) return std_logic is
+    begin
+        if is_dsp_op(op_value) then
+            return '1';
+        end if;
+        return '0';
+    end function;
+
+    function op_is_smusd(op_value : worker_op_t) return std_logic is
+    begin
+        if op_value = WOP_SMUSD then
+            return '1';
+        end if;
+        return '0';
+    end function;
+
+    function op_is_halt(op_value : worker_op_t) return std_logic is
+    begin
+        if op_value = WOP_HALT then
+            return '1';
+        end if;
+        return '0';
+    end function;
+
     function is_dsp_state(state_value : worker_state_t) return boolean is
     begin
         return state_value = S_DSP_MUL
@@ -399,6 +439,22 @@ architecture rtl of mcu4_worker_core is
         return 63;
     end function;
 
+    function next_triple_pc(value : natural) return natural is
+    begin
+        if value < 61 then
+            return value + 3;
+        end if;
+        return 63;
+    end function;
+
+    function next_quad_pc(value : natural) return natural is
+    begin
+        if value < 60 then
+            return value + 4;
+        end if;
+        return 63;
+    end function;
+
     function word_to_pc(value : word_t) return natural is
         variable idx : natural range 0 to 63 := 0;
     begin
@@ -410,52 +466,116 @@ architecture rtl of mcu4_worker_core is
         return idx;
     end function;
 
-    function calc_pair_kind(
-        constant op_a      : worker_op_t;
-        constant rd_a      : natural range 0 to 15;
-        constant rn_a      : natural range 0 to 15;
-        constant rm_a      : natural range 0 to 15;
-        constant idx_a     : natural range 0 to 7;
-        constant illegal_a : std_logic;
-        constant op_b      : worker_op_t;
-        constant rd_b      : natural range 0 to 15;
-        constant rn_b      : natural range 0 to 15;
-        constant rm_b      : natural range 0 to 15;
-        constant idx_b     : natural range 0 to 7;
-        constant illegal_b : std_logic
-    ) return worker_pair_t is
+    function scheduled_pair_kind_for_pc(value : natural) return worker_pair_t is
     begin
-        if illegal_a = '1' or illegal_b = '1' then
-            return WPAIR_NONE;
-        elsif op_a = WOP_MOV_IMM
-              and op_b = WOP_MOV_IMM
-              and rd_a /= rd_b then
-            return WPAIR_MOV_IMM;
-        elsif op_a = WOP_LDR_A
-              and op_b = WOP_LDR_A
-              and rd_a /= rd_b then
-            return WPAIR_LDR_A;
-        elsif op_a = WOP_LDR_B
-              and op_b = WOP_LDR_B
-              and rd_a /= rd_b then
-            return WPAIR_LDR_B;
-        elsif op_a = WOP_STR_A
-              and op_b = WOP_STR_A
-              and idx_a /= idx_b then
-            return WPAIR_STR_A;
-        elsif op_a = WOP_STR_B
-              and op_b = WOP_STR_B
-              and idx_a /= idx_b then
-            return WPAIR_STR_B;
-        elsif op_a = WOP_SADD16
-              and op_b = WOP_SSUB16
-              and rn_a = rn_b
-              and rm_a = rm_b
-              and rd_a /= rd_b then
-            return WPAIR_SADD16_SSUB16;
+        if PROGRAM_ID = 1 then
+            case value is
+                when 0 =>
+                    return WPAIR_MOV_IMM;
+                when others =>
+                    return WPAIR_NONE;
+            end case;
         end if;
 
+        case value is
+            when 0 =>
+                return WPAIR_MOV_IMM;
+            when 2 =>
+                return WPAIR_PKHBT_SSUB16;
+            when 4 =>
+                return WPAIR_LDR_A;
+            when 6 =>
+                return WPAIR_SADD16_SSUB16;
+            when 8 =>
+                return WPAIR_STR_B;
+            when 10 =>
+                return WPAIR_LDR_B;
+            when 12 =>
+                if WORKER_ID = 0 or WORKER_ID = 2 then
+                    return WPAIR_SADD16_SSUB16;
+                end if;
+            when 13 =>
+                if WORKER_ID = 1 or WORKER_ID = 3 then
+                    return WPAIR_SADD16_SSUB16;
+                end if;
+            when 14 =>
+                if WORKER_ID = 0 or WORKER_ID = 2 then
+                    return WPAIR_STR_A;
+                end if;
+            when 15 =>
+                if WORKER_ID = 1 or WORKER_ID = 3 then
+                    return WPAIR_STR_A;
+                end if;
+            when 17 =>
+                return WPAIR_LDR_A;
+            when 19 =>
+                if WORKER_ID = 0 then
+                    return WPAIR_SADD16_SSUB16;
+                end if;
+            when 20 =>
+                if WORKER_ID = 2 then
+                    return WPAIR_SADD16_SSUB16;
+                end if;
+            when 21 =>
+                if WORKER_ID = 0 then
+                    return WPAIR_STR_B;
+                end if;
+            when 22 =>
+                if WORKER_ID = 2 then
+                    return WPAIR_STR_B;
+                end if;
+            when 23 =>
+                if WORKER_ID = 1 or WORKER_ID = 3 then
+                    return WPAIR_SADD16_SSUB16;
+                end if;
+            when 25 =>
+                if WORKER_ID = 1 or WORKER_ID = 3 then
+                    return WPAIR_STR_B;
+                end if;
+            when others =>
+                null;
+        end case;
+
         return WPAIR_NONE;
+    end function;
+
+    function fft_ldr_sadd_ssub_window(value : natural) return boolean is
+    begin
+        if not ENABLE_FFT_WINDOW_FUSION then
+            return false;
+        end if;
+
+        if value = 4 then
+            return true;
+        elsif value = 10 and (WORKER_ID = 0 or WORKER_ID = 2) then
+            return true;
+        elsif value = 17 and WORKER_ID = 0 then
+            return true;
+        end if;
+
+        return false;
+    end function;
+
+    function fft_ssax_sadd_ssub_window(value : natural) return boolean is
+    begin
+        if not ENABLE_FFT_WINDOW_FUSION then
+            return false;
+        end if;
+
+        if value = 12 and (WORKER_ID = 1 or WORKER_ID = 3) then
+            return true;
+        elsif value = 19 and WORKER_ID = 2 then
+            return true;
+        end if;
+
+        return false;
+    end function;
+
+    function fft_dsp_tail_window(value : natural) return boolean is
+    begin
+        return ENABLE_FFT_WINDOW_FUSION
+            and value = 22
+            and (WORKER_ID = 1 or WORKER_ID = 3);
     end function;
 begin
     rst_ctrl_local <= rst;
@@ -465,6 +585,8 @@ begin
 
     pc_index <= std_logic_vector(to_unsigned(pc_fetch_reg, 6));
     pc_pair_index <= std_logic_vector(to_unsigned(next_seq_pc(pc_fetch_reg), 6));
+    pc_next2_index <= std_logic_vector(to_unsigned(next_pair_pc(pc_fetch_reg), 6));
+    pc_next3_index <= std_logic_vector(to_unsigned(next_triple_pc(pc_fetch_reg), 6));
 
     u_instr_rom : entity work.mcu4_worker_instr_rom
         generic map (
@@ -500,14 +622,48 @@ begin
             dec_illegal => fetch_pair_dec_illegal
         );
 
+    u_instr_next2_rom : entity work.mcu4_worker_instr_rom
+        generic map (
+            WORKER_ID  => WORKER_ID,
+            PROGRAM_ID => PROGRAM_ID
+        )
+        port map (
+            pc_index => pc_next2_index,
+            instr       => instr_next2_word,
+            dec_op      => fetch_next2_dec_op,
+            dec_rd      => fetch_next2_dec_rd,
+            dec_rn      => fetch_next2_dec_rn,
+            dec_rm      => fetch_next2_dec_rm,
+            dec_imm     => fetch_next2_dec_imm,
+            dec_idx     => fetch_next2_dec_idx,
+            dec_illegal => fetch_next2_dec_illegal
+        );
+
+    u_instr_next3_rom : entity work.mcu4_worker_instr_rom
+        generic map (
+            WORKER_ID  => WORKER_ID,
+            PROGRAM_ID => PROGRAM_ID
+        )
+        port map (
+            pc_index => pc_next3_index,
+            instr       => instr_next3_word,
+            dec_op      => fetch_next3_dec_op,
+            dec_rd      => fetch_next3_dec_rd,
+            dec_rn      => fetch_next3_dec_rn,
+            dec_rm      => fetch_next3_dec_rm,
+            dec_imm     => fetch_next3_dec_imm,
+            dec_idx     => fetch_next3_dec_idx,
+            dec_illegal => fetch_next3_dec_illegal
+        );
+
     buf_a_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
-        when run_ctrl_mem = '1' and (exec_op = WOP_LDR_A or exec_op = WOP_STR_A)
+        when run_ctrl_mem = '1' and (exec_is_ldr_a = '1' or exec_is_str_a = '1')
         else (others => '0');
     buf_a_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
         when run_ctrl_pair = '1' and pair_ldr_a_mem = '1'
         else (others => '0');
     buf_b_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
-        when run_ctrl_mem = '1' and (exec_op = WOP_LDR_B or exec_op = WOP_STR_B)
+        when run_ctrl_mem = '1' and (exec_is_ldr_b = '1' or exec_is_str_b = '1')
         else (others => '0');
     buf_b_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
         when run_ctrl_pair = '1' and pair_ldr_b_mem = '1'
@@ -518,7 +674,7 @@ begin
                          and illegal_reg = '0'
                          and run_ctrl_mem = '1'
                          and exec_illegal = '0'
-                         and exec_op = WOP_STR_A
+                         and exec_is_str_a = '1'
                 else '0';
     buf_a_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
     buf_a_wdata <= exec_rd_data;
@@ -537,7 +693,7 @@ begin
                          and illegal_reg = '0'
                          and run_ctrl_mem = '1'
                          and exec_illegal = '0'
-                         and exec_op = WOP_STR_B
+                         and exec_is_str_b = '1'
                 else '0';
     buf_b_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
     buf_b_wdata <= exec_rd_data;
@@ -571,6 +727,9 @@ begin
         variable rf_next2_we : std_logic_vector(15 downto 0);
         variable rf_next2_rd : natural range 0 to 15;
         variable rf_next2_data : word_t;
+        variable tmp_data : word_t;
+        variable tmp_rn_data : word_t;
+        variable tmp_rm_data : word_t;
 
         function apply_forwarding(
             constant base_value      : word_t;
@@ -609,6 +768,25 @@ begin
             end if;
 
             return value;
+        end function;
+
+        impure function forwarded_fetch_reg_value(
+            constant reg_idx         : natural range 0 to 15;
+            constant forward_a_valid : boolean;
+            constant forward_a_rd    : natural range 0 to 15;
+            constant forward_a_data  : word_t;
+            constant forward_b_valid : boolean;
+            constant forward_b_rd    : natural range 0 to 15;
+            constant forward_b_data  : word_t
+        ) return word_t is
+        begin
+            return apply_forwarding(
+                regs_fetch(reg_idx), reg_idx,
+                rf_wb_fetch_valid, rf_wb_fetch_rd, rf_wb_fetch_data,
+                rf_wb2_fetch_valid, rf_wb2_fetch_rd, rf_wb2_fetch_data,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
         end function;
 
         impure function forwarded_decode_reg_value(
@@ -668,6 +846,46 @@ begin
             );
         end function;
 
+        impure function forwarded_decode_stage_value(
+            constant base_value      : word_t;
+            constant reg_idx         : natural range 0 to 15;
+            constant forward_a_valid : boolean;
+            constant forward_a_rd    : natural range 0 to 15;
+            constant forward_a_data  : word_t;
+            constant forward_b_valid : boolean;
+            constant forward_b_rd    : natural range 0 to 15;
+            constant forward_b_data  : word_t
+        ) return word_t is
+        begin
+            return apply_forwarding(
+                base_value, reg_idx,
+                rf_wb_decode_valid, rf_wb_decode_rd, rf_wb_decode_data,
+                rf_wb2_decode_valid, rf_wb2_decode_rd, rf_wb2_decode_data,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+        end function;
+
+        impure function forwarded_store_stage_value(
+            constant base_value      : word_t;
+            constant reg_idx         : natural range 0 to 15;
+            constant forward_a_valid : boolean;
+            constant forward_a_rd    : natural range 0 to 15;
+            constant forward_a_data  : word_t;
+            constant forward_b_valid : boolean;
+            constant forward_b_rd    : natural range 0 to 15;
+            constant forward_b_data  : word_t
+        ) return word_t is
+        begin
+            return apply_forwarding(
+                base_value, reg_idx,
+                rf_wb_store_valid, rf_wb_store_rd, rf_wb_store_data,
+                rf_wb2_store_valid, rf_wb2_store_rd, rf_wb2_store_data,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+        end function;
+
         procedure set_exec_pair_kind(
             constant next_pair_kind : in worker_pair_t
         ) is
@@ -679,6 +897,7 @@ begin
             pair_ldr_b_exec <= '0';
             pair_str_a_exec <= '0';
             pair_str_b_exec <= '0';
+            pair_pkhbt_ssub16_exec <= '0';
             pair_sadd16_ssub16_exec <= '0';
             pair_ldr_a_mem <= '0';
             pair_ldr_b_mem <= '0';
@@ -700,11 +919,50 @@ begin
                 when WPAIR_STR_B =>
                     pair_str_b_exec <= '1';
                     pair_str_b_mem <= '1';
+                when WPAIR_PKHBT_SSUB16 =>
+                    pair_pkhbt_ssub16_exec <= '1';
                 when WPAIR_SADD16_SSUB16 =>
                     pair_sadd16_ssub16_exec <= '1';
                 when WPAIR_NONE =>
                     null;
             end case;
+        end procedure;
+
+        procedure set_decode_class_flags(
+            constant op_value : in worker_op_t
+        ) is
+        begin
+            dec_is_ldr_a <= op_is_ldr_a(op_value);
+            dec_is_ldr_b <= op_is_ldr_b(op_value);
+            dec_is_str_a <= op_is_str_a(op_value);
+            dec_is_str_b <= op_is_str_b(op_value);
+            dec_is_dsp <= op_is_dsp(op_value);
+            dec_dsp_sub <= op_is_smusd(op_value);
+            dec_is_halt <= op_is_halt(op_value);
+        end procedure;
+
+        procedure set_exec_class_flags(
+            constant op_value : in worker_op_t
+        ) is
+        begin
+            exec_is_ldr_a <= op_is_ldr_a(op_value);
+            exec_is_ldr_b <= op_is_ldr_b(op_value);
+            exec_is_str_a <= op_is_str_a(op_value);
+            exec_is_str_b <= op_is_str_b(op_value);
+            exec_is_dsp <= op_is_dsp(op_value);
+            exec_dsp_sub <= op_is_smusd(op_value);
+            exec_is_halt <= op_is_halt(op_value);
+        end procedure;
+
+        procedure copy_decode_class_to_exec is
+        begin
+            exec_is_ldr_a <= dec_is_ldr_a;
+            exec_is_ldr_b <= dec_is_ldr_b;
+            exec_is_str_a <= dec_is_str_a;
+            exec_is_str_b <= dec_is_str_b;
+            exec_is_dsp <= dec_is_dsp;
+            exec_dsp_sub <= dec_dsp_sub;
+            exec_is_halt <= dec_is_halt;
         end procedure;
 
         procedure load_exec_from_decode(
@@ -716,17 +974,20 @@ begin
             variable rm_value : word_t;
             variable rd_value : word_t;
         begin
-            rn_value := forwarded_decode_reg_value(
+            rn_value := forwarded_decode_stage_value(
+                dec_rn_data,
                 dec_rn,
                 forward_valid, forward_rd, forward_data,
                 false, 0, (others => '0')
             );
-            rm_value := forwarded_decode_reg_value(
+            rm_value := forwarded_decode_stage_value(
+                dec_rm_data,
                 dec_rm,
                 forward_valid, forward_rd, forward_data,
                 false, 0, (others => '0')
             );
-            rd_value := forwarded_store_reg_value(
+            rd_value := forwarded_store_stage_value(
+                dec_rd_data,
                 dec_rd,
                 forward_valid, forward_rd, forward_data,
                 false, 0, (others => '0')
@@ -741,6 +1002,7 @@ begin
             exec_illegal <= dec_illegal;
             exec_instr <= instr_reg;
             exec_pc_reg <= instr_pc_reg;
+            copy_decode_class_to_exec;
             exec_rn_data <= rn_value;
             exec_rm_data <= rm_value;
             exec_rd_data <= rd_value;
@@ -760,17 +1022,20 @@ begin
             variable rm_value : word_t;
             variable rd_value : word_t;
         begin
-            rn_value := forwarded_decode_reg_value(
+            rn_value := forwarded_decode_stage_value(
+                dec_rn_data,
                 dec_rn,
                 forward_a_valid, forward_a_rd, forward_a_data,
                 forward_b_valid, forward_b_rd, forward_b_data
             );
-            rm_value := forwarded_decode_reg_value(
+            rm_value := forwarded_decode_stage_value(
+                dec_rm_data,
                 dec_rm,
                 forward_a_valid, forward_a_rd, forward_a_data,
                 forward_b_valid, forward_b_rd, forward_b_data
             );
-            rd_value := forwarded_store_reg_value(
+            rd_value := forwarded_store_stage_value(
+                dec_rd_data,
                 dec_rd,
                 forward_a_valid, forward_a_rd, forward_a_data,
                 forward_b_valid, forward_b_rd, forward_b_data
@@ -785,6 +1050,7 @@ begin
             exec_illegal <= dec_illegal;
             exec_instr <= instr_reg;
             exec_pc_reg <= instr_pc_reg;
+            copy_decode_class_to_exec;
             exec_rn_data <= rn_value;
             exec_rm_data <= rm_value;
             exec_rd_data <= rd_value;
@@ -804,12 +1070,12 @@ begin
             variable rm_value : word_t;
             variable rd_value : word_t;
         begin
-            rn_value := forwarded_decode_reg_value(
+            rn_value := forwarded_fetch_reg_value(
                 fetch_dec_rn,
                 forward_a_valid, forward_a_rd, forward_a_data,
                 forward_b_valid, forward_b_rd, forward_b_data
             );
-            rm_value := forwarded_decode_reg_value(
+            rm_value := forwarded_fetch_reg_value(
                 fetch_dec_rm,
                 forward_a_valid, forward_a_rd, forward_a_data,
                 forward_b_valid, forward_b_rd, forward_b_data
@@ -829,6 +1095,7 @@ begin
             exec_illegal <= fetch_dec_illegal;
             exec_instr <= instr_word;
             exec_pc_reg <= pc_fetch_reg;
+            set_exec_class_flags(fetch_dec_op);
             exec_rn_data <= rn_value;
             exec_rm_data <= rm_value;
             exec_rd_data <= rd_value;
@@ -844,26 +1111,170 @@ begin
             dec_imm <= fetch_pair_dec_imm;
             dec_idx <= fetch_pair_dec_idx;
             dec_illegal <= fetch_pair_dec_illegal;
+            set_decode_class_flags(fetch_pair_dec_op);
+            dec_rn_data <= forwarded_fetch_reg_value(
+                fetch_pair_dec_rn,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            dec_rm_data <= forwarded_fetch_reg_value(
+                fetch_pair_dec_rm,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
             dec_rd_data <= forwarded_store_reg_value(
                 fetch_pair_dec_rd,
                 forward_a_valid, forward_a_rd, forward_a_data,
                 forward_b_valid, forward_b_rd, forward_b_data
             );
-            set_exec_pair_kind(calc_pair_kind(
-                fetch_dec_op,
-                fetch_dec_rd,
-                fetch_dec_rn,
-                fetch_dec_rm,
-                fetch_dec_idx,
-                fetch_dec_illegal,
-                fetch_pair_dec_op,
-                fetch_pair_dec_rd,
-                fetch_pair_dec_rn,
-                fetch_pair_dec_rm,
-                fetch_pair_dec_idx,
-                fetch_pair_dec_illegal
-            ));
+            set_exec_pair_kind(scheduled_pair_kind_for_pc(pc_fetch_reg));
             pc_fetch_reg <= next_pair_pc(pc_fetch_reg);
+        end procedure;
+
+        procedure load_exec_from_pair_next2_dual(
+            constant forward_a_valid : in boolean;
+            constant forward_a_rd    : in natural range 0 to 15;
+            constant forward_a_data  : in word_t;
+            constant forward_b_valid : in boolean;
+            constant forward_b_rd    : in natural range 0 to 15;
+            constant forward_b_data  : in word_t
+        ) is
+            variable rn_value : word_t;
+            variable rm_value : word_t;
+            variable rd_value : word_t;
+        begin
+            rn_value := forwarded_fetch_reg_value(
+                fetch_pair_dec_rn,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            rm_value := forwarded_fetch_reg_value(
+                fetch_pair_dec_rm,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            rd_value := forwarded_store_reg_value(
+                fetch_pair_dec_rd,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+
+            exec_op <= fetch_pair_dec_op;
+            exec_rd <= fetch_pair_dec_rd;
+            exec_rn <= fetch_pair_dec_rn;
+            exec_rm <= fetch_pair_dec_rm;
+            exec_imm <= fetch_pair_dec_imm;
+            exec_idx <= fetch_pair_dec_idx;
+            exec_illegal <= fetch_pair_dec_illegal;
+            exec_instr <= instr_pair_word;
+            exec_pc_reg <= next_seq_pc(pc_fetch_reg);
+            set_exec_class_flags(fetch_pair_dec_op);
+            exec_rn_data <= rn_value;
+            exec_rm_data <= rm_value;
+            exec_rd_data <= rd_value;
+            exec_dsp_a <= rn_value;
+            exec_dsp_b <= rm_value;
+
+            instr_reg <= instr_next2_word;
+            instr_pc_reg <= next_pair_pc(pc_fetch_reg);
+            dec_op <= fetch_next2_dec_op;
+            dec_rd <= fetch_next2_dec_rd;
+            dec_rn <= fetch_next2_dec_rn;
+            dec_rm <= fetch_next2_dec_rm;
+            dec_imm <= fetch_next2_dec_imm;
+            dec_idx <= fetch_next2_dec_idx;
+            dec_illegal <= fetch_next2_dec_illegal;
+            set_decode_class_flags(fetch_next2_dec_op);
+            dec_rn_data <= forwarded_fetch_reg_value(
+                fetch_next2_dec_rn,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            dec_rm_data <= forwarded_fetch_reg_value(
+                fetch_next2_dec_rm,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            dec_rd_data <= forwarded_store_reg_value(
+                fetch_next2_dec_rd,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            set_exec_pair_kind(scheduled_pair_kind_for_pc(next_seq_pc(pc_fetch_reg)));
+            pc_fetch_reg <= next_triple_pc(pc_fetch_reg);
+        end procedure;
+
+        procedure load_exec_from_next2_next3_dual(
+            constant forward_a_valid : in boolean;
+            constant forward_a_rd    : in natural range 0 to 15;
+            constant forward_a_data  : in word_t;
+            constant forward_b_valid : in boolean;
+            constant forward_b_rd    : in natural range 0 to 15;
+            constant forward_b_data  : in word_t
+        ) is
+            variable rn_value : word_t;
+            variable rm_value : word_t;
+            variable rd_value : word_t;
+        begin
+            rn_value := forwarded_fetch_reg_value(
+                fetch_next2_dec_rn,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            rm_value := forwarded_fetch_reg_value(
+                fetch_next2_dec_rm,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            rd_value := forwarded_store_reg_value(
+                fetch_next2_dec_rd,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+
+            exec_op <= fetch_next2_dec_op;
+            exec_rd <= fetch_next2_dec_rd;
+            exec_rn <= fetch_next2_dec_rn;
+            exec_rm <= fetch_next2_dec_rm;
+            exec_imm <= fetch_next2_dec_imm;
+            exec_idx <= fetch_next2_dec_idx;
+            exec_illegal <= fetch_next2_dec_illegal;
+            exec_instr <= instr_next2_word;
+            exec_pc_reg <= next_pair_pc(pc_fetch_reg);
+            set_exec_class_flags(fetch_next2_dec_op);
+            exec_rn_data <= rn_value;
+            exec_rm_data <= rm_value;
+            exec_rd_data <= rd_value;
+            exec_dsp_a <= rn_value;
+            exec_dsp_b <= rm_value;
+
+            instr_reg <= instr_next3_word;
+            instr_pc_reg <= next_triple_pc(pc_fetch_reg);
+            dec_op <= fetch_next3_dec_op;
+            dec_rd <= fetch_next3_dec_rd;
+            dec_rn <= fetch_next3_dec_rn;
+            dec_rm <= fetch_next3_dec_rm;
+            dec_imm <= fetch_next3_dec_imm;
+            dec_idx <= fetch_next3_dec_idx;
+            dec_illegal <= fetch_next3_dec_illegal;
+            set_decode_class_flags(fetch_next3_dec_op);
+            dec_rn_data <= forwarded_fetch_reg_value(
+                fetch_next3_dec_rn,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            dec_rm_data <= forwarded_fetch_reg_value(
+                fetch_next3_dec_rm,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            dec_rd_data <= forwarded_store_reg_value(
+                fetch_next3_dec_rd,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            set_exec_pair_kind(scheduled_pair_kind_for_pc(next_pair_pc(pc_fetch_reg)));
+            pc_fetch_reg <= next_quad_pc(pc_fetch_reg);
         end procedure;
 
         procedure refresh_exec_operands(
@@ -916,25 +1327,23 @@ begin
             dec_imm <= fetch_dec_imm;
             dec_idx <= fetch_dec_idx;
             dec_illegal <= fetch_dec_illegal;
+            set_decode_class_flags(fetch_dec_op);
+            dec_rn_data <= forwarded_fetch_reg_value(
+                fetch_dec_rn,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
+            dec_rm_data <= forwarded_fetch_reg_value(
+                fetch_dec_rm,
+                forward_a_valid, forward_a_rd, forward_a_data,
+                forward_b_valid, forward_b_rd, forward_b_data
+            );
             dec_rd_data <= forwarded_store_reg_value(
                 fetch_dec_rd,
                 forward_a_valid, forward_a_rd, forward_a_data,
                 forward_b_valid, forward_b_rd, forward_b_data
             );
-            set_exec_pair_kind(calc_pair_kind(
-                dec_op,
-                dec_rd,
-                dec_rn,
-                dec_rm,
-                dec_idx,
-                dec_illegal,
-                fetch_dec_op,
-                fetch_dec_rd,
-                fetch_dec_rn,
-                fetch_dec_rm,
-                fetch_dec_idx,
-                fetch_dec_illegal
-            ));
+            set_exec_pair_kind(scheduled_pair_kind_for_pc(instr_pc_reg));
             pc_fetch_reg <= next_seq_pc(pc_fetch_reg);
         end procedure;
 
@@ -993,8 +1402,14 @@ begin
                 pc_fetch_reg <= 0;
                 halted_reg <= '0';
                 illegal_reg <= '0';
+                set_decode_class_flags(WOP_NOP);
+                set_exec_class_flags(WOP_NOP);
                 set_exec_pair_kind(WPAIR_NONE);
                 dsp_pair_ready <= '0';
+                rf_wb_fetch_valid <= '0';
+                rf_wb_fetch_we <= (others => '0');
+                rf_wb2_fetch_valid <= '0';
+                rf_wb2_fetch_we <= (others => '0');
                 rf_wb_decode_valid <= '0';
                 rf_wb_decode_we <= (others => '0');
                 rf_wb2_decode_valid <= '0';
@@ -1014,6 +1429,13 @@ begin
 
             if rst_rf_local = '0' then
                 for rf_idx in 0 to 15 loop
+                    if rf_wb_fetch_we(rf_idx) = '1' then
+                        regs_fetch(rf_idx) <= rf_wb_fetch_data;
+                    end if;
+                    if rf_wb2_fetch_we(rf_idx) = '1' then
+                        regs_fetch(rf_idx) <= rf_wb2_fetch_data;
+                    end if;
+
                     if rf_wb_decode_we(rf_idx) = '1' then
                         regs_decode(rf_idx) <= rf_wb_decode_data;
                     end if;
@@ -1036,6 +1458,10 @@ begin
                     end if;
                 end loop;
 
+                rf_wb_fetch_valid <= '0';
+                rf_wb_fetch_we <= (others => '0');
+                rf_wb2_fetch_valid <= '0';
+                rf_wb2_fetch_we <= (others => '0');
                 rf_wb_decode_valid <= '0';
                 rf_wb_decode_we <= (others => '0');
                 rf_wb2_decode_valid <= '0';
@@ -1078,6 +1504,77 @@ begin
                             branch_target := 0;
                             start_dsp := false;
 
+                            if fft_ldr_sadd_ssub_window(exec_pc_reg) then
+                                if pair_ldr_a_exec = '1' then
+                                    tmp_rn_data := buf_a_rdata;
+                                    tmp_rm_data := buf_a_rdata2;
+                                else
+                                    tmp_rn_data := buf_b_rdata;
+                                    tmp_rm_data := buf_b_rdata2;
+                                end if;
+
+                                wb_valid := true;
+                                wb_rd := fetch_dec_rd;
+                                wb_data := sadd16(tmp_rn_data, tmp_rm_data);
+                                wb2_valid := true;
+                                wb2_rd := fetch_pair_dec_rd;
+                                wb2_data := ssub16(tmp_rn_data, tmp_rm_data);
+
+                                if run_ctrl_rf = '1' then
+                                    rf_next_valid := true;
+                                    rf_next_we(wb_rd) := '1';
+                                    rf_next_rd := wb_rd;
+                                    rf_next_data := wb_data;
+                                    rf_next2_valid := true;
+                                    rf_next2_we(wb2_rd) := '1';
+                                    rf_next2_rd := wb2_rd;
+                                    rf_next2_data := wb2_data;
+                                end if;
+
+                                load_exec_from_next2_next3_dual(
+                                    true, wb_rd, wb_data,
+                                    true, wb2_rd, wb2_data
+                                );
+                                set_worker_state(S_RUN);
+                            elsif fft_ssax_sadd_ssub_window(exec_pc_reg) then
+                                tmp_data := ssax(exec_rn_data, exec_rm_data);
+                                tmp_rn_data := forwarded_decode_stage_value(
+                                    dec_rn_data,
+                                    dec_rn,
+                                    true, exec_rd, tmp_data,
+                                    false, 0, (others => '0')
+                                );
+                                tmp_rm_data := forwarded_decode_stage_value(
+                                    dec_rm_data,
+                                    dec_rm,
+                                    true, exec_rd, tmp_data,
+                                    false, 0, (others => '0')
+                                );
+
+                                wb_valid := true;
+                                wb_rd := dec_rd;
+                                wb_data := sadd16(tmp_rn_data, tmp_rm_data);
+                                wb2_valid := true;
+                                wb2_rd := fetch_dec_rd;
+                                wb2_data := ssub16(tmp_rn_data, tmp_rm_data);
+
+                                if run_ctrl_rf = '1' then
+                                    rf_next_valid := true;
+                                    rf_next_we(wb_rd) := '1';
+                                    rf_next_rd := wb_rd;
+                                    rf_next_data := wb_data;
+                                    rf_next2_valid := true;
+                                    rf_next2_we(wb2_rd) := '1';
+                                    rf_next2_rd := wb2_rd;
+                                    rf_next2_data := wb2_data;
+                                end if;
+
+                                load_exec_from_pair_next2_dual(
+                                    true, wb_rd, wb_data,
+                                    true, wb2_rd, wb2_data
+                                );
+                                set_worker_state(S_RUN);
+                            else
                             if pair_mov_imm_exec = '1' then
                                 pair_valid := true;
                                 wb_valid := true;
@@ -1104,6 +1601,26 @@ begin
                                 wb2_data := buf_b_rdata2;
                             elsif pair_str_a_exec = '1' or pair_str_b_exec = '1' then
                                 pair_valid := true;
+                            elsif pair_pkhbt_ssub16_exec = '1' then
+                                pair_valid := true;
+                                wb_valid := true;
+                                wb_rd := exec_rd;
+                                wb_data := pkhbt_shift(exec_rn_data, exec_rm_data, exec_imm);
+                                tmp_rn_data := forwarded_decode_stage_value(
+                                    dec_rn_data,
+                                    dec_rn,
+                                    true, wb_rd, wb_data,
+                                    false, 0, (others => '0')
+                                );
+                                tmp_rm_data := forwarded_decode_stage_value(
+                                    dec_rm_data,
+                                    dec_rm,
+                                    true, wb_rd, wb_data,
+                                    false, 0, (others => '0')
+                                );
+                                wb2_valid := true;
+                                wb2_rd := dec_rd;
+                                wb2_data := ssub16(tmp_rn_data, tmp_rm_data);
                             elsif pair_sadd16_ssub16_exec = '1' then
                                 pair_valid := true;
                                 wb_valid := true;
@@ -1133,6 +1650,25 @@ begin
                                 );
                                 set_worker_state(S_RUN);
                             else
+                                if exec_is_dsp = '1' then
+                                    dsp_a <= exec_dsp_a;
+                                    dsp_b <= exec_dsp_b;
+                                    dsp_rd <= exec_rd;
+                                    dsp_sub <= exec_dsp_sub;
+                                    -- Precompute pair eligibility before exec_* is reused by the paired DSP.
+                                    if dec_is_dsp = '1'
+                                       and dec_illegal = '0'
+                                       and dec_rn /= exec_rd
+                                       and dec_rm /= exec_rd
+                                       and dec_rd /= exec_rd then
+                                        dsp_pair_ready <= '1';
+                                    else
+                                        dsp_pair_ready <= '0';
+                                    end if;
+                                    dsp_pc_reg <= exec_pc_reg;
+                                    dsp_instr_reg <= exec_instr;
+                                    start_dsp := true;
+                                else
                                 case exec_op is
                                     when WOP_NOP =>
                                         null;
@@ -1190,27 +1726,7 @@ begin
                                         wb_rd := exec_rd;
                                         wb_data := ssax(exec_rn_data, exec_rm_data);
                                     when WOP_SMUAD | WOP_SMUSD =>
-                                        dsp_a <= exec_dsp_a;
-                                        dsp_b <= exec_dsp_b;
-                                        dsp_rd <= exec_rd;
-                                        if exec_op = WOP_SMUSD then
-                                            dsp_sub <= '1';
-                                        else
-                                            dsp_sub <= '0';
-                                        end if;
-                                        -- Precompute pair eligibility before exec_* is reused by the paired DSP.
-                                        if is_dsp_op(dec_op)
-                                           and dec_illegal = '0'
-                                           and dec_rn /= exec_rd
-                                           and dec_rm /= exec_rd
-                                           and dec_rd /= exec_rd then
-                                            dsp_pair_ready <= '1';
-                                        else
-                                            dsp_pair_ready <= '0';
-                                        end if;
-                                        dsp_pc_reg <= exec_pc_reg;
-                                        dsp_instr_reg <= exec_instr;
-                                        start_dsp := true;
+                                        null;
                                     when WOP_ASR =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
@@ -1230,6 +1746,7 @@ begin
                                     when WOP_HALT =>
                                         halted_reg <= '1';
                                 end case;
+                                end if;
 
                                 if wb_valid and run_ctrl_rf = '1' then
                                     rf_next_valid := true;
@@ -1238,7 +1755,7 @@ begin
                                     rf_next_data := wb_data;
                                 end if;
 
-                                if exec_op = WOP_HALT then
+                                if exec_is_halt = '1' then
                                     null;
                                 elsif branch_taken then
                                     exec_op <= WOP_NOP;
@@ -1253,7 +1770,11 @@ begin
                                     dec_imm <= 0;
                                     dec_idx <= 0;
                                     dec_illegal <= '0';
+                                    dec_rn_data <= (others => '0');
+                                    dec_rm_data <= (others => '0');
                                     dec_rd_data <= (others => '0');
+                                    set_decode_class_flags(WOP_NOP);
+                                    set_exec_class_flags(WOP_NOP);
                                     set_exec_pair_kind(WPAIR_NONE);
                                     dsp_pair_ready <= '0';
                                     pc_fetch_reg <= branch_target;
@@ -1271,6 +1792,7 @@ begin
                                     end if;
                                 end if;
                             end if;
+                            end if;
                         end if;
                         end if;
 
@@ -1284,11 +1806,7 @@ begin
                             dsp2_a <= exec_dsp_a;
                             dsp2_b <= exec_dsp_b;
                             dsp2_rd <= exec_rd;
-                            if exec_op = WOP_SMUSD then
-                                dsp2_sub <= '1';
-                            else
-                                dsp2_sub <= '0';
-                            end if;
+                            dsp2_sub <= exec_dsp_sub;
                             load_exec_from_decode(false, 0, (others => '0'));
                             fetch_into_decode(
                                 false, 0, (others => '0'),
@@ -1361,9 +1879,21 @@ begin
                             wb_data := dsp2_sum;
                         end if;
 
-                        -- The common FFT DSP pair is followed by ASR of the
-                        -- first result; retire it with the second DSP writeback.
-                        if dsp_pair_asr_valid = '1' then
+                        -- The common FFT DSP pair is followed by ASR, PKHBT,
+                        -- then a SADD16/SSUB16 pair. Generate the packed
+                        -- twiddle result here and bypass it to that pair.
+                        if dsp_pair_asr_valid = '1'
+                           and fft_dsp_tail_window(instr_pc_reg) then
+                            res := pkhbt_shift(dsp_pair_asr_result, wb_data, dec_imm);
+                            rf_next_valid := true;
+                            rf_next_we(dec_rd) := '1';
+                            rf_next_rd := dec_rd;
+                            rf_next_data := res;
+                            load_exec_from_fetch_dual(
+                                true, dec_rd, res,
+                                false, 0, (others => '0')
+                            );
+                        elsif dsp_pair_asr_valid = '1' then
                             res := dsp_pair_asr_result;
                             rf_next_valid := true;
                             rf_next_we(dsp2_rd) := '1';
@@ -1397,6 +1927,10 @@ begin
 
             if rst_rf_local = '0' then
                 if rf_next_valid then
+                    rf_wb_fetch_valid <= '1';
+                    rf_wb_fetch_we <= rf_next_we;
+                    rf_wb_fetch_rd <= rf_next_rd;
+                    rf_wb_fetch_data <= rf_next_data;
                     rf_wb_decode_valid <= '1';
                     rf_wb_decode_we <= rf_next_we;
                     rf_wb_decode_rd <= rf_next_rd;
@@ -1412,6 +1946,10 @@ begin
                 end if;
 
                 if rf_next2_valid then
+                    rf_wb2_fetch_valid <= '1';
+                    rf_wb2_fetch_we <= rf_next2_we;
+                    rf_wb2_fetch_rd <= rf_next2_rd;
+                    rf_wb2_fetch_data <= rf_next2_data;
                     rf_wb2_decode_valid <= '1';
                     rf_wb2_decode_we <= rf_next2_we;
                     rf_wb2_decode_rd <= rf_next2_rd;

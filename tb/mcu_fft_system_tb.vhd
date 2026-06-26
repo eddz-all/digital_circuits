@@ -164,8 +164,8 @@ begin
                 severity failure;
         end loop;
 
-        assert cnt_cycles = 22
-            report "four-worker ARM-DSP FFT expected 22 instruction cycles, got "
+        assert cnt_cycles = 18
+            report "four-worker ARM-DSP FFT expected 18 instruction cycles, got "
                 & integer'image(cnt_cycles)
             severity failure;
 

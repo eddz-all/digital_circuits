@@ -320,10 +320,10 @@ cnt_stop  = all_cores_halted
 当前 GHDL 结果：
 
 ```text
-mcu_fft_system_tb cnt_cycles = 22
+mcu_fft_system_tb cnt_cycles = 18
 ```
 
-该版本给 worker 加入取指/译码寄存，并把 `SMUAD/SMUSD` 拆成多周期 DSP 执行。独立连续 DSP 指令使用局部 pair pipeline，后续常见 `ASR` 可以和第二个 DSP 写回同拍退休，并且该 `ASR` 结果会提前一拍预计算后寄存。安全相邻的 `MOV/MOV`、`LDR/LDR`、`STR/STR` 和 `SADD16/SSUB16` 也可以局部双发射同拍退休。`STR/STR` 第二写口的数据来自译码级操作数寄存器，而不是直接来自寄存器堆组合读路径；局部双发射资格也提前寄存为 pair-kind 控制位，减少执行周期内的比较逻辑。若能保持 216 MHz 以上频率，最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器版本。
+该版本给 worker 加入取指/译码寄存，并把 `SMUAD/SMUSD` 拆成多周期 DSP 执行。独立连续 DSP 指令使用局部 pair pipeline。安全相邻的 `MOV/MOV`、`LDR/LDR`、`STR/STR`、`SADD16/SSUB16` 和 `PKHBT/SSUB16` 可以局部双发射同拍退休；当前 FFT 指令序列中的 `LDR/LDR/SADD16/SSUB16`、`SSAX/SADD16/SSUB16` 和 `SMUAD/SMUSD/ASR/PKHBT` 数据流窗口也会在 worker 内合并退休。`STR/STR` 第二写口的数据来自译码级操作数寄存器，而不是直接来自寄存器堆组合读路径；局部双发射资格也提前寄存为 pair-kind 控制位，减少执行周期内的比较逻辑。这些优化不增加 FFT/butterfly 专用 opcode，仍保留可见 ARM/ARM-DSP 指令流。若能保持 216 MHz 以上频率，最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器版本。
 
 ## 13. 当前实现状态
 

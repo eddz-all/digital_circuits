@@ -1,5 +1,5 @@
 /*
- * MCU4 four-worker FFT program, cnt22 version.
+ * MCU4 four-worker FFT program, cnt18 version.
  *
  * This is a readable assembly listing for the instruction ROM implemented in
  * rtl/mcu4_worker_instr_rom.vhd. It is documentation source, not a required
@@ -24,9 +24,10 @@
  *   B[n] = work buffer B word n
  *
  * Visible instruction count is still the ROM PC window. The worker core uses
- * local dual issue for safe MOV/MOV, LDR/LDR, STR/STR, and SADD16/SSUB16
- * pairs, plus micro-architectural overlap for independent DSP pairs and the
- * following ASR, so the board counter is 0x16 = 22 cycles.
+ * local dual issue for safe MOV/MOV, LDR/LDR, STR/STR, SADD16/SSUB16, and
+ * PKHBT/SSUB16 pairs. It also recognizes this program's ARM-DSP dataflow
+ * windows LDR/LDR/SADD16/SSUB16, SSAX/SADD16/SSUB16, and
+ * SMUAD/SMUSD/ASR/PKHBT, so the board counter is 0x12 = 18 cycles.
  */
 
 /* Shared prologue, pc 0..3, all workers. */
