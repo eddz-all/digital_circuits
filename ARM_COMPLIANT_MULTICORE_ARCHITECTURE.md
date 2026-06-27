@@ -15,7 +15,7 @@ FFT butterfly 由 ARM/ARM DSP 指令序列组合完成。
 - 外部 `test_ROM` 到 MCU 内部内存、MCU 内部结果到 `verify_RAM`，可以由测试平台/外层控制器完成，不需要指令逐条搬运。
 - `cnt` 从指令存储器第一条指令读取开始，到指令存储器最后一条指令执行完成结束。
 - 硬件加速器可以更复杂，但必须是 ARM 指令集支持范围内的执行单元。
-- 因此，`MUL/MLA/SMLAD/SMLSD/SADD16/SSUB16/SSAX/PKHBT/SSAT` 等 ARM 支持的执行单元可以做；一次性完成 FFT butterfly 的黑盒不合适。
+- 因此，`MUL/MLA/SMUAD/SMUSD/SADD16/SSUB16/SSAX/PKHBT/SSAT` 等 ARM 支持的执行单元可以做；一次性完成 FFT butterfly 的黑盒不合适。
 
 最终目标：
 
@@ -44,16 +44,14 @@ test_ROM[128..143]
 推荐架构：
 
 ```text
-                 +-------------------------+
-                 |   instruction ROM       |
-                 |  logical one program    |
-                 +-----------+-------------+
-                             |
-             +---------------+---------------+
-             |               |               |
-        +----v----+     +----v----+     +----v----+     +----v----+
-        | core 0  |     | core 1  |     | core 2  |     | core 3  |
-        +----+----+     +----+----+     +----+----+     +----+----+
+       +-----------+   +-----------+   +-----------+   +-----------+
+       | ROM W0    |   | ROM W1    |   | ROM W2    |   | ROM W3    |
+       | PC/core0  |   | PC/core1  |   | PC/core2  |   | PC/core3  |
+       +-----+-----+   +-----+-----+   +-----+-----+   +-----+-----+
+             |               |               |               |
+       +-----v-----+   +-----v-----+   +-----v-----+   +-----v-----+
+       | core 0    |   | core 1    |   | core 2    |   | core 3    |
+       +-----+-----+   +-----+-----+   +-----+-----+   +-----+-----+
              |               |               |               |
              +---------------+---------------+---------------+
                              |
@@ -93,7 +91,7 @@ B, BL, MOV pc, lr
 
 ```text
 MUL / MLA
-SMLAD / SMLSD
+SMUAD / SMUSD
 SADD16 / SSUB16 / SSAX
 PKHBT / ASR / SSAT
 ```
@@ -102,26 +100,23 @@ PKHBT / ASR / SSAT
 
 ## 5. 指令存储器与多核关系
 
-建议口径：
+当前实现口径：
 
 ```text
-逻辑上一份 instruction ROM；
-硬件上为了四核同时取指，可以复制成四份只读 ROM，或实现为多读口 ROM。
+四个 worker 各有一份只读 32-bit instruction ROM；
+FFT 模式下 ROM W0..W3 存储 lane-specific FFT 指令；
+基础测试模式下使用 SELFTEST_ROM，并通常只启动 core0。
 ```
 
-每个 core 有自己的 `PC`，可以从 ROM 的不同入口取指。程序布局可以是：
+每个 core 有自己的 `PC`，从自己的 ROM 镜像取指。模式由 generic 选择：
 
 ```text
-core0_stage0_entry
-core1_stage0_entry
-core2_stage0_entry
-core3_stage0_entry
-
-core0_stage1_entry
-...
+PROGRAM_ID = 0, ACTIVE_CORES = 4  -- FFT 程序
+PROGRAM_ID = 1, ACTIVE_CORES = 1  -- 基础指令测试程序
 ```
 
-也可以四个 core 使用相似程序模板，但推荐先采用 lane-specific 程序入口，减少运行时地址计算，性能更高，解释也简单。
+这些指令在 `rtl/mcu4_worker_instr_rom.vhd` 中以显式 32-bit 常量表保存：
+`FFT_ROM_W0..FFT_ROM_W3` 和 `SELFTEST_ROM`。指令字不是由 RTL 编码函数临时生成。
 
 ## 6. 数据内存设计
 
@@ -256,7 +251,7 @@ t_imag = (b_real * w_imag + b_imag * w_real) >> scale
 可使用：
 
 ```text
-SMLAD / SMLSD  计算双 16-bit 乘加/乘减
+SMUAD / SMUSD  计算双 16-bit 乘加/乘减
 ASR            缩放
 PKHBT          打包 real/imag
 SADD16         even = a + t
@@ -320,10 +315,10 @@ cnt_stop  = all_cores_halted
 当前 GHDL 结果：
 
 ```text
-mcu_fft_system_tb cnt_cycles = 18
+mcu_fft_system_tb cnt_cycles = 22
 ```
 
-该版本给 worker 加入取指/译码寄存，并把 `SMUAD/SMUSD` 拆成多周期 DSP 执行。独立连续 DSP 指令使用局部 pair pipeline。安全相邻的 `MOV/MOV`、`LDR/LDR`、`STR/STR`、`SADD16/SSUB16` 和 `PKHBT/SSUB16` 可以局部双发射同拍退休；当前 FFT 指令序列中的 `LDR/LDR/SADD16/SSUB16`、`SSAX/SADD16/SSUB16` 和 `SMUAD/SMUSD/ASR/PKHBT` 数据流窗口也会在 worker 内合并退休。`STR/STR` 第二写口的数据来自译码级操作数寄存器，而不是直接来自寄存器堆组合读路径；局部双发射资格也提前寄存为 pair-kind 控制位，减少执行周期内的比较逻辑。这些优化不增加 FFT/butterfly 专用 opcode，仍保留可见 ARM/ARM-DSP 指令流。若能保持 216 MHz 以上频率，最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器版本。
+该版本给 worker 加入取指/译码寄存，并把 `SMUAD/SMUSD` 拆成多周期 DSP 执行。独立连续 DSP 指令使用局部 pair pipeline。安全相邻的 `MOV/MOV`、`LDR/LDR`、`STR/STR` 和 `SADD16/SSUB16` 可以在译码结果和寄存器依赖允许时局部双发射同拍退休。`STR/STR` 第二写口的数据来自译码级操作数寄存器，而不是直接来自寄存器堆组合读路径；局部双发射资格也提前寄存为 pair-kind 控制位，减少执行周期内的比较逻辑。这些优化不依赖固定 FFT PC，不增加 FFT/butterfly 专用 opcode，仍保留可见 ARM/ARM-DSP 指令流。最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器或固定 FFT 窗口融合版本。
 
 ## 13. 当前实现状态
 
@@ -340,13 +335,14 @@ rtl/mcu4_worker_core.vhd
 ```
 
 4. 共享 `buf_a/buf_b` 多端口工作内存在 `mcu4_multicycle_core` 内保留。
-5. 每个 worker 从自己的 lane-specific 32-bit 指令 ROM 取指，经 decoder 译码后执行 FFT stage。
+5. 每个 worker 从自己的 lane-specific 32-bit 指令 ROM 取指；ROM 中显式保存 `FFT_ROM_W0..W3` 和 `SELFTEST_ROM` 常量表。
 6. `cnt_stop` 由 `all_workers_halted` 产生，不等待输出 dump。
 7. Worker core 已补足课程最低 ARM 风格操作：`ADD/SUB/AND/ORR/MOV/LDR/STR/B/BL`。
-8. GHDL 已验证最低指令自测、FFT 输出和计数。
+8. `PROGRAM_ID` 选择 FFT 或基础指令测试，`ACTIVE_CORES` 选择启动 1..4 个 worker。
+9. GHDL 已验证最低指令自测、FFT 输出和计数。
 
 ## 14. 答辩口径
 
 推荐表述：
 
-> 我们采用四核多周期 ARM 指令执行结构。每个 core 都有 PC、32 位指令 ROM、译码器、寄存器组、ALU 和 ARM DSP 指令执行单元。FFT 数据存储在多端口工作内存 `buf_a/buf_b` 中，普通 ARM `LDR/STR` 可以单口访问该内存，四个 core 也可以并行访问。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持的 `SADD16/SSUB16/SMLAD/SMLSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM 指令序列。
+> 我们采用四核多周期 ARM 指令执行结构。每个 core 都有 PC、32 位指令 ROM、译码器、寄存器组、ALU 和 ARM DSP 指令执行单元。FFT 数据存储在多端口工作内存 `buf_a/buf_b` 中，普通 ARM `LDR/STR` 可以单口访问该内存，四个 core 也可以并行访问。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持的 `SADD16/SSUB16/SSAX/SMUAD/SMUSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM 指令序列。

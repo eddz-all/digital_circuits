@@ -5,6 +5,10 @@ use ieee.numeric_std.all;
 use work.mcu4_multi_pkg.all;
 
 entity mcu4_multicycle_core is
+    generic (
+        PROGRAM_ID   : natural range 0 to 1 := 0;
+        ACTIVE_CORES : positive range 1 to 4 := 4
+    );
     port (
         clk           : in  std_logic;
         rst           : in  std_logic;
@@ -83,38 +87,64 @@ begin
     end generate;
 
     gen_workers : for i in 0 to 3 generate
-        u_worker : entity work.mcu4_worker_core
-            generic map (
-                WORKER_ID => i
-            )
-            port map (
-                clk         => clk,
-                rst         => rst,
-                buf_a_raddr => worker_buf_a_raddr(i),
-                buf_a_rdata => worker_buf_a_rdata(i),
-                buf_a_raddr2 => worker_buf_a_raddr2(i),
-                buf_a_rdata2 => worker_buf_a_rdata2(i),
-                buf_b_raddr => worker_buf_b_raddr(i),
-                buf_b_rdata => worker_buf_b_rdata(i),
-                buf_b_raddr2 => worker_buf_b_raddr2(i),
-                buf_b_rdata2 => worker_buf_b_rdata2(i),
-                buf_a_we    => worker_buf_a_we(i),
-                buf_a_waddr => worker_buf_a_waddr(i),
-                buf_a_wdata => worker_buf_a_wdata(i),
-                buf_a_we2    => worker_buf_a_we2(i),
-                buf_a_waddr2 => worker_buf_a_waddr2(i),
-                buf_a_wdata2 => worker_buf_a_wdata2(i),
-                buf_b_we    => worker_buf_b_we(i),
-                buf_b_waddr => worker_buf_b_waddr(i),
-                buf_b_wdata => worker_buf_b_wdata(i),
-                buf_b_we2    => worker_buf_b_we2(i),
-                buf_b_waddr2 => worker_buf_b_waddr2(i),
-                buf_b_wdata2 => worker_buf_b_wdata2(i),
-                halted      => worker_halted(i),
-                illegal     => worker_illegal(i),
-                pc_debug    => worker_pc_debug(i),
-                instr_debug => worker_instr_debug(i)
-            );
+        gen_active_worker : if i < ACTIVE_CORES generate
+            u_worker : entity work.mcu4_worker_core
+                generic map (
+                    WORKER_ID  => i,
+                    PROGRAM_ID => PROGRAM_ID
+                )
+                port map (
+                    clk         => clk,
+                    rst         => rst,
+                    buf_a_raddr => worker_buf_a_raddr(i),
+                    buf_a_rdata => worker_buf_a_rdata(i),
+                    buf_a_raddr2 => worker_buf_a_raddr2(i),
+                    buf_a_rdata2 => worker_buf_a_rdata2(i),
+                    buf_b_raddr => worker_buf_b_raddr(i),
+                    buf_b_rdata => worker_buf_b_rdata(i),
+                    buf_b_raddr2 => worker_buf_b_raddr2(i),
+                    buf_b_rdata2 => worker_buf_b_rdata2(i),
+                    buf_a_we    => worker_buf_a_we(i),
+                    buf_a_waddr => worker_buf_a_waddr(i),
+                    buf_a_wdata => worker_buf_a_wdata(i),
+                    buf_a_we2    => worker_buf_a_we2(i),
+                    buf_a_waddr2 => worker_buf_a_waddr2(i),
+                    buf_a_wdata2 => worker_buf_a_wdata2(i),
+                    buf_b_we    => worker_buf_b_we(i),
+                    buf_b_waddr => worker_buf_b_waddr(i),
+                    buf_b_wdata => worker_buf_b_wdata(i),
+                    buf_b_we2    => worker_buf_b_we2(i),
+                    buf_b_waddr2 => worker_buf_b_waddr2(i),
+                    buf_b_wdata2 => worker_buf_b_wdata2(i),
+                    halted      => worker_halted(i),
+                    illegal     => worker_illegal(i),
+                    pc_debug    => worker_pc_debug(i),
+                    instr_debug => worker_instr_debug(i)
+                );
+        end generate;
+
+        gen_inactive_worker : if i >= ACTIVE_CORES generate
+            worker_buf_a_raddr(i) <= (others => '0');
+            worker_buf_b_raddr(i) <= (others => '0');
+            worker_buf_a_raddr2(i) <= (others => '0');
+            worker_buf_b_raddr2(i) <= (others => '0');
+            worker_buf_a_we(i) <= '0';
+            worker_buf_b_we(i) <= '0';
+            worker_buf_a_we2(i) <= '0';
+            worker_buf_b_we2(i) <= '0';
+            worker_buf_a_waddr(i) <= (others => '0');
+            worker_buf_b_waddr(i) <= (others => '0');
+            worker_buf_a_waddr2(i) <= (others => '0');
+            worker_buf_b_waddr2(i) <= (others => '0');
+            worker_buf_a_wdata(i) <= (others => '0');
+            worker_buf_b_wdata(i) <= (others => '0');
+            worker_buf_a_wdata2(i) <= (others => '0');
+            worker_buf_b_wdata2(i) <= (others => '0');
+            worker_halted(i) <= '1';
+            worker_illegal(i) <= '0';
+            worker_pc_debug(i) <= (others => '0');
+            worker_instr_debug(i) <= x"E1A00000";
+        end generate;
     end generate;
 
     process(output_raddr, buf_b)

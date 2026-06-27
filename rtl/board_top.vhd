@@ -3,6 +3,10 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity board_top is
+    generic (
+        PROGRAM_ID   : natural range 0 to 1 := 0;
+        ACTIVE_CORES : positive range 1 to 4 := 4
+    );
     port (
         clk_in1 : in std_logic;
         rst_btn : in std_logic
@@ -142,7 +146,9 @@ begin
         generic map (
             INPUT_ROM_BASE => 128,
             INPUT_COUNT    => 16,
-            OUTPUT_COUNT   => 16
+            OUTPUT_COUNT   => 16,
+            PROGRAM_ID     => PROGRAM_ID,
+            ACTIVE_CORES   => ACTIVE_CORES
         )
         port map (
             clk               => sys_clk,

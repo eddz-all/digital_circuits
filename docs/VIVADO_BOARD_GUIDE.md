@@ -22,6 +22,16 @@ rtl/board_top.vhd
 
 Set `board_top` as the top module.
 
+`board_top` has two useful generics:
+
+```text
+PROGRAM_ID = 0, ACTIVE_CORES = 4  -- FFT mode, normal performance run
+PROGRAM_ID = 1, ACTIVE_CORES = 1  -- basic instruction/PPT test mode
+```
+
+The default is FFT mode. The instruction ROM contents are explicit 32-bit VHDL
+constant tables, not generated instructions.
+
 Add this constraints file:
 
 ```text
@@ -111,7 +121,7 @@ mcu_fft_system_tb
 Expected note:
 
 ```text
-mcu_fft_system_tb cnt_cycles 18
+mcu_fft_system_tb cnt_cycles 22
 mcu_fft_system_tb passed
 ```
 
@@ -119,6 +129,8 @@ For core-only simulation, add:
 
 ```text
 tb/mcu4_multicycle_core_tb.vhd
+tb/mcu4_multicycle_core_min_arm_tb.vhd
+tb/mcu4_worker_core_min_arm_tb.vhd
 ```
 
 Run top:
@@ -147,7 +159,7 @@ This testbench provides simple simulation stubs for `clk_wiz_0`, `test_ROM`,
 Counter:
 
 ```text
-cnt_test = 00012
+cnt_test = 00016
 ```
 
 Readback values:
@@ -175,13 +187,13 @@ addr 0F  D874
 
 - This version uses four parallel worker cores rather than a memory-mapped butterfly accelerator.
 - Each worker has its own PC, 32-bit instruction ROM, decoder, register file, ARM-style ALU/DSP execution, work-memory ports, and halt state.
+- The worker instruction words are visible in `rtl/mcu4_worker_instr_rom.vhd` as `FFT_ROM_W0..FFT_ROM_W3` and `SELFTEST_ROM`.
 - FFT data is stored in the MCU work memory `buf_a/buf_b`, implemented as a small multi-port register array.
 - The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
 - Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
 - `SMUAD` and `SMUSD` are internally multi-cycle to shorten the DSP critical path for 200 MHz-class timing.
-- Safe adjacent `MOV/MOV`, `LDR/LDR`, `STR/STR`, `SADD16/SSUB16`, and `PKHBT/SSUB16` instruction pairs can retire together; this is local dual issue, not a new FFT opcode.
-- The worker also recognizes the current ARM-DSP dataflow windows `LDR/LDR/SADD16/SSUB16`, `SSAX/SADD16/SSUB16`, and `SMUAD/SMUSD/ASR/PKHBT`.
-- The DSP-tail `ASR` result is precomputed and staged before it retires through the fused tail.
+- Safe adjacent `MOV/MOV`, `LDR/LDR`, `STR/STR`, and `SADD16/SSUB16` instruction pairs can retire together when decoded dependencies make them safe; this is local dual issue, not a new FFT opcode.
+- The worker does not recognize fixed FFT PC windows. Pairing and DSP overlap are selected from decoded instruction properties and register dependencies.
 - The paired `STR/STR` second write data is staged in the worker decode register to avoid a direct register-file-to-buffer-write-data path.
 - Local dual-issue eligibility is staged as a pair-kind register before the execute cycle.
 - The `91/-91` twiddle constants are immediate constants initialized by worker instructions, not hidden constants in a special butterfly unit.

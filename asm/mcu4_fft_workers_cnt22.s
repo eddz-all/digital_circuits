@@ -1,10 +1,10 @@
 /*
- * MCU4 four-worker FFT program, cnt18 version.
+ * MCU4 four-worker FFT program, generic-dual-issue cnt22 version.
  *
  * This is a readable assembly listing for the instruction ROM implemented in
  * rtl/mcu4_worker_instr_rom.vhd. It is documentation source, not a required
- * Vivado input file. The RTL ROM encoder remains the canonical machine-code
- * source used by synthesis.
+ * Vivado input file. The explicit VHDL ROM constant tables are the canonical
+ * machine-code source used by synthesis.
  *
  * Register aliases:
  *   r0  zero/base
@@ -24,10 +24,10 @@
  *   B[n] = work buffer B word n
  *
  * Visible instruction count is still the ROM PC window. The worker core uses
- * local dual issue for safe MOV/MOV, LDR/LDR, STR/STR, SADD16/SSUB16, and
- * PKHBT/SSUB16 pairs. It also recognizes this program's ARM-DSP dataflow
- * windows LDR/LDR/SADD16/SSUB16, SSAX/SADD16/SSUB16, and
- * SMUAD/SMUSD/ASR/PKHBT, so the board counter is 0x12 = 18 cycles.
+ * local dual issue for safe MOV/MOV, LDR/LDR, STR/STR, and SADD16/SSUB16
+ * pairs. Back-to-back independent SMUAD/SMUSD instructions use the generic DSP
+ * pair pipeline, and the dependent ASR can retire with the second DSP
+ * writeback. The board counter is 0x16 = 22 cycles.
  */
 
 /* Shared prologue, pc 0..3, all workers. */

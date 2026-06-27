@@ -6,7 +6,9 @@ entity mcu_fft_system is
     generic (
         INPUT_ROM_BASE : natural := 128;
         INPUT_COUNT    : positive := 16;
-        OUTPUT_COUNT   : positive := 16
+        OUTPUT_COUNT   : positive := 16;
+        PROGRAM_ID     : natural range 0 to 1 := 0;
+        ACTIVE_CORES   : positive range 1 to 4 := 4
     );
     port (
         clk : in std_logic;
@@ -68,6 +70,10 @@ begin
         severity failure;
 
     u_core : entity work.mcu4_multicycle_core
+        generic map (
+            PROGRAM_ID   => PROGRAM_ID,
+            ACTIVE_CORES => ACTIVE_CORES
+        )
         port map (
             clk           => clk,
             rst           => core_rst,

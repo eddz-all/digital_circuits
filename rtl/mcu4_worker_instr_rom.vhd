@@ -10,7 +10,7 @@ entity mcu4_worker_instr_rom is
         PROGRAM_ID : natural range 0 to 1 := 0
     );
     port (
-        pc_index : in  std_logic_vector(5 downto 0);
+        pc_index    : in  std_logic_vector(5 downto 0);
         instr       : out word_t;
         dec_op      : out worker_op_t;
         dec_rd      : out natural range 0 to 15;
@@ -23,339 +23,159 @@ entity mcu4_worker_instr_rom is
 end entity mcu4_worker_instr_rom;
 
 architecture rtl of mcu4_worker_instr_rom is
-    function enc_reg(base : word_t; rd : natural; rn : natural; rm : natural)
-        return word_t is
-        variable enc : unsigned(31 downto 0);
-    begin
-        enc := unsigned(base);
-        enc(19 downto 16) := to_unsigned(rn, 4);
-        enc(15 downto 12) := to_unsigned(rd, 4);
-        enc(3 downto 0) := to_unsigned(rm, 4);
-        return std_logic_vector(enc);
-    end function;
+    constant INSTR_NOP  : word_t := x"E1A00000";
+    constant INSTR_HALT : word_t := x"EAFFFFFE";
 
-    function enc_mov_imm(rd : natural; imm : natural) return word_t is
-        variable enc : unsigned(31 downto 0);
-    begin
-        enc := unsigned'(x"E3A00000");
-        enc(15 downto 12) := to_unsigned(rd, 4);
-        enc(11 downto 0) := to_unsigned(imm, 12);
-        return std_logic_vector(enc);
-    end function;
+    -- PROGRAM_ID = 0: FFT worker programs. Each worker has a concrete 32-bit
+    -- instruction ROM image; these words are not built by an RTL encoder.
+    constant FFT_ROM_W0 : program_rom_t := (
+         0 => x"E3A00000", -- MOV r0, #0
+         1 => x"E3A0105B", -- MOV r1, #91
+         2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
+         3 => x"ED204003", -- SSUB16 r4, r0, r3
+         4 => x"E5905040", -- LDR r5, [buf_a+0]
+         5 => x"E5906044", -- LDR r6, [buf_a+1]
+         6 => x"ED85A006", -- SADD16 r10, r5, r6
+         7 => x"ED25B006", -- SSUB16 r11, r5, r6
+         8 => x"E580A080", -- STR r10, [buf_b+0]
+         9 => x"E580B084", -- STR r11, [buf_b+1]
+        10 => x"E5905080", -- LDR r5, [buf_b+0]
+        11 => x"E5906088", -- LDR r6, [buf_b+2]
+        12 => x"ED85A006", -- SADD16 r10, r5, r6
+        13 => x"ED25B006", -- SSUB16 r11, r5, r6
+        14 => x"E580A040", -- STR r10, [buf_a+0]
+        15 => x"E580B048", -- STR r11, [buf_a+2]
+        16 => INSTR_NOP,   -- NOP
+        17 => x"E5905040", -- LDR r5, [buf_a+0]
+        18 => x"E5906050", -- LDR r6, [buf_a+4]
+        19 => x"ED85A006", -- SADD16 r10, r5, r6
+        20 => x"ED25B006", -- SSUB16 r11, r5, r6
+        21 => x"E580A080", -- STR r10, [buf_b+0]
+        22 => x"E580B090", -- STR r11, [buf_b+4]
+        23 => INSTR_NOP,   -- NOP
+        24 => INSTR_NOP,   -- NOP
+        25 => INSTR_NOP,   -- NOP
+        26 => INSTR_NOP,   -- NOP
+        others => INSTR_HALT
+    );
 
-    function enc_mov_reg(rd : natural; rm : natural) return word_t is
-    begin
-        return enc_reg(x"E1A00000", rd, 0, rm);
-    end function;
+    constant FFT_ROM_W1 : program_rom_t := (
+         0 => x"E3A00000", -- MOV r0, #0
+         1 => x"E3A0105B", -- MOV r1, #91
+         2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
+         3 => x"ED204003", -- SSUB16 r4, r0, r3
+         4 => x"E5905048", -- LDR r5, [buf_a+2]
+         5 => x"E590604C", -- LDR r6, [buf_a+3]
+         6 => x"ED85A006", -- SADD16 r10, r5, r6
+         7 => x"ED25B006", -- SSUB16 r11, r5, r6
+         8 => x"E580A088", -- STR r10, [buf_b+2]
+         9 => x"E580B08C", -- STR r11, [buf_b+3]
+        10 => x"E5905084", -- LDR r5, [buf_b+1]
+        11 => x"E590608C", -- LDR r6, [buf_b+3]
+        12 => x"ED009006", -- SSAX r9, r0, r6
+        13 => x"ED85A009", -- SADD16 r10, r5, r9
+        14 => x"ED25B009", -- SSUB16 r11, r5, r9
+        15 => x"E580A044", -- STR r10, [buf_a+1]
+        16 => x"E580B04C", -- STR r11, [buf_a+3]
+        17 => x"E5905044", -- LDR r5, [buf_a+1]
+        18 => x"E5906054", -- LDR r6, [buf_a+5]
+        19 => x"EC467003", -- SMUAD r7, r6, r3
+        20 => x"EC668004", -- SMUSD r8, r6, r4
+        21 => x"E3E07387", -- ASR r7, r7, #7
+        22 => x"ECA79488", -- PKHBT r9, r7, r8, LSL #9
+        23 => x"ED85A009", -- SADD16 r10, r5, r9
+        24 => x"ED25B009", -- SSUB16 r11, r5, r9
+        25 => x"E580A084", -- STR r10, [buf_b+1]
+        26 => x"E580B094", -- STR r11, [buf_b+5]
+        others => INSTR_HALT
+    );
 
-    function enc_pkhbt(rd : natural; rn : natural; rm : natural; shift : natural)
-        return word_t is
-        variable enc : unsigned(31 downto 0);
-    begin
-        enc := unsigned'(x"ECA00000");
-        enc(19 downto 16) := to_unsigned(rn, 4);
-        enc(15 downto 12) := to_unsigned(rd, 4);
-        enc(11 downto 7) := to_unsigned(shift, 5);
-        enc(3 downto 0) := to_unsigned(rm, 4);
-        return std_logic_vector(enc);
-    end function;
+    constant FFT_ROM_W2 : program_rom_t := (
+         0 => x"E3A00000", -- MOV r0, #0
+         1 => x"E3A0105B", -- MOV r1, #91
+         2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
+         3 => x"ED204003", -- SSUB16 r4, r0, r3
+         4 => x"E5905050", -- LDR r5, [buf_a+4]
+         5 => x"E5906054", -- LDR r6, [buf_a+5]
+         6 => x"ED85A006", -- SADD16 r10, r5, r6
+         7 => x"ED25B006", -- SSUB16 r11, r5, r6
+         8 => x"E580A090", -- STR r10, [buf_b+4]
+         9 => x"E580B094", -- STR r11, [buf_b+5]
+        10 => x"E5905090", -- LDR r5, [buf_b+4]
+        11 => x"E5906098", -- LDR r6, [buf_b+6]
+        12 => x"ED85A006", -- SADD16 r10, r5, r6
+        13 => x"ED25B006", -- SSUB16 r11, r5, r6
+        14 => x"E580A050", -- STR r10, [buf_a+4]
+        15 => x"E580B058", -- STR r11, [buf_a+6]
+        16 => INSTR_NOP,   -- NOP
+        17 => x"E5905048", -- LDR r5, [buf_a+2]
+        18 => x"E5906058", -- LDR r6, [buf_a+6]
+        19 => x"ED009006", -- SSAX r9, r0, r6
+        20 => x"ED85A009", -- SADD16 r10, r5, r9
+        21 => x"ED25B009", -- SSUB16 r11, r5, r9
+        22 => x"E580A088", -- STR r10, [buf_b+2]
+        23 => x"E580B098", -- STR r11, [buf_b+6]
+        24 => INSTR_NOP,   -- NOP
+        25 => INSTR_NOP,   -- NOP
+        26 => INSTR_NOP,   -- NOP
+        others => INSTR_HALT
+    );
 
-    function enc_asr(rd : natural; rn : natural; shift : natural) return word_t is
-        variable enc : unsigned(31 downto 0);
-    begin
-        enc := unsigned'(x"E3E00000");
-        enc(15 downto 12) := to_unsigned(rd, 4);
-        enc(11 downto 7) := to_unsigned(shift, 5);
-        enc(3 downto 0) := to_unsigned(rn, 4);
-        return std_logic_vector(enc);
-    end function;
+    constant FFT_ROM_W3 : program_rom_t := (
+         0 => x"E3A00000", -- MOV r0, #0
+         1 => x"E3A0105B", -- MOV r1, #91
+         2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
+         3 => x"ED204003", -- SSUB16 r4, r0, r3
+         4 => x"E5905058", -- LDR r5, [buf_a+6]
+         5 => x"E590605C", -- LDR r6, [buf_a+7]
+         6 => x"ED85A006", -- SADD16 r10, r5, r6
+         7 => x"ED25B006", -- SSUB16 r11, r5, r6
+         8 => x"E580A098", -- STR r10, [buf_b+6]
+         9 => x"E580B09C", -- STR r11, [buf_b+7]
+        10 => x"E5905094", -- LDR r5, [buf_b+5]
+        11 => x"E590609C", -- LDR r6, [buf_b+7]
+        12 => x"ED009006", -- SSAX r9, r0, r6
+        13 => x"ED85A009", -- SADD16 r10, r5, r9
+        14 => x"ED25B009", -- SSUB16 r11, r5, r9
+        15 => x"E580A054", -- STR r10, [buf_a+5]
+        16 => x"E580B05C", -- STR r11, [buf_a+7]
+        17 => x"E590504C", -- LDR r5, [buf_a+3]
+        18 => x"E590605C", -- LDR r6, [buf_a+7]
+        19 => x"EC667004", -- SMUSD r7, r6, r4
+        20 => x"EC468004", -- SMUAD r8, r6, r4
+        21 => x"E3E07387", -- ASR r7, r7, #7
+        22 => x"ECA79488", -- PKHBT r9, r7, r8, LSL #9
+        23 => x"ED85A009", -- SADD16 r10, r5, r9
+        24 => x"ED25B009", -- SSUB16 r11, r5, r9
+        25 => x"E580A08C", -- STR r10, [buf_b+3]
+        26 => x"E580B09C", -- STR r11, [buf_b+7]
+        others => INSTR_HALT
+    );
 
-    function enc_load_store(
-        is_load : boolean;
-        use_buf_a : boolean;
-        rd : natural;
-        idx : natural
-    ) return word_t is
-        variable enc : unsigned(31 downto 0);
-        variable imm_addr : natural range 0 to 4095;
-    begin
-        if is_load then
-            enc := unsigned'(x"E5900000");
-        else
-            enc := unsigned'(x"E5800000");
-        end if;
-
-        if use_buf_a then
-            imm_addr := (WORK_BUF_A_BASE_WORD + idx) * 4;
-        else
-            imm_addr := (WORK_BUF_B_BASE_WORD + idx) * 4;
-        end if;
-
-        enc(19 downto 16) := to_unsigned(REG_ZERO, 4);
-        enc(15 downto 12) := to_unsigned(rd, 4);
-        enc(11 downto 0) := to_unsigned(imm_addr, 12);
-        return std_logic_vector(enc);
-    end function;
-
-    function enc_ldr_a(rd : natural; idx : natural) return word_t is
-    begin
-        return enc_load_store(true, true, rd, idx);
-    end function;
-
-    function enc_ldr_b(rd : natural; idx : natural) return word_t is
-    begin
-        return enc_load_store(true, false, rd, idx);
-    end function;
-
-    function enc_str_a(rd : natural; idx : natural) return word_t is
-    begin
-        return enc_load_store(false, true, rd, idx);
-    end function;
-
-    function enc_str_b(rd : natural; idx : natural) return word_t is
-    begin
-        return enc_load_store(false, false, rd, idx);
-    end function;
-
-    function enc_alu(op : worker_op_t; rd : natural; rn : natural; rm : natural)
-        return word_t is
-    begin
-        case op is
-            when WOP_ADD =>
-                return enc_reg(x"E0800000", rd, rn, rm);
-            when WOP_SUB =>
-                return enc_reg(x"E0400000", rd, rn, rm);
-            when WOP_AND =>
-                return enc_reg(x"E0000000", rd, rn, rm);
-            when WOP_ORR =>
-                return enc_reg(x"E1800000", rd, rn, rm);
-            when WOP_SADD16 =>
-                return enc_reg(x"ED800000", rd, rn, rm);
-            when WOP_SSUB16 =>
-                return enc_reg(x"ED200000", rd, rn, rm);
-            when WOP_SSAX =>
-                return enc_reg(x"ED000000", rd, rn, rm);
-            when WOP_SMUAD =>
-                return enc_reg(x"EC400000", rd, rn, rm);
-            when WOP_SMUSD =>
-                return enc_reg(x"EC600000", rd, rn, rm);
-            when others =>
-                return x"E1A00000";
-        end case;
-    end function;
-
-    function enc_branch(target_pc : integer; current_pc : natural; link : boolean)
-        return word_t is
-        variable enc : unsigned(31 downto 0);
-        variable offset : signed(23 downto 0);
-    begin
-        if link then
-            enc := unsigned'(x"EB000000");
-        else
-            enc := unsigned'(x"EA000000");
-        end if;
-        offset := to_signed(target_pc - integer(current_pc) - 2, 24);
-        enc(23 downto 0) := unsigned(offset);
-        return std_logic_vector(enc);
-    end function;
-
-    function fft_program_word(wid : natural; pc : natural) return word_t is
-    begin
-        case pc is
-            when 0 => return enc_mov_imm(REG_ZERO, 0);
-            when 1 => return enc_mov_imm(REG_POS91, 91);
-            when 2 => return enc_pkhbt(REG_PACK91, REG_POS91, REG_POS91, 16);
-            when 3 => return enc_alu(WOP_SSUB16, REG_PACKN91, REG_ZERO, REG_PACK91);
-
-            when 4 =>
-                case wid is
-                    when 0 => return enc_ldr_a(REG_A, 0);
-                    when 1 => return enc_ldr_a(REG_A, 2);
-                    when 2 => return enc_ldr_a(REG_A, 4);
-                    when others => return enc_ldr_a(REG_A, 6);
-                end case;
-            when 5 =>
-                case wid is
-                    when 0 => return enc_ldr_a(REG_B, 1);
-                    when 1 => return enc_ldr_a(REG_B, 3);
-                    when 2 => return enc_ldr_a(REG_B, 5);
-                    when others => return enc_ldr_a(REG_B, 7);
-                end case;
-            when 6 => return enc_alu(WOP_SADD16, REG_EVEN, REG_A, REG_B);
-            when 7 => return enc_alu(WOP_SSUB16, REG_ODD, REG_A, REG_B);
-            when 8 =>
-                case wid is
-                    when 0 => return enc_str_b(REG_EVEN, 0);
-                    when 1 => return enc_str_b(REG_EVEN, 2);
-                    when 2 => return enc_str_b(REG_EVEN, 4);
-                    when others => return enc_str_b(REG_EVEN, 6);
-                end case;
-            when 9 =>
-                case wid is
-                    when 0 => return enc_str_b(REG_ODD, 1);
-                    when 1 => return enc_str_b(REG_ODD, 3);
-                    when 2 => return enc_str_b(REG_ODD, 5);
-                    when others => return enc_str_b(REG_ODD, 7);
-                end case;
-
-            when 10 =>
-                case wid is
-                    when 0 => return enc_ldr_b(REG_A, 0);
-                    when 1 => return enc_ldr_b(REG_A, 1);
-                    when 2 => return enc_ldr_b(REG_A, 4);
-                    when others => return enc_ldr_b(REG_A, 5);
-                end case;
-            when 11 =>
-                case wid is
-                    when 0 => return enc_ldr_b(REG_B, 2);
-                    when 1 => return enc_ldr_b(REG_B, 3);
-                    when 2 => return enc_ldr_b(REG_B, 6);
-                    when others => return enc_ldr_b(REG_B, 7);
-                end case;
-            when 12 =>
-                if wid = 1 or wid = 3 then
-                    return enc_alu(WOP_SSAX, REG_T, REG_ZERO, REG_B);
-                else
-                    return enc_alu(WOP_SADD16, REG_EVEN, REG_A, REG_B);
-                end if;
-            when 13 =>
-                if wid = 1 or wid = 3 then
-                    return enc_alu(WOP_SADD16, REG_EVEN, REG_A, REG_T);
-                else
-                    return enc_alu(WOP_SSUB16, REG_ODD, REG_A, REG_B);
-                end if;
-            when 14 =>
-                if wid = 1 or wid = 3 then
-                    return enc_alu(WOP_SSUB16, REG_ODD, REG_A, REG_T);
-                else
-                    return enc_str_a(REG_EVEN, 0 + 4 * (wid / 2));
-                end if;
-            when 15 =>
-                case wid is
-                    when 0 => return enc_str_a(REG_ODD, 2);
-                    when 1 => return enc_str_a(REG_EVEN, 1);
-                    when 2 => return enc_str_a(REG_ODD, 6);
-                    when others => return enc_str_a(REG_EVEN, 5);
-                end case;
-            when 16 =>
-                if wid = 1 then
-                    return enc_str_a(REG_ODD, 3);
-                elsif wid = 3 then
-                    return enc_str_a(REG_ODD, 7);
-                else
-                    return x"E1A00000";
-                end if;
-
-            when 17 =>
-                case wid is
-                    when 0 => return enc_ldr_a(REG_A, 0);
-                    when 1 => return enc_ldr_a(REG_A, 1);
-                    when 2 => return enc_ldr_a(REG_A, 2);
-                    when others => return enc_ldr_a(REG_A, 3);
-                end case;
-            when 18 =>
-                case wid is
-                    when 0 => return enc_ldr_a(REG_B, 4);
-                    when 1 => return enc_ldr_a(REG_B, 5);
-                    when 2 => return enc_ldr_a(REG_B, 6);
-                    when others => return enc_ldr_a(REG_B, 7);
-                end case;
-            when 19 =>
-                if wid = 0 then
-                    return enc_alu(WOP_SADD16, REG_EVEN, REG_A, REG_B);
-                elsif wid = 2 then
-                    return enc_alu(WOP_SSAX, REG_T, REG_ZERO, REG_B);
-                elsif wid = 1 then
-                    return enc_alu(WOP_SMUAD, REG_TMP_RE, REG_B, REG_PACK91);
-                else
-                    return enc_alu(WOP_SMUSD, REG_TMP_RE, REG_B, REG_PACKN91);
-                end if;
-            when 20 =>
-                if wid = 0 then
-                    return enc_alu(WOP_SSUB16, REG_ODD, REG_A, REG_B);
-                elsif wid = 2 then
-                    return enc_alu(WOP_SADD16, REG_EVEN, REG_A, REG_T);
-                elsif wid = 1 then
-                    return enc_alu(WOP_SMUSD, REG_TMP_IM, REG_B, REG_PACKN91);
-                else
-                    return enc_alu(WOP_SMUAD, REG_TMP_IM, REG_B, REG_PACKN91);
-                end if;
-            when 21 =>
-                if wid = 0 then
-                    return enc_str_b(REG_EVEN, 0);
-                elsif wid = 2 then
-                    return enc_alu(WOP_SSUB16, REG_ODD, REG_A, REG_T);
-                else
-                    return enc_asr(REG_TMP_RE, REG_TMP_RE, 7);
-                end if;
-            when 22 =>
-                if wid = 0 then
-                    return enc_str_b(REG_ODD, 4);
-                elsif wid = 2 then
-                    return enc_str_b(REG_EVEN, 2);
-                else
-                    return enc_pkhbt(REG_T, REG_TMP_RE, REG_TMP_IM, 9);
-                end if;
-            when 23 =>
-                if wid = 0 then
-                    return x"E1A00000";
-                elsif wid = 2 then
-                    return enc_str_b(REG_ODD, 6);
-                else
-                    return enc_alu(WOP_SADD16, REG_EVEN, REG_A, REG_T);
-                end if;
-            when 24 =>
-                if wid = 1 or wid = 3 then
-                    return enc_alu(WOP_SSUB16, REG_ODD, REG_A, REG_T);
-                else
-                    return x"E1A00000";
-                end if;
-            when 25 =>
-                if wid = 1 then
-                    return enc_str_b(REG_EVEN, 1);
-                elsif wid = 3 then
-                    return enc_str_b(REG_EVEN, 3);
-                else
-                    return x"E1A00000";
-                end if;
-            when 26 =>
-                if wid = 1 then
-                    return enc_str_b(REG_ODD, 5);
-                elsif wid = 3 then
-                    return enc_str_b(REG_ODD, 7);
-                else
-                    return x"E1A00000";
-                end if;
-            when others =>
-                return x"EAFFFFFE";
-        end case;
-    end function;
-
-    function selftest_program_word(pc : natural) return word_t is
-    begin
-        case pc is
-            when 0 => return enc_mov_imm(0, 0);
-            when 1 => return enc_mov_imm(1, 7);
-            when 2 => return enc_mov_imm(2, 3);
-            when 3 => return enc_alu(WOP_ADD, 3, 1, 2);
-            when 4 => return enc_alu(WOP_SUB, 4, 3, 2);
-            when 5 => return enc_alu(WOP_AND, 5, 3, 1);
-            when 6 => return enc_alu(WOP_ORR, 6, 5, 2);
-            when 7 => return enc_mov_reg(7, 6);
-            when 8 => return enc_ldr_a(8, 0);
-            when 9 => return enc_alu(WOP_ADD, 9, 8, 7);
-            when 10 => return enc_str_b(9, 0);
-            when 11 => return enc_branch(13, 11, false);
-            when 12 => return enc_str_b(1, 1);
-            when 13 => return enc_branch(17, 13, true);
-            when 14 => return enc_str_b(1, 1);
-            when 15 => return enc_str_b(10, 2);
-            when 16 => return x"EAFFFFFE";
-            when 17 => return enc_alu(WOP_ADD, 10, 9, 4);
-            when 18 => return enc_mov_reg(REG_PC, REG_LR);
-            when others => return x"EAFFFFFE";
-        end case;
-    end function;
+    -- PROGRAM_ID = 1: single-core PPT/basic-instruction test program.
+    -- Intended board mode: PROGRAM_ID=1, ACTIVE_CORES=1.
+    constant SELFTEST_ROM : program_rom_t := (
+         0 => x"E3A00000", -- MOV r0, #0
+         1 => x"E3A01007", -- MOV r1, #7
+         2 => x"E3A02003", -- MOV r2, #3
+         3 => x"E0813002", -- ADD r3, r1, r2
+         4 => x"E0434002", -- SUB r4, r3, r2
+         5 => x"E0035001", -- AND r5, r3, r1
+         6 => x"E1856002", -- ORR r6, r5, r2
+         7 => x"E1A07006", -- MOV r7, r6
+         8 => x"E5908040", -- LDR r8, [buf_a+0]
+         9 => x"E0889007", -- ADD r9, r8, r7
+        10 => x"E5809080", -- STR r9, [buf_b+0]
+        11 => x"EA000000", -- B selftest_after_skip
+        12 => x"E5801084", -- STR r1, [buf_b+1] ; skipped
+        13 => x"EB000002", -- BL selftest_subroutine
+        14 => x"E5801084", -- STR r1, [buf_b+1]
+        15 => x"E580A088", -- STR r10, [buf_b+2]
+        16 => INSTR_HALT,   -- HALT
+        17 => x"E089A004", -- ADD r10, r9, r4
+        18 => x"E1A0F00E", -- MOV pc, lr
+        others => INSTR_HALT
+    );
 
     procedure decode_instr_word(
         constant instr_value : in word_t;
@@ -383,7 +203,7 @@ architecture rtl of mcu4_worker_instr_rom is
 
         pc_value := to_integer(unsigned(pc_value_in));
 
-        if instr_value = x"EAFFFFFE" then
+        if instr_value = INSTR_HALT then
             op_value := WOP_HALT;
         elsif instr_value(31 downto 20) = x"E3A" then
             op_value := WOP_MOV_IMM;
@@ -502,274 +322,6 @@ architecture rtl of mcu4_worker_instr_rom is
             illegal_value := '1';
         end if;
     end procedure;
-
-    procedure decode_fft_pc(
-        constant wid      : in natural;
-        constant pc       : in natural;
-        variable op_value      : out worker_op_t;
-        variable rd_value      : out natural range 0 to 15;
-        variable rn_value      : out natural range 0 to 15;
-        variable rm_value      : out natural range 0 to 15;
-        variable imm_value     : out integer range -4096 to 4095;
-        variable idx_value     : out natural range 0 to 7;
-        variable illegal_value : out std_logic
-    ) is
-    begin
-        op_value := WOP_NOP;
-        rd_value := 0;
-        rn_value := 0;
-        rm_value := 0;
-        imm_value := 0;
-        idx_value := 0;
-        illegal_value := '0';
-
-        case pc is
-            when 0 =>
-                op_value := WOP_MOV_IMM;
-                rd_value := REG_ZERO;
-            when 1 =>
-                op_value := WOP_MOV_IMM;
-                rd_value := REG_POS91;
-                imm_value := 91;
-            when 2 =>
-                op_value := WOP_PKHBT;
-                rd_value := REG_PACK91;
-                rn_value := REG_POS91;
-                rm_value := REG_POS91;
-                imm_value := 16;
-            when 3 =>
-                op_value := WOP_SSUB16;
-                rd_value := REG_PACKN91;
-                rn_value := REG_ZERO;
-                rm_value := REG_PACK91;
-            when 4 =>
-                op_value := WOP_LDR_A;
-                rd_value := REG_A;
-                idx_value := wid * 2;
-            when 5 =>
-                op_value := WOP_LDR_A;
-                rd_value := REG_B;
-                idx_value := wid * 2 + 1;
-            when 6 =>
-                op_value := WOP_SADD16;
-                rd_value := REG_EVEN;
-                rn_value := REG_A;
-                rm_value := REG_B;
-            when 7 =>
-                op_value := WOP_SSUB16;
-                rd_value := REG_ODD;
-                rn_value := REG_A;
-                rm_value := REG_B;
-            when 8 =>
-                op_value := WOP_STR_B;
-                rd_value := REG_EVEN;
-                idx_value := wid * 2;
-            when 9 =>
-                op_value := WOP_STR_B;
-                rd_value := REG_ODD;
-                idx_value := wid * 2 + 1;
-            when 10 =>
-                op_value := WOP_LDR_B;
-                rd_value := REG_A;
-                if wid = 0 or wid = 1 then
-                    idx_value := wid;
-                else
-                    idx_value := wid + 2;
-                end if;
-            when 11 =>
-                op_value := WOP_LDR_B;
-                rd_value := REG_B;
-                if wid = 0 or wid = 1 then
-                    idx_value := wid + 2;
-                else
-                    idx_value := wid + 4;
-                end if;
-            when 12 =>
-                if wid = 1 or wid = 3 then
-                    op_value := WOP_SSAX;
-                    rd_value := REG_T;
-                    rn_value := REG_ZERO;
-                    rm_value := REG_B;
-                else
-                    op_value := WOP_SADD16;
-                    rd_value := REG_EVEN;
-                    rn_value := REG_A;
-                    rm_value := REG_B;
-                end if;
-            when 13 =>
-                if wid = 1 or wid = 3 then
-                    op_value := WOP_SADD16;
-                    rd_value := REG_EVEN;
-                    rn_value := REG_A;
-                    rm_value := REG_T;
-                else
-                    op_value := WOP_SSUB16;
-                    rd_value := REG_ODD;
-                    rn_value := REG_A;
-                    rm_value := REG_B;
-                end if;
-            when 14 =>
-                if wid = 1 or wid = 3 then
-                    op_value := WOP_SSUB16;
-                    rd_value := REG_ODD;
-                    rn_value := REG_A;
-                    rm_value := REG_T;
-                else
-                    op_value := WOP_STR_A;
-                    rd_value := REG_EVEN;
-                    idx_value := 4 * (wid / 2);
-                end if;
-            when 15 =>
-                op_value := WOP_STR_A;
-                if wid = 0 then
-                    rd_value := REG_ODD;
-                    idx_value := 2;
-                elsif wid = 1 then
-                    rd_value := REG_EVEN;
-                    idx_value := 1;
-                elsif wid = 2 then
-                    rd_value := REG_ODD;
-                    idx_value := 6;
-                else
-                    rd_value := REG_EVEN;
-                    idx_value := 5;
-                end if;
-            when 16 =>
-                if wid = 1 or wid = 3 then
-                    op_value := WOP_STR_A;
-                    rd_value := REG_ODD;
-                    if wid = 1 then
-                        idx_value := 3;
-                    else
-                        idx_value := 7;
-                    end if;
-                end if;
-            when 17 =>
-                op_value := WOP_LDR_A;
-                rd_value := REG_A;
-                idx_value := wid;
-            when 18 =>
-                op_value := WOP_LDR_A;
-                rd_value := REG_B;
-                idx_value := wid + 4;
-            when 19 =>
-                if wid = 0 then
-                    op_value := WOP_SADD16;
-                    rd_value := REG_EVEN;
-                    rn_value := REG_A;
-                    rm_value := REG_B;
-                elsif wid = 2 then
-                    op_value := WOP_SSAX;
-                    rd_value := REG_T;
-                    rn_value := REG_ZERO;
-                    rm_value := REG_B;
-                elsif wid = 1 then
-                    op_value := WOP_SMUAD;
-                    rd_value := REG_TMP_RE;
-                    rn_value := REG_B;
-                    rm_value := REG_PACK91;
-                else
-                    op_value := WOP_SMUSD;
-                    rd_value := REG_TMP_RE;
-                    rn_value := REG_B;
-                    rm_value := REG_PACKN91;
-                end if;
-            when 20 =>
-                if wid = 0 then
-                    op_value := WOP_SSUB16;
-                    rd_value := REG_ODD;
-                    rn_value := REG_A;
-                    rm_value := REG_B;
-                elsif wid = 2 then
-                    op_value := WOP_SADD16;
-                    rd_value := REG_EVEN;
-                    rn_value := REG_A;
-                    rm_value := REG_T;
-                elsif wid = 1 then
-                    op_value := WOP_SMUSD;
-                    rd_value := REG_TMP_IM;
-                    rn_value := REG_B;
-                    rm_value := REG_PACKN91;
-                else
-                    op_value := WOP_SMUAD;
-                    rd_value := REG_TMP_IM;
-                    rn_value := REG_B;
-                    rm_value := REG_PACKN91;
-                end if;
-            when 21 =>
-                if wid = 0 then
-                    op_value := WOP_STR_B;
-                    rd_value := REG_EVEN;
-                    idx_value := 0;
-                elsif wid = 2 then
-                    op_value := WOP_SSUB16;
-                    rd_value := REG_ODD;
-                    rn_value := REG_A;
-                    rm_value := REG_T;
-                else
-                    op_value := WOP_ASR;
-                    rd_value := REG_TMP_RE;
-                    rn_value := REG_TMP_RE;
-                    imm_value := 7;
-                end if;
-            when 22 =>
-                if wid = 0 then
-                    op_value := WOP_STR_B;
-                    rd_value := REG_ODD;
-                    idx_value := 4;
-                elsif wid = 2 then
-                    op_value := WOP_STR_B;
-                    rd_value := REG_EVEN;
-                    idx_value := 2;
-                else
-                    op_value := WOP_PKHBT;
-                    rd_value := REG_T;
-                    rn_value := REG_TMP_RE;
-                    rm_value := REG_TMP_IM;
-                    imm_value := 9;
-                end if;
-            when 23 =>
-                if wid = 2 then
-                    op_value := WOP_STR_B;
-                    rd_value := REG_ODD;
-                    idx_value := 6;
-                elsif wid = 1 or wid = 3 then
-                    op_value := WOP_SADD16;
-                    rd_value := REG_EVEN;
-                    rn_value := REG_A;
-                    rm_value := REG_T;
-                end if;
-            when 24 =>
-                if wid = 1 or wid = 3 then
-                    op_value := WOP_SSUB16;
-                    rd_value := REG_ODD;
-                    rn_value := REG_A;
-                    rm_value := REG_T;
-                end if;
-            when 25 =>
-                if wid = 1 or wid = 3 then
-                    op_value := WOP_STR_B;
-                    rd_value := REG_EVEN;
-                    if wid = 1 then
-                        idx_value := 1;
-                    else
-                        idx_value := 3;
-                    end if;
-                end if;
-            when 26 =>
-                if wid = 1 or wid = 3 then
-                    op_value := WOP_STR_B;
-                    rd_value := REG_ODD;
-                    if wid = 1 then
-                        idx_value := 5;
-                    else
-                        idx_value := 7;
-                    end if;
-                end if;
-            when others =>
-                op_value := WOP_HALT;
-        end case;
-    end procedure;
 begin
     process(pc_index)
         variable pc : natural range 0 to 63;
@@ -783,33 +335,33 @@ begin
         variable illegal_value : std_logic;
     begin
         pc := to_integer(unsigned(pc_index));
+
         if PROGRAM_ID = 1 then
-            instr_value := selftest_program_word(pc);
-            decode_instr_word(
-                instr_value,
-                pc_index,
-                op_value,
-                rd_value,
-                rn_value,
-                rm_value,
-                imm_value,
-                idx_value,
-                illegal_value
-            );
+            instr_value := SELFTEST_ROM(pc);
         else
-            instr_value := fft_program_word(WORKER_ID, pc);
-            decode_fft_pc(
-                WORKER_ID,
-                pc,
-                op_value,
-                rd_value,
-                rn_value,
-                rm_value,
-                imm_value,
-                idx_value,
-                illegal_value
-            );
+            case WORKER_ID is
+                when 0 =>
+                    instr_value := FFT_ROM_W0(pc);
+                when 1 =>
+                    instr_value := FFT_ROM_W1(pc);
+                when 2 =>
+                    instr_value := FFT_ROM_W2(pc);
+                when others =>
+                    instr_value := FFT_ROM_W3(pc);
+            end case;
         end if;
+
+        decode_instr_word(
+            instr_value,
+            pc_index,
+            op_value,
+            rd_value,
+            rn_value,
+            rm_value,
+            imm_value,
+            idx_value,
+            illegal_value
+        );
 
         instr <= instr_value;
         dec_op <= op_value;
