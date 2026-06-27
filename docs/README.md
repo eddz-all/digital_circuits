@@ -63,6 +63,12 @@ Constraints:
 constrs/board_top.xdc
 ```
 
+Collaboration requirements:
+
+```text
+docs/MCU_GENERALITY_REQUIREMENTS.md
+```
+
 ## Architecture
 
 `mcu_fft_system.vhd` remains the outer I/O wrapper:
