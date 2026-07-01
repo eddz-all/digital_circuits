@@ -74,10 +74,13 @@ architecture rtl of mcu4_worker_core is
     signal run_ctrl_debug : std_logic := '0';
     signal decode_ctrl_debug : std_logic := '0';
     signal dsp_ctrl_debug    : std_logic := '0';
-    signal rst_ctrl_local : std_logic := '1';
-    signal rst_exec_local : std_logic := '1';
-    signal rst_rf_local   : std_logic := '1';
-    signal rst_mem_local  : std_logic := '1';
+    signal rst_ctrl_local     : std_logic := '1';
+    signal rst_exec_local     : std_logic := '1';
+    signal rst_rf_decode_local : std_logic := '1';
+    signal rst_rf_exec_local  : std_logic := '1';
+    signal rst_rf_store_local : std_logic := '1';
+    signal rst_wb_local       : std_logic := '1';
+    signal rst_mem_local      : std_logic := '1';
     signal pc_fetch_reg : natural range 0 to 63 := 0;
     signal pc_index     : std_logic_vector(5 downto 0) := (others => '0');
     signal pc_pair_index : std_logic_vector(5 downto 0) := (others => '0');
@@ -196,100 +199,47 @@ architecture rtl of mcu4_worker_core is
     attribute max_fanout : integer;
     attribute fsm_encoding of state_reg : signal is "one_hot";
     attribute fsm_encoding of exec_state_reg : signal is "one_hot";
-    attribute max_fanout of state_reg : signal is 64;
-    attribute max_fanout of exec_state_reg : signal is 64;
-    attribute max_fanout of run_ctrl_rf : signal is 64;
-    attribute max_fanout of run_ctrl_exec : signal is 64;
-    attribute max_fanout of run_ctrl_mem : signal is 32;
-    attribute max_fanout of run_ctrl_pair : signal is 32;
-    attribute max_fanout of run_ctrl_debug : signal is 32;
-    attribute max_fanout of decode_ctrl_debug : signal is 32;
-    attribute max_fanout of dsp_ctrl_debug : signal is 32;
-    attribute max_fanout of pair_mov_imm_exec : signal is 16;
-    attribute max_fanout of pair_ldr_a_exec : signal is 16;
-    attribute max_fanout of pair_ldr_b_exec : signal is 16;
-    attribute max_fanout of pair_str_a_exec : signal is 16;
-    attribute max_fanout of pair_str_b_exec : signal is 16;
-    attribute max_fanout of pair_sadd16_ssub16_exec : signal is 16;
-    attribute max_fanout of pair_ldr_a_mem : signal is 8;
-    attribute max_fanout of pair_ldr_b_mem : signal is 8;
-    attribute max_fanout of pair_str_a_mem : signal is 8;
-    attribute max_fanout of pair_str_b_mem : signal is 8;
-    attribute max_fanout of rst_ctrl_local : signal is 32;
-    attribute max_fanout of rst_exec_local : signal is 64;
-    attribute max_fanout of rst_rf_local : signal is 32;
-    attribute max_fanout of rst_mem_local : signal is 32;
-    attribute max_fanout of regs_decode : signal is 32;
-    attribute max_fanout of regs_exec : signal is 32;
-    attribute max_fanout of regs_store : signal is 32;
-    attribute max_fanout of rf_wb_decode_we : signal is 16;
-    attribute max_fanout of rf_wb2_decode_we : signal is 16;
-    attribute max_fanout of rf_wb_exec_we : signal is 16;
-    attribute max_fanout of rf_wb2_exec_we : signal is 16;
-    attribute max_fanout of rf_wb_store_we : signal is 16;
-    attribute max_fanout of rf_wb2_store_we : signal is 16;
-    attribute keep of exec_state_reg : signal is "true";
-    attribute keep of run_ctrl_rf : signal is "true";
-    attribute keep of run_ctrl_exec : signal is "true";
-    attribute keep of run_ctrl_mem : signal is "true";
-    attribute keep of run_ctrl_pair : signal is "true";
-    attribute keep of run_ctrl_debug : signal is "true";
-    attribute keep of decode_ctrl_debug : signal is "true";
-    attribute keep of dsp_ctrl_debug : signal is "true";
-    attribute keep of pair_mov_imm_exec : signal is "true";
-    attribute keep of pair_ldr_a_exec : signal is "true";
-    attribute keep of pair_ldr_b_exec : signal is "true";
-    attribute keep of pair_str_a_exec : signal is "true";
-    attribute keep of pair_str_b_exec : signal is "true";
-    attribute keep of pair_sadd16_ssub16_exec : signal is "true";
-    attribute keep of pair_ldr_a_mem : signal is "true";
-    attribute keep of pair_ldr_b_mem : signal is "true";
-    attribute keep of pair_str_a_mem : signal is "true";
-    attribute keep of pair_str_b_mem : signal is "true";
-    attribute keep of rst_ctrl_local : signal is "true";
-    attribute keep of rst_exec_local : signal is "true";
-    attribute keep of rst_rf_local : signal is "true";
-    attribute keep of rst_mem_local : signal is "true";
+    attribute max_fanout of state_reg : signal is 32;
+    attribute max_fanout of exec_state_reg : signal is 32;
+    attribute max_fanout of run_ctrl_rf : signal is 16;
+    attribute max_fanout of run_ctrl_exec : signal is 16;
+    attribute max_fanout of run_ctrl_mem : signal is 16;
+    attribute max_fanout of run_ctrl_pair : signal is 16;
+    attribute max_fanout of run_ctrl_debug : signal is 16;
+    attribute max_fanout of decode_ctrl_debug : signal is 16;
+    attribute max_fanout of dsp_ctrl_debug : signal is 16;
+    attribute max_fanout of pair_mov_imm_exec : signal is 8;
+    attribute max_fanout of pair_ldr_a_exec : signal is 8;
+    attribute max_fanout of pair_ldr_b_exec : signal is 8;
+    attribute max_fanout of pair_str_a_exec : signal is 8;
+    attribute max_fanout of pair_str_b_exec : signal is 8;
+    attribute max_fanout of pair_sadd16_ssub16_exec : signal is 8;
+    attribute max_fanout of pair_ldr_a_mem : signal is 4;
+    attribute max_fanout of pair_ldr_b_mem : signal is 4;
+    attribute max_fanout of pair_str_a_mem : signal is 4;
+    attribute max_fanout of pair_str_b_mem : signal is 4;
+    attribute max_fanout of rst_ctrl_local : signal is 16;
+    attribute max_fanout of rst_exec_local : signal is 16;
+    attribute max_fanout of rst_rf_decode_local : signal is 16;
+    attribute max_fanout of rst_rf_exec_local : signal is 16;
+    attribute max_fanout of rst_rf_store_local : signal is 16;
+    attribute max_fanout of rst_wb_local : signal is 16;
+    attribute max_fanout of rst_mem_local : signal is 16;
+    attribute max_fanout of regs_decode : signal is 16;
+    attribute max_fanout of regs_exec : signal is 16;
+    attribute max_fanout of regs_store : signal is 16;
+    attribute max_fanout of rf_wb_decode_we : signal is 8;
+    attribute max_fanout of rf_wb2_decode_we : signal is 8;
+    attribute max_fanout of rf_wb_exec_we : signal is 8;
+    attribute max_fanout of rf_wb2_exec_we : signal is 8;
+    attribute max_fanout of rf_wb_store_we : signal is 8;
+    attribute max_fanout of rf_wb2_store_we : signal is 8;
     attribute keep of regs_decode : signal is "true";
     attribute keep of regs_exec : signal is "true";
     attribute keep of regs_store : signal is "true";
-    attribute keep of rf_wb_decode_we : signal is "true";
-    attribute keep of rf_wb2_decode_we : signal is "true";
-    attribute keep of rf_wb_exec_we : signal is "true";
-    attribute keep of rf_wb2_exec_we : signal is "true";
-    attribute keep of rf_wb_store_we : signal is "true";
-    attribute keep of rf_wb2_store_we : signal is "true";
-    attribute dont_touch of exec_state_reg : signal is "true";
-    attribute dont_touch of run_ctrl_rf : signal is "true";
-    attribute dont_touch of run_ctrl_exec : signal is "true";
-    attribute dont_touch of run_ctrl_mem : signal is "true";
-    attribute dont_touch of run_ctrl_pair : signal is "true";
-    attribute dont_touch of run_ctrl_debug : signal is "true";
-    attribute dont_touch of decode_ctrl_debug : signal is "true";
-    attribute dont_touch of dsp_ctrl_debug : signal is "true";
-    attribute dont_touch of pair_mov_imm_exec : signal is "true";
-    attribute dont_touch of pair_ldr_a_exec : signal is "true";
-    attribute dont_touch of pair_ldr_b_exec : signal is "true";
-    attribute dont_touch of pair_str_a_exec : signal is "true";
-    attribute dont_touch of pair_str_b_exec : signal is "true";
-    attribute dont_touch of pair_sadd16_ssub16_exec : signal is "true";
-    attribute dont_touch of pair_ldr_a_mem : signal is "true";
-    attribute dont_touch of pair_ldr_b_mem : signal is "true";
-    attribute dont_touch of pair_str_a_mem : signal is "true";
-    attribute dont_touch of pair_str_b_mem : signal is "true";
-    attribute dont_touch of rst_ctrl_local : signal is "true";
-    attribute dont_touch of rst_exec_local : signal is "true";
-    attribute dont_touch of rst_rf_local : signal is "true";
-    attribute dont_touch of rst_mem_local : signal is "true";
     attribute dont_touch of regs_decode : signal is "true";
     attribute dont_touch of regs_exec : signal is "true";
     attribute dont_touch of regs_store : signal is "true";
-    attribute dont_touch of rf_wb_decode_we : signal is "true";
-    attribute dont_touch of rf_wb2_decode_we : signal is "true";
-    attribute dont_touch of rf_wb_exec_we : signal is "true";
-    attribute dont_touch of rf_wb2_exec_we : signal is "true";
-    attribute dont_touch of rf_wb_store_we : signal is "true";
-    attribute dont_touch of rf_wb2_store_we : signal is "true";
     attribute keep of dsp_sub : signal is "true";
     attribute keep of dsp_sub_acc : signal is "true";
     attribute keep of dsp2_sub : signal is "true";
@@ -460,7 +410,10 @@ architecture rtl of mcu4_worker_core is
 begin
     rst_ctrl_local <= rst;
     rst_exec_local <= rst;
-    rst_rf_local <= rst;
+    rst_rf_decode_local <= rst;
+    rst_rf_exec_local <= rst;
+    rst_rf_store_local <= rst;
+    rst_wb_local <= rst;
     rst_mem_local <= rst;
 
     pc_index <= std_logic_vector(to_unsigned(pc_fetch_reg, 6));
@@ -1012,7 +965,7 @@ begin
                 -- keeps the core reset fanout small enough for higher clocks.
             end if;
 
-            if rst_rf_local = '0' then
+            if rst_rf_decode_local = '0' then
                 for rf_idx in 0 to 15 loop
                     if rf_wb_decode_we(rf_idx) = '1' then
                         regs_decode(rf_idx) <= rf_wb_decode_data;
@@ -1020,14 +973,22 @@ begin
                     if rf_wb2_decode_we(rf_idx) = '1' then
                         regs_decode(rf_idx) <= rf_wb2_decode_data;
                     end if;
+                end loop;
+            end if;
 
+            if rst_rf_exec_local = '0' then
+                for rf_idx in 0 to 15 loop
                     if rf_wb_exec_we(rf_idx) = '1' then
                         regs_exec(rf_idx) <= rf_wb_exec_data;
                     end if;
                     if rf_wb2_exec_we(rf_idx) = '1' then
                         regs_exec(rf_idx) <= rf_wb2_exec_data;
                     end if;
+                end loop;
+            end if;
 
+            if rst_rf_store_local = '0' then
+                for rf_idx in 0 to 15 loop
                     if rf_wb_store_we(rf_idx) = '1' then
                         regs_store(rf_idx) <= rf_wb_store_data;
                     end if;
@@ -1035,7 +996,9 @@ begin
                         regs_store(rf_idx) <= rf_wb2_store_data;
                     end if;
                 end loop;
+            end if;
 
+            if rst_wb_local = '0' then
                 rf_wb_decode_valid <= '0';
                 rf_wb_decode_we <= (others => '0');
                 rf_wb2_decode_valid <= '0';
@@ -1395,7 +1358,7 @@ begin
                 end if;
             end if;
 
-            if rst_rf_local = '0' then
+            if rst_wb_local = '0' then
                 if rf_next_valid then
                     rf_wb_decode_valid <= '1';
                     rf_wb_decode_we <= rf_next_we;

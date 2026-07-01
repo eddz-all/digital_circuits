@@ -66,6 +66,7 @@ constrs/board_top.xdc
 Collaboration requirements:
 
 ```text
+docs/DEVELOPMENT_CONSTRAINTS.md
 docs/MCU_GENERALITY_REQUIREMENTS.md
 ```
 
