@@ -18,11 +18,23 @@ entity mcu4_worker_instr_rom is
         dec_rm      : out natural range 0 to 15;
         dec_imm     : out integer range -4096 to 4095;
         dec_idx     : out natural range 0 to 7;
-        dec_illegal : out std_logic
+        dec_illegal : out std_logic;
+        pair_kind   : out std_logic_vector(2 downto 0);
+        next_pair_kind : out std_logic_vector(2 downto 0)
     );
 end entity mcu4_worker_instr_rom;
 
 architecture rtl of mcu4_worker_instr_rom is
+    type worker_pair_rom_t is array (0 to 63) of std_logic_vector(2 downto 0);
+
+    constant WPAIR_NONE_CODE          : std_logic_vector(2 downto 0) := "000";
+    constant WPAIR_MOV_IMM_CODE       : std_logic_vector(2 downto 0) := "001";
+    constant WPAIR_LDR_BANK0_CODE     : std_logic_vector(2 downto 0) := "010";
+    constant WPAIR_LDR_BANK1_CODE     : std_logic_vector(2 downto 0) := "011";
+    constant WPAIR_STR_BANK0_CODE     : std_logic_vector(2 downto 0) := "100";
+    constant WPAIR_STR_BANK1_CODE     : std_logic_vector(2 downto 0) := "101";
+    constant WPAIR_SADD16_SSUB16_CODE : std_logic_vector(2 downto 0) := "110";
+
     constant INSTR_NOP  : word_t := x"E1A00000";
     constant INSTR_HALT : word_t := x"EAFFFFFE";
 
@@ -322,10 +334,139 @@ architecture rtl of mcu4_worker_instr_rom is
             illegal_value := '1';
         end if;
     end procedure;
+
+    function calc_pair_kind(
+        constant op_a      : worker_op_t;
+        constant rd_a      : natural range 0 to 15;
+        constant rn_a      : natural range 0 to 15;
+        constant rm_a      : natural range 0 to 15;
+        constant idx_a     : natural range 0 to 7;
+        constant illegal_a : std_logic;
+        constant op_b      : worker_op_t;
+        constant rd_b      : natural range 0 to 15;
+        constant rn_b      : natural range 0 to 15;
+        constant rm_b      : natural range 0 to 15;
+        constant idx_b     : natural range 0 to 7;
+        constant illegal_b : std_logic
+    ) return std_logic_vector is
+    begin
+        if illegal_a = '1' or illegal_b = '1' then
+            return WPAIR_NONE_CODE;
+        elsif op_a = WOP_MOV_IMM
+          and op_b = WOP_MOV_IMM
+          and rd_a /= rd_b then
+            return WPAIR_MOV_IMM_CODE;
+        elsif op_a = WOP_LDR_BANK0
+          and op_b = WOP_LDR_BANK0
+          and rd_a /= rd_b then
+            return WPAIR_LDR_BANK0_CODE;
+        elsif op_a = WOP_LDR_BANK1
+          and op_b = WOP_LDR_BANK1
+          and rd_a /= rd_b then
+            return WPAIR_LDR_BANK1_CODE;
+        elsif op_a = WOP_STR_BANK0
+          and op_b = WOP_STR_BANK0
+          and idx_a /= idx_b then
+            return WPAIR_STR_BANK0_CODE;
+        elsif op_a = WOP_STR_BANK1
+          and op_b = WOP_STR_BANK1
+          and idx_a /= idx_b then
+            return WPAIR_STR_BANK1_CODE;
+        elsif op_a = WOP_SADD16
+          and op_b = WOP_SSUB16
+          and rn_a = rn_b
+          and rm_a = rm_b
+          and rd_a /= rd_b then
+            return WPAIR_SADD16_SSUB16_CODE;
+        end if;
+
+        return WPAIR_NONE_CODE;
+    end function;
+
+    function build_pair_rom(constant rom : program_rom_t) return worker_pair_rom_t is
+        variable result : worker_pair_rom_t := (others => WPAIR_NONE_CODE);
+        variable pc_vec : std_logic_vector(5 downto 0);
+        variable next_pc_vec : std_logic_vector(5 downto 0);
+        variable next_pc : natural range 0 to 63;
+        variable op_a : worker_op_t;
+        variable rd_a : natural range 0 to 15;
+        variable rn_a : natural range 0 to 15;
+        variable rm_a : natural range 0 to 15;
+        variable imm_a : integer range -4096 to 4095;
+        variable idx_a : natural range 0 to 7;
+        variable illegal_a : std_logic;
+        variable op_b : worker_op_t;
+        variable rd_b : natural range 0 to 15;
+        variable rn_b : natural range 0 to 15;
+        variable rm_b : natural range 0 to 15;
+        variable imm_b : integer range -4096 to 4095;
+        variable idx_b : natural range 0 to 7;
+        variable illegal_b : std_logic;
+    begin
+        for pc in 0 to 63 loop
+            if pc < 63 then
+                next_pc := pc + 1;
+            else
+                next_pc := 63;
+            end if;
+
+            pc_vec := std_logic_vector(to_unsigned(pc, 6));
+            next_pc_vec := std_logic_vector(to_unsigned(next_pc, 6));
+
+            decode_instr_word(
+                rom(pc),
+                pc_vec,
+                op_a,
+                rd_a,
+                rn_a,
+                rm_a,
+                imm_a,
+                idx_a,
+                illegal_a
+            );
+            decode_instr_word(
+                rom(next_pc),
+                next_pc_vec,
+                op_b,
+                rd_b,
+                rn_b,
+                rm_b,
+                imm_b,
+                idx_b,
+                illegal_b
+            );
+
+            result(pc) := calc_pair_kind(
+                op_a,
+                rd_a,
+                rn_a,
+                rm_a,
+                idx_a,
+                illegal_a,
+                op_b,
+                rd_b,
+                rn_b,
+                rm_b,
+                idx_b,
+                illegal_b
+            );
+        end loop;
+
+        return result;
+    end function;
+
+    constant FFT_PAIR_W0 : worker_pair_rom_t := build_pair_rom(FFT_ROM_W0);
+    constant FFT_PAIR_W1 : worker_pair_rom_t := build_pair_rom(FFT_ROM_W1);
+    constant FFT_PAIR_W2 : worker_pair_rom_t := build_pair_rom(FFT_ROM_W2);
+    constant FFT_PAIR_W3 : worker_pair_rom_t := build_pair_rom(FFT_ROM_W3);
+    constant SELFTEST_PAIR : worker_pair_rom_t := build_pair_rom(SELFTEST_ROM);
 begin
     process(pc_index)
         variable pc : natural range 0 to 63;
+        variable next_pc : natural range 0 to 63;
         variable instr_value : word_t;
+        variable pair_value : std_logic_vector(2 downto 0);
+        variable next_pair_value : std_logic_vector(2 downto 0);
         variable op_value : worker_op_t;
         variable rd_value : natural range 0 to 15;
         variable rn_value : natural range 0 to 15;
@@ -335,19 +476,34 @@ begin
         variable illegal_value : std_logic;
     begin
         pc := to_integer(unsigned(pc_index));
+        if pc < 63 then
+            next_pc := pc + 1;
+        else
+            next_pc := 63;
+        end if;
 
         if PROGRAM_ID = 1 then
             instr_value := SELFTEST_ROM(pc);
+            pair_value := SELFTEST_PAIR(pc);
+            next_pair_value := SELFTEST_PAIR(next_pc);
         else
             case WORKER_ID is
                 when 0 =>
                     instr_value := FFT_ROM_W0(pc);
+                    pair_value := FFT_PAIR_W0(pc);
+                    next_pair_value := FFT_PAIR_W0(next_pc);
                 when 1 =>
                     instr_value := FFT_ROM_W1(pc);
+                    pair_value := FFT_PAIR_W1(pc);
+                    next_pair_value := FFT_PAIR_W1(next_pc);
                 when 2 =>
                     instr_value := FFT_ROM_W2(pc);
+                    pair_value := FFT_PAIR_W2(pc);
+                    next_pair_value := FFT_PAIR_W2(next_pc);
                 when others =>
                     instr_value := FFT_ROM_W3(pc);
+                    pair_value := FFT_PAIR_W3(pc);
+                    next_pair_value := FFT_PAIR_W3(next_pc);
             end case;
         end if;
 
@@ -371,5 +527,7 @@ begin
         dec_imm <= imm_value;
         dec_idx <= idx_value;
         dec_illegal <= illegal_value;
+        pair_kind <= pair_value;
+        next_pair_kind <= next_pair_value;
     end process;
 end architecture rtl;

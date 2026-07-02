@@ -11,6 +11,41 @@
 不能把 FFT 或某一套固定指令序列做成隐藏在 RTL 里的专用硬件。
 ```
 
+## 0. 协作者改动前红线
+
+如果只是读代码，可以跳过本节；如果要改 RTL、IP 配置、汇编或上板 wrapper，必须先检查这些
+红线。下面任何一条被改动，都需要重新说明理由、跑完仿真和 Vivado 报告，再提交。
+
+必须保持：
+
+- FFT 计算只能来自 ROM 中可见的 32-bit 指令序列，不能来自固定 PC、固定 stage、
+  hidden butterfly 或 hidden twiddle 状态机。
+- `mcu4_multicycle_core` 保持通用 MCU core 集群，只暴露 `dmem_*` 数据内存口；
+  FFT 的输入装载、bit-reversal、16/32-bit 打包拆包和输出 dump 只属于 `mcu_fft_system`
+  或更外层 wrapper。
+- `cnt_start/cnt_stop` 计数边界不能为了降低成绩随意移动。当前性能口径是输入预装完成后，
+  从第一条 worker 指令读取开始计数，到所有 active worker 最后一条指令完成或 halt 后停止。
+- FFT 性能版 ILA 保持 4 个 probe：`test_vector_in`、`cnt_test`、`verify_ram_addr`、
+  `verify_vector_out`。不要在性能 bitstream 里恢复宽 debug trace 或 `verify_RAM`
+  回读 FSM；临时调试请另建 debug run/top。
+- `pair_kind` 这类 ROM-local predecode 只能来自相邻真实指令的 opcode/寄存器/访存条件；
+  不允许来自固定 PC 表。对外端口保持 3-bit `std_logic_vector` 编码，避免 Vivado 对
+  自定义 package enum 端口的解析问题。
+- `PROGRAM_ID` 只能选择 ROM 程序，`ACTIVE_CORES` 只能选择启用核数；二者不能改变 ISA
+  或单条指令语义。
+- DSP48 使用量必须为 0。`SMUAD/SMUSD` 是 ARM-DSP 风格指令，不等于允许映射 FPGA DSP。
+
+改动后最低检查：
+
+```text
+GHDL: worker_min_arm, multicycle_min_arm, multicycle_core, mcu_fft_system, board_top, board_top_basic_test
+Vivado: 目标频率下 WNS/WHS >= 0，DSP = 0，top/IP/probe 宽度与本文档一致
+```
+
+当前 170 MHz 性能基线已经过时序，`mcu_fft_system_tb` 的计数窗口应保持 `cnt_cycles = 22`。
+如果提交导致 `cnt`、输出结果、ILA probe 数量、DSP 数量或 170 MHz WNS 变差，提交说明里必须
+明确写出原因和新的验证结果。
+
 ## 1. 总体定位
 
 本工程当前位于 `MCU_4cores_muticycle`，目标是一个四核、多周期、支持 ARM/ARM-DSP
@@ -279,6 +314,9 @@ test_ROM/test_vector_in
 对外展示时：
 
 - `test_ROM`、`verify_RAM`、`cnt_test` 是 PPT 指定的上板观测重点。
+- FFT 性能版 ILA 保持最小集合：`test_vector_in`、`cnt_test`、
+  `verify_ram_addr`、`verify_vector_out`。不要为了调试方便在性能 bitstream
+  中长期保留宽 `pc_debug`/`instr_debug` 或回读 FSM。
 - FFT 正确性以 `verify_RAM` 输出结果为准。
 - `cnt_test` 只统计指令执行窗口，以老师聊天记录为准。
 - `cnt_start` 应靠近第一条 worker 指令读取。

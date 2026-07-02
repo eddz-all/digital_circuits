@@ -45,9 +45,10 @@ resources to reduce global buffer read fanout and cross-worker routing.
 Common opcode classes are predecoded into registered `dec_*` and `exec_*` flags,
 so buffer controls, DSP pairing, and halt handling do not repeatedly compare the
 full opcode enum in high-fanout execute paths.
-Dual-issue eligibility is also staged as a pair-kind register, so `S_RUN` no
-longer has to recompute opcode, register, and buffer-address match conditions
-before selecting the paired retire path.
+Dual-issue eligibility is also ROM-local predecoded into a 3-bit `pair_kind`
+code and carried through pipeline registers, so `S_RUN` no longer has to
+recompute opcode, register, and buffer-address match conditions before selecting
+the paired retire path.
 For a dependent `ASR` after a DSP pair, the ASR can retire with the second DSP
 writeback when decoded producer/consumer registers make the dependency clear.
 
@@ -75,7 +76,7 @@ Local dual issue: retires safe MOV/MOV, LDR/LDR, STR/STR, and SADD16/SSUB16 pair
 DSP pair pipeline: overlaps independent SMUAD/SMUSD execution.
 ASR overlap: retires a dependent ASR with the second DSP writeback when the decoded dependency matches.
 Store operand staging: drives the paired STR second write port from a decode-stage register.
-Pair eligibility staging: drives paired retire control from a prequalified pair-kind register.
+Pair eligibility predecode: derives pair-kind from adjacent real ROM instructions and carries it through pipeline registers.
 Timing pragmas: selected replicated control, register-file, and DSP pipeline signals are marked keep/dont_touch so Vivado preserves the intended fanout splits.
 ROM predecode: emits decode fields next to the 32-bit instruction word for each selected program.
 Decode operand staging: pre-reads rn/rm/rd operands into decode-stage registers before execute to cut route-heavy instruction/control-to-execute operand paths.

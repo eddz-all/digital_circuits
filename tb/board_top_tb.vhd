@@ -172,9 +172,7 @@ entity ila_0 is
         probe0 : in std_logic_vector(15 downto 0);
         probe1 : in std_logic_vector(19 downto 0);
         probe2 : in std_logic_vector(5 downto 0);
-        probe3 : in std_logic_vector(15 downto 0);
-        probe4 : in std_logic_vector(0 downto 0);
-        probe5 : in std_logic_vector(0 downto 0)
+        probe3 : in std_logic_vector(15 downto 0)
     );
 end entity ila_0;
 

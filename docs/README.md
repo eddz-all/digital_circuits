@@ -18,7 +18,7 @@ project.
   instructions, not through a single-purpose butterfly hardware block.
 - Writes 16 FFT output words to `verify_RAM[0..15]` after the instruction
   counter has stopped.
-- Exposes the same six ILA probes used by the board-check flow.
+- Exposes the lean four-probe ILA set used by the board-check flow.
 
 The system-level GHDL test passes with:
 
@@ -145,9 +145,12 @@ For the paired store path, the second store source operand is captured in the
 decode stage so the second buffer write port is driven from a pipeline register
 rather than directly from the register file read mux.
 
-The worker also stages dual-issue eligibility as a small pair-kind register, so
-the execute cycle uses prequalified pair control instead of recomputing opcode,
-register, and buffer-address comparisons on the issue path.
+The instruction ROM derives a small pair-kind predecode table from adjacent
+real instruction words, encoded as a 3-bit `std_logic_vector` for Vivado-friendly
+module ports, and the worker carries that pair-kind through pipeline registers.
+The execute cycle therefore uses prequalified pair control instead of
+recomputing opcode, register, and data-memory address comparisons on the issue
+path.
 
 For the DSP pair path, a dependent `ASR` can retire with the second DSP
 writeback when the decoded producer/consumer registers make that safe.

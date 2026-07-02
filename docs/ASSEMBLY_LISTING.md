@@ -146,7 +146,7 @@ local dual issue for safe MOV/MOV, LDR/LDR, STR/STR, and SADD16/SSUB16 pairs
 local pair pipeline for independent back-to-back SMUAD/SMUSD
 ASR retirement overlapped with the second DSP writeback when dependencies allow
 decode-stage operand staging for the second store in a safe STR/STR pair
-prequalified pair-kind staging for local dual-issue control
+ROM-local 3-bit pair_kind predecode for local dual-issue control
 ```
 
 The workers still retire the same ARM/ARM-DSP instruction stream in program

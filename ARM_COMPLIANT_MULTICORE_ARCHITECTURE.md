@@ -276,7 +276,7 @@ DSP 乘法类   多 cycle
 
 好处：
 
-- 更容易跑高频，例如 200 MHz 左右。
+- 更容易跑高频；当前上板工程已有 170 MHz 正时序报告。
 - 复杂 DSP 指令不会拖慢所有简单指令。
 - 与老师要求的 ARM 指令执行粒度更一致。
 
@@ -318,7 +318,7 @@ cnt_stop  = all_cores_halted
 mcu_fft_system_tb cnt_cycles = 22
 ```
 
-该版本给 worker 加入取指/译码寄存，并把 `SMUAD/SMUSD` 拆成多周期 DSP 执行。独立连续 DSP 指令使用局部 pair pipeline。安全相邻的 `MOV/MOV`、`LDR/LDR`、`STR/STR` 和 `SADD16/SSUB16` 可以在译码结果和寄存器依赖允许时局部双发射同拍退休。`STR/STR` 第二写口的数据来自译码级操作数寄存器，而不是直接来自寄存器堆组合读路径；局部双发射资格也提前寄存为 pair-kind 控制位，减少执行周期内的比较逻辑。这些优化不依赖固定 FFT PC，不增加 FFT/butterfly 专用 opcode，仍保留可见 ARM/ARM-DSP 指令流。最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器或固定 FFT 窗口融合版本。
+该版本给 worker 加入取指/译码寄存，并把 `SMUAD/SMUSD` 拆成多周期 DSP 执行。独立连续 DSP 指令使用局部 pair pipeline。安全相邻的 `MOV/MOV`、`LDR/LDR`、`STR/STR` 和 `SADD16/SSUB16` 可以在译码结果和寄存器依赖允许时局部双发射同拍退休。`STR/STR` 第二写口的数据来自译码级操作数寄存器，而不是直接来自寄存器堆组合读路径；局部双发射资格由 ROM-local predecode 从相邻真实指令生成 3-bit `pair_kind` code，并随流水寄存器传递，减少执行周期内的比较逻辑。这些优化不依赖固定 FFT PC，不增加 FFT/butterfly 专用 opcode，仍保留可见 ARM/ARM-DSP 指令流。最终 `cnt × period` 仍有竞争力，并且合规性明显强于 butterfly 加速器或固定 FFT 窗口融合版本。
 
 ## 13. 当前实现状态
 

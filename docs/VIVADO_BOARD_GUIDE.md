@@ -145,8 +145,10 @@ port and constrained to pin `G9`, matching the reference test pin.
 - IP: Clocking Wizard
 - Component name: `clk_wiz_0`
 - Input clock: 50 MHz
-- Output clock: try 200 MHz for the performance run; if implementation WNS is
-  negative, fall back to 180 MHz or 166.667 MHz
+- Output clock: use 150 MHz as a conservative acceptance fallback. The latest
+  high-performance build passes 170 MHz with positive WNS. For a separate
+  maximum-frequency run, try 175 MHz first, then 178 MHz if timing remains
+  positive. Each frequency must be justified by a fresh timing report.
 - Enable `locked`
 - Reset port exists in the wrapper; RTL ties it to `0`
 
@@ -180,15 +182,13 @@ The RTL reads only addresses `128..143`.
 
 ### `ila_0`
 
-Use exactly 6 probes:
+Use exactly 4 probes for the lean FFT/performance build:
 
 ```text
 probe0  16 bits  test_vector_in
 probe1  20 bits  cnt_test
-probe2   6 bits  verify_readback_addr_q
-probe3  16 bits  verify_readback_data
-probe4   1 bit   verify_readback_valid
-probe5   1 bit   verify_ram_we
+probe2   6 bits  verify_ram_addr
+probe3  16 bits  verify_vector_out
 ```
 
 Recommended capture depth: 8192 or 16384.
@@ -200,7 +200,9 @@ cnt_test != 0
 ```
 
 Then release reset; the counter starts after the 16 input words have been loaded,
-when the first instruction is fetched.
+when the first instruction is fetched. The output phase is visible as
+`verify_ram_addr` sweeps through `0..15` while `verify_vector_out` carries the
+16 FFT result half-words written into `verify_RAM`.
 
 ## Add Simulation Sources
 
@@ -252,6 +254,30 @@ board_top_tb
 This testbench provides simple simulation stubs for `clk_wiz_0`, `test_ROM`,
 `verify_RAM`, and `ila_0`, so do not add it to synthesis sources.
 
+## Common Vivado Refresh Issue
+
+If synthesis reports:
+
+```text
+worker_pair_t is not declared
+```
+
+Vivado is still using an older copy of `mcu4_worker_instr_rom.vhd`. The current
+RTL carries pair eligibility as `std_logic_vector(2 downto 0)` ports:
+
+```vhdl
+pair_kind      : out std_logic_vector(2 downto 0);
+next_pair_kind : out std_logic_vector(2 downto 0)
+```
+
+Refresh the source file, then run:
+
+```tcl
+update_compile_order -fileset sources_1
+reset_run synth_1
+launch_runs synth_1 -jobs 8
+```
+
 ## Expected Board Result
 
 Counter:
@@ -260,7 +286,7 @@ Counter:
 cnt_test = 00016
 ```
 
-Readback values:
+Expected `verify_RAM` output values:
 
 ```text
 addr 00  F280
@@ -293,7 +319,10 @@ addr 0F  D874
 - Safe adjacent `MOV/MOV`, `LDR/LDR`, `STR/STR`, and `SADD16/SSUB16` instruction pairs can retire together when decoded dependencies make them safe; this is local dual issue, not a new FFT opcode.
 - The worker does not recognize fixed FFT PC windows. Pairing and DSP overlap are selected from decoded instruction properties and register dependencies.
 - The paired `STR/STR` second write data is staged in the worker decode register to avoid a direct register-file-to-buffer-write-data path.
-- Local dual-issue eligibility is staged as a pair-kind register before the execute cycle.
+- Local dual-issue eligibility is ROM-local predecoded as a 3-bit `pair_kind`
+  code before the execute cycle. The code is carried as `std_logic_vector(2 downto 0)`
+  rather than a custom enum port so Vivado synthesis does not depend on package
+  type visibility for that interface.
 - The `91/-91` twiddle constants are immediate constants initialized by worker instructions, not hidden constants in a special butterfly unit.
 - The counter intentionally excludes input loading and output dump. It starts at
   the first instruction fetch and stops when the final instruction completes.

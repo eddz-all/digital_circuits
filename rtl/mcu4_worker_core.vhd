@@ -55,15 +55,13 @@ architecture rtl of mcu4_worker_core is
     S_DSP_PAIR_WB
   );
 
-  type worker_pair_t is (
-    WPAIR_NONE,
-    WPAIR_MOV_IMM,
-    WPAIR_LDR_BANK0,
-    WPAIR_LDR_BANK1,
-    WPAIR_STR_BANK0,
-    WPAIR_STR_BANK1,
-    WPAIR_SADD16_SSUB16
-  );
+  constant WPAIR_NONE_CODE          : std_logic_vector(2 downto 0) := "000";
+  constant WPAIR_MOV_IMM_CODE       : std_logic_vector(2 downto 0) := "001";
+  constant WPAIR_LDR_BANK0_CODE     : std_logic_vector(2 downto 0) := "010";
+  constant WPAIR_LDR_BANK1_CODE     : std_logic_vector(2 downto 0) := "011";
+  constant WPAIR_STR_BANK0_CODE     : std_logic_vector(2 downto 0) := "100";
+  constant WPAIR_STR_BANK1_CODE     : std_logic_vector(2 downto 0) := "101";
+  constant WPAIR_SADD16_SSUB16_CODE : std_logic_vector(2 downto 0) := "110";
 
   signal state_reg           : worker_state_t                := S_FETCH;
   signal exec_state_reg      : worker_state_t                := S_FETCH;
@@ -124,6 +122,8 @@ architecture rtl of mcu4_worker_core is
   signal fetch_dec_imm          : integer range -4096 to 4095 := 0;
   signal fetch_dec_idx          : natural range 0 to 7        := 0;
   signal fetch_dec_illegal      : std_logic                   := '0';
+  signal fetch_pair_kind        : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
+  signal fetch_next_pair_kind   : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
   signal instr_pair_word        : word_t                      := (others => '0');
   signal fetch_pair_dec_op      : worker_op_t                 := WOP_NOP;
   signal fetch_pair_dec_rd      : natural range 0 to 15       := 0;
@@ -141,6 +141,7 @@ architecture rtl of mcu4_worker_core is
   signal dec_idx     : natural range 0 to 7        := 0;
   signal dec_illegal : std_logic                   := '0';
   signal dec_rd_data : word_t                      := (others => '0');
+  signal dec_pair_kind : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
 
   signal exec_op                 : worker_op_t                 := WOP_NOP;
   signal exec_rd                 : natural range 0 to 15       := 0;
@@ -156,7 +157,7 @@ architecture rtl of mcu4_worker_core is
   signal exec_rd_data            : word_t                      := (others => '0');
   signal exec_dsp_a              : word_t                      := (others => '0');
   signal exec_dsp_b              : word_t                      := (others => '0');
-  signal exec_pair_kind          : worker_pair_t               := WPAIR_NONE;
+  signal exec_pair_kind          : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
   signal pair_mov_imm_exec       : std_logic                   := '0';
   signal pair_ldr_bank0_exec     : std_logic                   := '0';
   signal pair_ldr_bank1_exec     : std_logic                   := '0';
@@ -201,6 +202,7 @@ architecture rtl of mcu4_worker_core is
   attribute fsm_encoding of exec_state_reg        : signal is "one_hot";
   attribute max_fanout of state_reg               : signal is 32;
   attribute max_fanout of exec_state_reg          : signal is 32;
+  attribute max_fanout of pc_fetch_reg            : signal is 32;
   attribute max_fanout of run_ctrl_rf             : signal is 16;
   attribute max_fanout of run_ctrl_exec           : signal is 16;
   attribute max_fanout of run_ctrl_mem            : signal is 16;
@@ -360,53 +362,6 @@ architecture rtl of mcu4_worker_core is
     return idx;
   end function;
 
-  function calc_pair_kind(
-    constant op_a      : worker_op_t;
-    constant rd_a      : natural range 0 to 15;
-    constant rn_a      : natural range 0 to 15;
-    constant rm_a      : natural range 0 to 15;
-    constant idx_a     : natural range 0 to 7;
-    constant illegal_a : std_logic;
-    constant op_b      : worker_op_t;
-    constant rd_b      : natural range 0 to 15;
-    constant rn_b      : natural range 0 to 15;
-    constant rm_b      : natural range 0 to 15;
-    constant idx_b     : natural range 0 to 7;
-    constant illegal_b : std_logic
-  ) return worker_pair_t is
-  begin
-    if illegal_a = '1' or illegal_b = '1' then
-      return WPAIR_NONE;
-    elsif op_a = WOP_MOV_IMM
-      and op_b = WOP_MOV_IMM
-      and rd_a /= rd_b then
-      return WPAIR_MOV_IMM;
-    elsif op_a = WOP_LDR_BANK0
-      and op_b = WOP_LDR_BANK0
-      and rd_a /= rd_b then
-      return WPAIR_LDR_BANK0;
-    elsif op_a = WOP_LDR_BANK1
-      and op_b = WOP_LDR_BANK1
-      and rd_a /= rd_b then
-      return WPAIR_LDR_BANK1;
-    elsif op_a = WOP_STR_BANK0
-      and op_b = WOP_STR_BANK0
-      and idx_a /= idx_b then
-      return WPAIR_STR_BANK0;
-    elsif op_a = WOP_STR_BANK1
-      and op_b = WOP_STR_BANK1
-      and idx_a /= idx_b then
-      return WPAIR_STR_BANK1;
-    elsif op_a = WOP_SADD16
-      and op_b = WOP_SSUB16
-      and rn_a = rn_b
-      and rm_a = rm_b
-      and rd_a /= rd_b then
-      return WPAIR_SADD16_SSUB16;
-    end if;
-
-    return WPAIR_NONE;
-  end function;
 begin
   rst_ctrl_local      <= rst;
   rst_exec_local      <= rst;
@@ -434,7 +389,9 @@ begin
       dec_rm      => fetch_dec_rm,
       dec_imm     => fetch_dec_imm,
       dec_idx     => fetch_dec_idx,
-      dec_illegal => fetch_dec_illegal
+      dec_illegal => fetch_dec_illegal,
+      pair_kind   => fetch_pair_kind,
+      next_pair_kind => fetch_next_pair_kind
     );
 
   u_instr_pair_rom : entity work.mcu4_worker_instr_rom
@@ -452,7 +409,9 @@ begin
       dec_rm      => fetch_pair_dec_rm,
       dec_imm     => fetch_pair_dec_imm,
       dec_idx     => fetch_pair_dec_idx,
-      dec_illegal => fetch_pair_dec_illegal
+      dec_illegal => fetch_pair_dec_illegal,
+      pair_kind   => open,
+      next_pair_kind => open
     );
 
   dmem_bank0_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
@@ -632,7 +591,7 @@ begin
     end function;
 
     procedure set_exec_pair_kind(
-      constant next_pair_kind : in worker_pair_t
+      constant next_pair_kind : in std_logic_vector(2 downto 0)
     ) is
     begin
       exec_pair_kind <= next_pair_kind;
@@ -649,23 +608,23 @@ begin
       pair_str_bank1_mem      <= '0';
 
       case next_pair_kind is
-        when WPAIR_MOV_IMM =>
+        when WPAIR_MOV_IMM_CODE =>
           pair_mov_imm_exec <= '1';
-        when WPAIR_LDR_BANK0 =>
+        when WPAIR_LDR_BANK0_CODE =>
           pair_ldr_bank0_exec <= '1';
           pair_ldr_bank0_mem  <= '1';
-        when WPAIR_LDR_BANK1 =>
+        when WPAIR_LDR_BANK1_CODE =>
           pair_ldr_bank1_exec <= '1';
           pair_ldr_bank1_mem  <= '1';
-        when WPAIR_STR_BANK0 =>
+        when WPAIR_STR_BANK0_CODE =>
           pair_str_bank0_exec <= '1';
           pair_str_bank0_mem  <= '1';
-        when WPAIR_STR_BANK1 =>
+        when WPAIR_STR_BANK1_CODE =>
           pair_str_bank1_exec <= '1';
           pair_str_bank1_mem  <= '1';
-        when WPAIR_SADD16_SSUB16 =>
+        when WPAIR_SADD16_SSUB16_CODE =>
           pair_sadd16_ssub16_exec <= '1';
-        when WPAIR_NONE =>
+        when others =>
           null;
       end case;
     end procedure;
@@ -807,25 +766,13 @@ begin
       dec_imm      <= fetch_pair_dec_imm;
       dec_idx      <= fetch_pair_dec_idx;
       dec_illegal  <= fetch_pair_dec_illegal;
+      dec_pair_kind <= fetch_next_pair_kind;
       dec_rd_data  <= forwarded_store_reg_value(
         fetch_pair_dec_rd,
         forward_a_valid, forward_a_rd, forward_a_data,
         forward_b_valid, forward_b_rd, forward_b_data
         );
-      set_exec_pair_kind(calc_pair_kind(
-      fetch_dec_op,
-      fetch_dec_rd,
-      fetch_dec_rn,
-      fetch_dec_rm,
-      fetch_dec_idx,
-      fetch_dec_illegal,
-      fetch_pair_dec_op,
-      fetch_pair_dec_rd,
-      fetch_pair_dec_rn,
-      fetch_pair_dec_rm,
-      fetch_pair_dec_idx,
-      fetch_pair_dec_illegal
-      ));
+      set_exec_pair_kind(fetch_pair_kind);
       pc_fetch_reg <= next_pair_pc(pc_fetch_reg);
     end procedure;
 
@@ -879,25 +826,13 @@ begin
       dec_imm      <= fetch_dec_imm;
       dec_idx      <= fetch_dec_idx;
       dec_illegal  <= fetch_dec_illegal;
+      dec_pair_kind <= fetch_pair_kind;
       dec_rd_data  <= forwarded_store_reg_value(
         fetch_dec_rd,
         forward_a_valid, forward_a_rd, forward_a_data,
         forward_b_valid, forward_b_rd, forward_b_data
         );
-      set_exec_pair_kind(calc_pair_kind(
-      dec_op,
-      dec_rd,
-      dec_rn,
-      dec_rm,
-      dec_idx,
-      dec_illegal,
-      fetch_dec_op,
-      fetch_dec_rd,
-      fetch_dec_rn,
-      fetch_dec_rm,
-      fetch_dec_idx,
-      fetch_dec_illegal
-      ));
+      set_exec_pair_kind(dec_pair_kind);
       pc_fetch_reg <= next_seq_pc(pc_fetch_reg);
     end procedure;
 
@@ -956,7 +891,8 @@ begin
         pc_fetch_reg <= 0;
         halted_reg   <= '0';
         illegal_reg  <= '0';
-        set_exec_pair_kind(WPAIR_NONE);
+        dec_pair_kind <= WPAIR_NONE_CODE;
+        set_exec_pair_kind(WPAIR_NONE_CODE);
         dsp_pair_ready      <= '0';
         rf_wb_decode_valid  <= '0';
         rf_wb_decode_we     <= (others => '0');
@@ -1226,8 +1162,9 @@ begin
                       dec_imm      <= 0;
                       dec_idx      <= 0;
                       dec_illegal  <= '0';
+                      dec_pair_kind <= WPAIR_NONE_CODE;
                       dec_rd_data  <= (others => '0');
-                      set_exec_pair_kind(WPAIR_NONE);
+                      set_exec_pair_kind(WPAIR_NONE_CODE);
                       dsp_pair_ready <= '0';
                       pc_fetch_reg   <= branch_target;
                       set_worker_state(S_FETCH);

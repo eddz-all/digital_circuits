@@ -61,7 +61,7 @@ B 负责最核心的执行引擎，但范围要收窄：重点看单个 worker �
 - 寄存器堆在哪里，写回信号如何产生。
 - `LDR/STR` 如何访问 `dmem_bank0/dmem_bank1`。
 - 多周期 DSP 怎么体现，为什么 `SMUAD/SMUSD` 不是简单一拍完成。
-- 双发射/配对执行的代码入口在哪里，比如 `WPAIR_MOV_IMM`、`WPAIR_LDR_BANK0`、`WPAIR_STR_BANK1`、`WPAIR_SADD16_SSUB16`。
+- 双发射/配对执行的代码入口在哪里，比如 3-bit `WPAIR_*_CODE`、`pair_kind`、`set_exec_pair_kind`。
 - 为什么双发射是通用机制，而不是针对 FFT 某几条指令硬写死。
 - `mcu4_worker_decoder.vhd` 的基本输入输出：32-bit 指令如何变成内部 op、寄存器编号和立即数。
 
@@ -110,7 +110,7 @@ C 负责把工程“整体长什么样、怎么跑起来、怎么证明正确、
 - 基础指令测试不应该每条指令都拉一个专用寄存器信号，而应该使用通用 trace：`pc_debug`、`instr_debug`、寄存器写回、存储写入、halt/illegal。
 - testbench 如何证明正确，哪些 testbench 对应哪些层级。
 - Vivado 工程需要加入哪些 VHDL 文件、约束文件和 IP。
-- 150 MHz implementation 时序报告说明什么。
+- 170 MHz implementation 时序报告说明什么。
 
 C 应准备回答的问题：
 
@@ -124,7 +124,7 @@ C 应准备回答的问题：
 - 如何通过结果区或写回 trace 证明 `MOV/LDR/STR/ADD/DSP` 等指令执行正确？
 - Vivado 里应该添加哪些源码文件？
 - `PROGRAM_ID=0/1` 和 `ACTIVE_CORES=1/4` 分别代表什么？
-- 150 MHz 能过 implementation 时序说明了什么，最坏路径大概在哪里？
+- 170 MHz 能过 implementation 时序说明了什么，最坏路径大概在哪里？
 
 推荐阅读：
 
@@ -137,7 +137,7 @@ C 应准备回答的问题：
 - `rtl/mcu_fft_system.vhd`
 - `tb/*.vhd`
 - `docs/VIVADO_BOARD_GUIDE.md`
-- `timing_report_150MHz.txt`
+- `timing_report_170MHz.txt`
 
 ## 综合问题接力方式
 
@@ -148,7 +148,7 @@ C 应准备回答的问题：
 | 指令格式和编码规则是什么？ | A：说明是 32-bit、ARM-like、支持哪些指令、每类指令用途 | B：说明 decoder 如何取字段并生成内部操作 | C：说明指令常量存在哪里，`PROGRAM_ID` 如何选择程序 |
 | 你们的架构有哪些元件？ | C：画总图，解释 ROM、四核、寄存器堆、ALU/DSP、数据内存 bank、板级 wrapper | B：解释单个 worker 内部执行数据通路 | A：说明这些元件如何服务 FFT 程序 |
 | 多周期体现在哪里？ | B：指出 DSP 状态机和写回路径 | A：说明 DSP 指令为什么计算更复杂 | C：说明 testbench 和时序报告如何验证 |
-| 双发射体现在哪里？ | B：指出 `WPAIR_*` 和配对执行入口 | A：说明连续可配对指令可以提高吞吐 | C：说明这不是 FFT 专用，基础指令也可观察 |
+| 双发射体现在哪里？ | B：指出 3-bit `pair_kind` 预译码和配对执行入口 | A：说明连续可配对指令可以提高吞吐 | C：说明这不是 FFT 专用，基础指令也可观察 |
 | 为什么不是专用 FFT 硬件？ | A：说明 FFT 只是 ROM 里的程序 | B：说明 core 按 decoder 输出执行通用操作 | C：说明可以切换 `PROGRAM_ID`，也可以做基础指令 ILA 展示 |
 | 基础指令怎么验证？ | C：说明用 testbench、结果区和 ILA trace 展示 | A：说明每条指令的语义和预期结果 | B：说明写回/访存路径如何产生结果 |
 | 四核和参数在哪里体现？ | C：说明 `ACTIVE_CORES`、`PROGRAM_ID` 和外层例化 | B：说明 worker 只按本地指令执行 | A：说明 FFT 程序如何利用多核 |
