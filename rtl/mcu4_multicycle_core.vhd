@@ -13,12 +13,13 @@ entity mcu4_multicycle_core is
         clk           : in  std_logic;
         rst           : in  std_logic;
 
-        input_we      : in  std_logic;
-        input_waddr   : in  std_logic_vector(7 downto 0);
-        input_wdata   : in  half_t;
-
-        output_raddr  : in  std_logic_vector(5 downto 0);
-        output_rdata  : out half_t;
+        dmem_we       : in  std_logic;
+        dmem_wbank    : in  std_logic;
+        dmem_waddr    : in  std_logic_vector(2 downto 0);
+        dmem_wdata    : in  word_t;
+        dmem_rbank    : in  std_logic;
+        dmem_raddr    : in  std_logic_vector(2 downto 0);
+        dmem_rdata    : out word_t;
 
         pc_debug      : out word_t;
         instr_debug   : out word_t;
@@ -34,7 +35,6 @@ architecture rtl of mcu4_multicycle_core is
     type worker_flag_array_t is array (0 to 3) of std_logic;
     type worker_buffer_array_t is array (0 to 3) of dmem_bank_t;
 
-    signal input_samples : sample16_array_t := (others => (others => '0'));
     signal dmem_bank0         : worker_buffer_array_t := (others => (others => (others => '0')));
     signal dmem_bank1         : worker_buffer_array_t := (others => (others => (others => '0')));
 
@@ -147,40 +147,23 @@ begin
         end generate;
     end generate;
 
-    process(output_raddr, dmem_bank0, dmem_bank1)
-        variable idx : natural range 0 to 63;
-    begin
-        idx := to_integer(unsigned(output_raddr));
-        if PROGRAM_ID = 1 then
-            if idx < 8 then
-                output_rdata <= dmem_bank0(0)(idx)(15 downto 0);
-            else
-                output_rdata <= (others => '0');
-            end if;
-        else
-            if idx < 8 then
-                output_rdata <= dmem_bank1(0)(idx)(15 downto 0);
-            elsif idx < 16 then
-                output_rdata <= dmem_bank1(0)(idx - 8)(31 downto 16);
-            else
-                output_rdata <= (others => '0');
-            end if;
-        end if;
-    end process;
+    dmem_rdata <= dmem_bank0(0)(safe_addr3(dmem_raddr))
+        when dmem_rbank = '0'
+        else dmem_bank1(0)(safe_addr3(dmem_raddr));
 
     process(clk)
-        variable slot : natural range 0 to 255;
-        variable src_idx : natural range 0 to 7;
         variable waddr : natural range 0 to 7;
     begin
         if rising_edge(clk) then
-            slot := to_integer(unsigned(input_waddr));
-            if input_we = '1' and slot < 16 then
-                input_samples(slot) <= input_wdata;
-                if slot >= 8 then
-                    src_idx := slot - 8;
+            if dmem_we = '1' then
+                waddr := to_integer(unsigned(dmem_waddr));
+                if dmem_wbank = '0' then
                     for replica in 0 to 3 loop
-                        dmem_bank0(replica)(BITREV_ORDER(src_idx)) <= pack_q5_to_q12(input_samples(src_idx), input_wdata);
+                        dmem_bank0(replica)(waddr) <= dmem_wdata;
+                    end loop;
+                else
+                    for replica in 0 to 3 loop
+                        dmem_bank1(replica)(waddr) <= dmem_wdata;
                     end loop;
                 end if;
             end if;

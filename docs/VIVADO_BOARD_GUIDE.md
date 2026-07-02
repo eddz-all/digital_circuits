@@ -48,17 +48,19 @@ For the basic instruction/PPT demonstration, use the separate board top:
 rtl/board_top_basic_test.vhd
 ```
 
-Set `board_top_basic_test` as the top module. This top directly instantiates one
-worker core with:
+Set `board_top_basic_test` as the top module. This top instantiates the full
+`mcu4_multicycle_core` wrapper with:
 
 ```text
-WORKER_ID  = 0
-PROGRAM_ID = 1
+PROGRAM_ID   = 1
+ACTIVE_CORES = 1
 ```
 
-It does not use `test_ROM`, `verify_RAM`, or `clk_wiz_0`. It runs from the board
-50 MHz input clock and contains a small synthesizable checker. The checker keeps
-one signal high while the basic program is correct:
+It initializes the core data memory through the generic `dmem_*` port, then runs
+the `SELFTEST_ROM` program and reads the same data-memory port back to check the
+results. It does not use `test_ROM`, `verify_RAM`, or `clk_wiz_0`. It runs from
+the board 50 MHz input clock and contains a small synthesizable checker. The
+checker keeps one signal high while the basic program is correct:
 
 ```text
 test = 1  -- no error observed
@@ -68,10 +70,11 @@ test = 0  -- error latched; reset is required to retry
 The checker watches generic MCU behavior rather than private registers:
 
 - `illegal` must never assert.
-- `pc_debug` and `instr_debug` must match the explicit `SELFTEST_ROM` words.
-- the self-test must not access the second internal data region.
-- `data[1]`, `data[2]`, and `data[3]` must each be written once with the expected values.
+- `data[1]`, `data[2]`, and `data[3]` must read back with the expected values after halt.
+- the second internal data region must still read back as zero.
 - the worker must halt before the timeout.
+`pc_debug` and `instr_debug` remain useful trace signals, but the board-level
+pass/fail bit does not depend on an exact cycle-by-cycle debug-word comparison.
 
 Use this constraints file:
 
@@ -83,14 +86,46 @@ Generate one extra ILA IP for this top:
 
 ```text
 Component name: ila_basic
-probe0 width:   1 bit
-probe0 signal:  test
+Number of probes: 4
+probe0 width:     1 bit  -- test
+probe1 width:     1 bit  -- rst_btn/sys_rst
+probe2 width:     4 bits -- error_code
+probe3 width:     4 bits -- state_code
 ```
 
 Recommended capture for presentation:
 
 ```text
-Use immediate/manual capture, release reset, and confirm test stays 1.
+Hold reset active, arm the ILA, then release reset.
+Trigger on probe1 falling edge if edge trigger is available.
+Otherwise trigger on probe1 == 1'b0, then confirm probe0 stays 1.
+```
+
+If `probe0` drops to 0, read `probe2`:
+
+```text
+0  no error latched
+1  illegal instruction
+2  timeout before halt
+3  data[1] readback mismatch, expected 0x00000008
+4  data[2] readback mismatch, expected 0x00000007
+5  data[3] readback mismatch, expected 0x0000000F
+6  data[4..7] was not zero; the skipped poison instruction may have run
+7  dmem_bank1 was not zero
+```
+
+`probe3` shows the checker state:
+
+```text
+0 init bank0
+1 init bank1
+2 run
+3 check data[1]
+4 check data[2]
+5 check data[3]
+6 check unused data[4..7]
+7 check bank1
+8 done
 ```
 
 Optional failure trigger:
@@ -251,7 +286,7 @@ addr 0F  D874
 - This version uses four parallel worker cores rather than a memory-mapped butterfly accelerator.
 - Each worker has its own PC, 32-bit instruction ROM, decoder, register file, ARM-style ALU/DSP execution, work-memory ports, and halt state.
 - The worker instruction words are visible in `rtl/mcu4_worker_instr_rom.vhd` as `FFT_ROM_W0..FFT_ROM_W3` and `SELFTEST_ROM`.
-- FFT data is stored in MCU data memory banks `dmem_bank0/dmem_bank1`, implemented as small multi-port register arrays.
+- MCU data is stored in data memory banks `dmem_bank0/dmem_bank1`, implemented as small multi-port register arrays. The FFT system wrapper packs/unpacks external 16-bit streams around these generic 32-bit words.
 - The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
 - Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
 - `SMUAD` and `SMUSD` are internally multi-cycle to shorten the DSP critical path for 200 MHz-class timing.

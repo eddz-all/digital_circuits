@@ -75,23 +75,26 @@ docs/MCU_GENERALITY_REQUIREMENTS.md
 
 ## Architecture
 
-`mcu_fft_system.vhd` remains the outer I/O wrapper:
+`mcu_fft_system.vhd` remains the outer FFT I/O wrapper:
 
 - input load from `test_ROM[128..143]` into the core while the core is held in
   reset;
+- packing two 16-bit input samples into one 32-bit data-memory word;
 - `cnt_start` asserted only when the worker instruction-run window begins;
-- output dump to `verify_RAM[0..15]` only after `cnt_stop`.
+- splitting 32-bit output words back into the 16-bit `verify_RAM[0..15]`
+  stream only after `cnt_stop`.
 
-`mcu4_multicycle_core.vhd` contains the logical shared FFT work memory. The
-read path is replicated per worker for timing, while writes update every
-replica:
+`mcu4_multicycle_core.vhd` contains four worker cores plus generic data memory
+banks. The read path is replicated per worker for timing, while writes update
+every replica:
 
 ```text
 dmem_bank0[0..7]
 dmem_bank1[0..7]
 ```
 
-Each word is packed complex data:
+For the FFT program, each 32-bit data-memory word is used as packed complex
+data:
 
 ```text
 word[15:0]  = real

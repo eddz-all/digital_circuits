@@ -2,6 +2,8 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
+use work.mcu4_multi_pkg.all;
+
 entity mcu_fft_system is
     generic (
         INPUT_ROM_BASE : natural := 128;
@@ -47,12 +49,16 @@ architecture rtl of mcu_fft_system is
     signal load_idx : integer range 0 to INPUT_COUNT - 1 := 0;
     signal dump_idx : integer range 0 to OUTPUT_COUNT - 1 := 0;
 
-    signal core_rst          : std_logic := '1';
-    signal core_input_we     : std_logic := '0';
-    signal core_input_waddr  : std_logic_vector(7 downto 0) := (others => '0');
-    signal core_input_wdata  : std_logic_vector(15 downto 0) := (others => '0');
-    signal core_output_raddr : std_logic_vector(5 downto 0) := (others => '0');
-    signal core_output_rdata : std_logic_vector(15 downto 0);
+    signal input_samples : sample16_array_t := (others => (others => '0'));
+
+    signal core_rst        : std_logic := '1';
+    signal core_dmem_we    : std_logic := '0';
+    signal core_dmem_wbank : std_logic := '0';
+    signal core_dmem_waddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal core_dmem_wdata : word_t := (others => '0');
+    signal core_dmem_rbank : std_logic := '0';
+    signal core_dmem_raddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal core_dmem_rdata : word_t;
 
     signal core_halted  : std_logic;
     signal core_illegal : std_logic;
@@ -77,11 +83,13 @@ begin
         port map (
             clk           => clk,
             rst           => core_rst,
-            input_we      => core_input_we,
-            input_waddr   => core_input_waddr,
-            input_wdata   => core_input_wdata,
-            output_raddr  => core_output_raddr,
-            output_rdata  => core_output_rdata,
+            dmem_we       => core_dmem_we,
+            dmem_wbank    => core_dmem_wbank,
+            dmem_waddr    => core_dmem_waddr,
+            dmem_wdata    => core_dmem_wdata,
+            dmem_rbank    => core_dmem_rbank,
+            dmem_raddr    => core_dmem_raddr,
+            dmem_rdata    => core_dmem_rdata,
             pc_debug      => pc_debug,
             instr_debug   => instr_debug,
             halted_debug  => core_halted,
@@ -93,13 +101,17 @@ begin
     illegal <= core_illegal;
     done <= '1' when state = S_DONE else '0';
     cnt_stop <= '1' when state = S_RUN and (core_halted = '1' or core_illegal = '1') else '0';
-    core_output_raddr <= std_logic_vector(to_unsigned(dump_idx, 6))
+    core_dmem_rbank <= '1' when state = S_DUMP_WRITE else '0';
+    core_dmem_raddr <= std_logic_vector(to_unsigned(dump_idx, 3))
+        when state = S_DUMP_WRITE and dump_idx < 8
+        else std_logic_vector(to_unsigned(dump_idx - 8, 3))
         when state = S_DUMP_WRITE
         else (others => '0');
 
     process(clk)
         variable last_input  : integer;
         variable last_output : integer;
+        variable src_idx     : integer range 0 to 7;
     begin
         if rising_edge(clk) then
             last_input := INPUT_COUNT - 1;
@@ -110,9 +122,11 @@ begin
                 load_idx <= 0;
                 dump_idx <= 0;
                 core_rst <= '1';
-                core_input_we <= '0';
-                core_input_waddr <= (others => '0');
-                core_input_wdata <= (others => '0');
+                input_samples <= (others => (others => '0'));
+                core_dmem_we <= '0';
+                core_dmem_wbank <= '0';
+                core_dmem_waddr <= (others => '0');
+                core_dmem_wdata <= (others => '0');
                 test_rom_addr <= (others => '0');
                 test_rom_en <= '0';
                 verify_ram_addr <= (others => '0');
@@ -120,7 +134,7 @@ begin
                 verify_vector_out <= (others => '0');
                 cnt_start <= '0';
             else
-                core_input_we <= '0';
+                core_dmem_we <= '0';
                 test_rom_en <= '0';
                 verify_ram_we <= '0';
                 cnt_start <= '0';
@@ -140,9 +154,14 @@ begin
 
                     when S_LOAD_WRITE =>
                         core_rst <= '1';
-                        core_input_we <= '1';
-                        core_input_waddr <= std_logic_vector(to_unsigned(load_idx, 8));
-                        core_input_wdata <= test_vector_in;
+                        input_samples(load_idx) <= test_vector_in;
+                        if load_idx >= 8 then
+                            src_idx := load_idx - 8;
+                            core_dmem_we <= '1';
+                            core_dmem_wbank <= '0';
+                            core_dmem_waddr <= std_logic_vector(to_unsigned(BITREV_ORDER(src_idx), 3));
+                            core_dmem_wdata <= pack_q5_to_q12(input_samples(src_idx), test_vector_in);
+                        end if;
                         if load_idx = last_input then
                             load_idx <= 0;
                             state <= S_START_RUN;
@@ -167,7 +186,11 @@ begin
                         core_rst <= '0';
                         verify_ram_we <= '1';
                         verify_ram_addr <= std_logic_vector(to_unsigned(dump_idx, 6));
-                        verify_vector_out <= core_output_rdata;
+                        if dump_idx < 8 then
+                            verify_vector_out <= core_dmem_rdata(15 downto 0);
+                        else
+                            verify_vector_out <= core_dmem_rdata(31 downto 16);
+                        end if;
                         if dump_idx = last_output then
                             state <= S_DONE;
                         else

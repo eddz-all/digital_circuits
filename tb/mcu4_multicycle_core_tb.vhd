@@ -3,17 +3,21 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use std.env.all;
 
+use work.mcu4_multi_pkg.all;
+
 entity mcu4_multicycle_core_tb is
 end entity mcu4_multicycle_core_tb;
 
 architecture sim of mcu4_multicycle_core_tb is
     signal clk : std_logic := '0';
     signal rst : std_logic := '1';
-    signal input_we : std_logic := '0';
-    signal input_waddr : std_logic_vector(7 downto 0) := (others => '0');
-    signal input_wdata : std_logic_vector(15 downto 0) := (others => '0');
-    signal output_raddr : std_logic_vector(5 downto 0) := (others => '0');
-    signal output_rdata : std_logic_vector(15 downto 0);
+    signal dmem_we : std_logic := '0';
+    signal dmem_wbank : std_logic := '0';
+    signal dmem_waddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal dmem_wdata : word_t := (others => '0');
+    signal dmem_rbank : std_logic := '0';
+    signal dmem_raddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal dmem_rdata : word_t;
     signal pc_debug : std_logic_vector(31 downto 0);
     signal instr_debug : std_logic_vector(31 downto 0);
     signal halted_debug : std_logic;
@@ -42,11 +46,13 @@ begin
         port map (
             clk           => clk,
             rst           => rst,
-            input_we      => input_we,
-            input_waddr   => input_waddr,
-            input_wdata   => input_wdata,
-            output_raddr  => output_raddr,
-            output_rdata  => output_rdata,
+            dmem_we       => dmem_we,
+            dmem_wbank    => dmem_wbank,
+            dmem_waddr    => dmem_waddr,
+            dmem_wdata    => dmem_wdata,
+            dmem_rbank    => dmem_rbank,
+            dmem_raddr    => dmem_raddr,
+            dmem_rdata    => dmem_rdata,
             pc_debug      => pc_debug,
             instr_debug   => instr_debug,
             halted_debug  => halted_debug,
@@ -56,6 +62,10 @@ begin
         );
 
     stim : process
+        variable samples : sample16_array_t := (others => (others => '0'));
+        variable src_idx : natural range 0 to 7;
+        variable output_half : half_t;
+
         procedure wait_cycles(count : natural) is
         begin
             for i in 1 to count loop
@@ -66,12 +76,19 @@ begin
         wait_cycles(2);
 
         for i in FFT_INPUT'range loop
-            input_waddr <= std_logic_vector(to_unsigned(i, 8));
-            input_wdata <= slv16(FFT_INPUT(i));
-            input_we <= '1';
+            if i < 8 then
+                samples(i) := slv16(FFT_INPUT(i));
+                dmem_we <= '0';
+            else
+                src_idx := i - 8;
+                dmem_wbank <= '0';
+                dmem_waddr <= std_logic_vector(to_unsigned(BITREV_ORDER(src_idx), 3));
+                dmem_wdata <= pack_q5_to_q12(samples(src_idx), slv16(FFT_INPUT(i)));
+                dmem_we <= '1';
+            end if;
             wait until rising_edge(clk);
         end loop;
-        input_we <= '0';
+        dmem_we <= '0';
         wait until rising_edge(clk);
 
         rst <= '0';
@@ -84,12 +101,21 @@ begin
         assert illegal_debug = '0' report "core hit illegal instruction" severity failure;
 
         for slot in FFT_EXPECTED_OUTPUT'range loop
-            output_raddr <= std_logic_vector(to_unsigned(slot, 6));
+            dmem_rbank <= '1';
+            if slot < 8 then
+                dmem_raddr <= std_logic_vector(to_unsigned(slot, 3));
+                wait for 1 ns;
+                output_half := dmem_rdata(15 downto 0);
+            else
+                dmem_raddr <= std_logic_vector(to_unsigned(slot - 8, 3));
+                wait for 1 ns;
+                output_half := dmem_rdata(31 downto 16);
+            end if;
             wait for 1 ns;
-            assert output_rdata = slv16(FFT_EXPECTED_OUTPUT(slot))
+            assert output_half = slv16(FFT_EXPECTED_OUTPUT(slot))
                 report "core output slot " & integer'image(slot)
                     & " expected " & integer'image(FFT_EXPECTED_OUTPUT(slot))
-                    & " got " & integer'image(to_integer(signed(output_rdata)))
+                    & " got " & integer'image(to_integer(signed(output_half)))
                 severity failure;
         end loop;
 

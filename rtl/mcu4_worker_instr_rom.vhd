@@ -167,7 +167,7 @@ architecture rtl of mcu4_worker_instr_rom is
          9 => x"E0889007", -- ADD r9, r8, r7
         10 => x"E5809044", -- STR r9, [r0, #0x44] ; data[1]
         11 => x"EA000000", -- B selftest_after_skip
-        12 => x"E5801048", -- STR r1, [r0, #0x48] ; data[2], skipped
+        12 => x"E5802050", -- STR r2, [r0, #0x50] ; data[4], skipped poison
         13 => x"EB000002", -- BL selftest_subroutine
         14 => x"E5801048", -- STR r1, [r0, #0x48] ; data[2]
         15 => x"E580A04C", -- STR r10, [r0, #0x4C] ; data[3]

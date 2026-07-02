@@ -269,10 +269,10 @@ synthesis -max_dsp 0
 
 ```text
 test_ROM/test_vector_in
-  -> mcu_fft_system 输入加载
-  -> mcu4_multicycle_core 数据内存 dmem_bank0/dmem_bank1
+  -> mcu_fft_system 输入加载、bit-reversal、16-bit to 32-bit 打包
+  -> mcu4_multicycle_core 通用数据内存 dmem_bank0/dmem_bank1
   -> worker 执行 ROM 指令
-  -> mcu_fft_system 输出 dump
+  -> mcu_fft_system 32-bit to 16-bit 输出拆包和 dump
   -> verify_RAM/verify_vector_out
 ```
 
@@ -286,6 +286,33 @@ test_ROM/test_vector_in
 
 `dmem_bank0/dmem_bank1` 是 MCU 的工作数据内存，不是外部 `verify_RAM`。它可以理解成两块小数据内存，也可以理解成一块数据内存的两个地址区域。实现上可以为了多核并行和时序复制读口，但对指令来说仍应表现为普通 `LDR/STR` 可访问的工作内存。
 
+边界规则：
+
+- `mcu4_multicycle_core` 只暴露通用 `dmem_*` 访问口：选 bank、3-bit word 地址、32-bit 数据。
+- FFT 的外部 16-bit 输入、real/imag 拼包、`BITREV_ORDER` 装载、输出高低半字拆包，都必须放在 `mcu_fft_system` 或更外层 wrapper。
+- `mcu4_multicycle_core` 内不要恢复 `input_we/input_waddr/input_wdata` 或 `output_raddr/output_rdata` 这类 FFT stream 端口。
+
+`mcu4_multicycle_core` 的职责只能是：
+
+```text
+外部通用 dmem 写口/读口
+  -> 内部 dmem_bank0/dmem_bank1
+  -> ACTIVE_CORES 个 worker core
+  -> halted/illegal/debug 汇总
+```
+
+它可以为了多核并行和时序复制 data memory 读口，也可以把 worker 写入广播到各个 replica；
+但它不能再知道“第几个 FFT 输入样本”“输出 real/imag 第几个槽”这类系统协议。换句话说：
+
+```text
+mcu_fft_system 负责外部实验平台协议和 FFT 数据格式适配
+mcu4_multicycle_core 负责通用 MCU core 集群和通用 data memory
+mcu4_worker_core 负责单个 worker 的取指、译码、执行、访存和 halt/illegal
+```
+
+如果以后新增非 FFT 程序，应复用同一个 `dmem_*` 口预装输入、读回输出；不要在
+`mcu4_multicycle_core` 增加 `sort_input_*`、`filter_output_*`、`fft_input_*` 等程序专用端口。
+
 ## 11. 基础指令测试要求
 
 基础指令测试不能只靠 FFT 间接证明。必须保留：
@@ -296,6 +323,22 @@ ACTIVE_CORES = 1
 SELFTEST_ROM
 asm/mcu4_basic_selftest.s
 ```
+
+板级 basic top 应例化完整 `mcu4_multicycle_core`，通过 `PROGRAM_ID=1` 和 `ACTIVE_CORES=1`
+选择单核基础测试；不要为了方便直接例化 `mcu4_worker_core` 绕过数据内存封装。
+
+basic 上板 checker 应检查通用行为结果，而不是依赖某个私有内部实现细节：
+
+```text
+illegal 必须为 0
+worker 必须在 timeout 前 halt
+data[1] / data[2] / data[3] 必须读回 signature
+data[4..7] 必须保持 0，用于证明 B 跳过毒性写入
+dmem_bank1 必须保持 0，用于证明 basic 程序没有误访问第二数据区
+```
+
+`pc_debug/instr_debug` 可以作为 ILA trace 或仿真辅助，但不要让板级 `test` 信号依赖逐周期
+debug 指令字完全对齐；这类检查容易在上板时把调试显示时序误判成功能错误。
 
 基础测试至少覆盖：
 
