@@ -72,16 +72,22 @@ begin
             report "single-core minimum ARM program hit illegal instruction"
             severity failure;
 
-        output_raddr <= std_logic_vector(to_unsigned(0, 6));
+        output_raddr <= std_logic_vector(to_unsigned(1, 6));
         wait for 1 ns;
         assert output_rdata = slv16(3)
-            report "single-core minimum ARM program buf_b[0] mismatch"
+            report "single-core minimum ARM program dmem_bank0[1] mismatch"
             severity failure;
 
         output_raddr <= std_logic_vector(to_unsigned(2, 6));
         wait for 1 ns;
+        assert output_rdata = slv16(7)
+            report "single-core minimum ARM program dmem_bank0[2] mismatch"
+            severity failure;
+
+        output_raddr <= std_logic_vector(to_unsigned(3, 6));
+        wait for 1 ns;
         assert output_rdata = slv16(10)
-            report "single-core minimum ARM program buf_b[2] mismatch"
+            report "single-core minimum ARM program dmem_bank0[3] mismatch"
             severity failure;
 
         report "mcu4_multicycle_core_min_arm_tb passed" severity note;

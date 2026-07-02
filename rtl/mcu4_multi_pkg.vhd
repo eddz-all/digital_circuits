@@ -8,7 +8,7 @@ package mcu4_multi_pkg is
     subtype reg_addr_t is std_logic_vector(3 downto 0);
 
     type sample16_array_t is array (0 to 15) of half_t;
-    type complex8_array_t is array (0 to 7) of word_t;
+    type dmem_bank_t is array (0 to 7) of word_t;
     type lane4_word_array_t is array (0 to 3) of word_t;
     type reg_file_t is array (0 to 15) of word_t;
     type program_rom_t is array (0 to 63) of word_t;
@@ -25,10 +25,10 @@ package mcu4_multi_pkg is
         WOP_AND,
         WOP_ORR,
         WOP_PKHBT,
-        WOP_LDR_A,
-        WOP_LDR_B,
-        WOP_STR_A,
-        WOP_STR_B,
+        WOP_LDR_BANK0,
+        WOP_LDR_BANK1,
+        WOP_STR_BANK0,
+        WOP_STR_BANK1,
         WOP_SADD16,
         WOP_SSUB16,
         WOP_SSAX,
@@ -40,23 +40,28 @@ package mcu4_multi_pkg is
         WOP_HALT
     );
 
-    constant REG_ZERO    : natural := 0;
-    constant REG_POS91   : natural := 1;
-    constant REG_PACK91  : natural := 3;
-    constant REG_PACKN91 : natural := 4;
-    constant REG_A       : natural := 5;
-    constant REG_B       : natural := 6;
-    constant REG_TMP_RE  : natural := 7;
-    constant REG_TMP_IM  : natural := 8;
-    constant REG_T       : natural := 9;
-    constant REG_EVEN    : natural := 10;
-    constant REG_ODD     : natural := 11;
-    constant REG_LR      : natural := 14;
-    constant REG_PC      : natural := 15;
+    constant REG_R0  : natural := 0;
+    constant REG_R1  : natural := 1;
+    constant REG_R2  : natural := 2;
+    constant REG_R3  : natural := 3;
+    constant REG_R4  : natural := 4;
+    constant REG_R5  : natural := 5;
+    constant REG_R6  : natural := 6;
+    constant REG_R7  : natural := 7;
+    constant REG_R8  : natural := 8;
+    constant REG_R9  : natural := 9;
+    constant REG_R10 : natural := 10;
+    constant REG_R11 : natural := 11;
+    constant REG_R12 : natural := 12;
+    constant REG_R13 : natural := 13;
+    constant REG_R14 : natural := 14;
+    constant REG_R15 : natural := 15;
+    constant REG_LR  : natural := REG_R14;
+    constant REG_PC  : natural := REG_R15;
 
-    constant WORK_BUF_A_BASE_WORD : natural := 16;
-    constant WORK_BUF_B_BASE_WORD : natural := 32;
-    constant WORK_BUF_WORDS       : natural := 8;
+    constant DMEM_BANK0_BASE_WORD : natural := 16;
+    constant DMEM_BANK1_BASE_WORD : natural := 32;
+    constant DMEM_BANK_WORDS       : natural := 8;
 
     function pkhbt_shift(
         low_value  : word_t;

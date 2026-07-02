@@ -32,33 +32,33 @@ end entity mcu4_multicycle_core;
 architecture rtl of mcu4_multicycle_core is
     type worker_addr_array_t is array (0 to 3) of std_logic_vector(2 downto 0);
     type worker_flag_array_t is array (0 to 3) of std_logic;
-    type worker_buffer_array_t is array (0 to 3) of complex8_array_t;
+    type worker_buffer_array_t is array (0 to 3) of dmem_bank_t;
 
     signal input_samples : sample16_array_t := (others => (others => '0'));
-    signal buf_a         : worker_buffer_array_t := (others => (others => (others => '0')));
-    signal buf_b         : worker_buffer_array_t := (others => (others => (others => '0')));
+    signal dmem_bank0         : worker_buffer_array_t := (others => (others => (others => '0')));
+    signal dmem_bank1         : worker_buffer_array_t := (others => (others => (others => '0')));
 
-    signal worker_buf_a_raddr : worker_addr_array_t := (others => (others => '0'));
-    signal worker_buf_b_raddr : worker_addr_array_t := (others => (others => '0'));
-    signal worker_buf_a_raddr2 : worker_addr_array_t := (others => (others => '0'));
-    signal worker_buf_b_raddr2 : worker_addr_array_t := (others => (others => '0'));
-    signal worker_buf_a_rdata : lane4_word_array_t := (others => (others => '0'));
-    signal worker_buf_b_rdata : lane4_word_array_t := (others => (others => '0'));
-    signal worker_buf_a_rdata2 : lane4_word_array_t := (others => (others => '0'));
-    signal worker_buf_b_rdata2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_bank0_raddr : worker_addr_array_t := (others => (others => '0'));
+    signal worker_dmem_bank1_raddr : worker_addr_array_t := (others => (others => '0'));
+    signal worker_dmem_bank0_raddr2 : worker_addr_array_t := (others => (others => '0'));
+    signal worker_dmem_bank1_raddr2 : worker_addr_array_t := (others => (others => '0'));
+    signal worker_dmem_bank0_rdata : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_bank1_rdata : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_bank0_rdata2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_bank1_rdata2 : lane4_word_array_t := (others => (others => '0'));
 
-    signal worker_buf_a_we    : worker_flag_array_t := (others => '0');
-    signal worker_buf_b_we    : worker_flag_array_t := (others => '0');
-    signal worker_buf_a_we2   : worker_flag_array_t := (others => '0');
-    signal worker_buf_b_we2   : worker_flag_array_t := (others => '0');
-    signal worker_buf_a_waddr : worker_addr_array_t := (others => (others => '0'));
-    signal worker_buf_b_waddr : worker_addr_array_t := (others => (others => '0'));
-    signal worker_buf_a_waddr2 : worker_addr_array_t := (others => (others => '0'));
-    signal worker_buf_b_waddr2 : worker_addr_array_t := (others => (others => '0'));
-    signal worker_buf_a_wdata : lane4_word_array_t := (others => (others => '0'));
-    signal worker_buf_b_wdata : lane4_word_array_t := (others => (others => '0'));
-    signal worker_buf_a_wdata2 : lane4_word_array_t := (others => (others => '0'));
-    signal worker_buf_b_wdata2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_bank0_we    : worker_flag_array_t := (others => '0');
+    signal worker_dmem_bank1_we    : worker_flag_array_t := (others => '0');
+    signal worker_dmem_bank0_we2   : worker_flag_array_t := (others => '0');
+    signal worker_dmem_bank1_we2   : worker_flag_array_t := (others => '0');
+    signal worker_dmem_bank0_waddr : worker_addr_array_t := (others => (others => '0'));
+    signal worker_dmem_bank1_waddr : worker_addr_array_t := (others => (others => '0'));
+    signal worker_dmem_bank0_waddr2 : worker_addr_array_t := (others => (others => '0'));
+    signal worker_dmem_bank1_waddr2 : worker_addr_array_t := (others => (others => '0'));
+    signal worker_dmem_bank0_wdata : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_bank1_wdata : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_bank0_wdata2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_bank1_wdata2 : lane4_word_array_t := (others => (others => '0'));
 
     signal worker_halted : std_logic_vector(3 downto 0) := (others => '0');
     signal worker_illegal : std_logic_vector(3 downto 0) := (others => '0');
@@ -80,10 +80,10 @@ architecture rtl of mcu4_multicycle_core is
     end function;
 begin
     gen_worker_read_data : for i in 0 to 3 generate
-        worker_buf_a_rdata(i) <= buf_a(i)(safe_addr3(worker_buf_a_raddr(i)));
-        worker_buf_b_rdata(i) <= buf_b(i)(safe_addr3(worker_buf_b_raddr(i)));
-        worker_buf_a_rdata2(i) <= buf_a(i)(safe_addr3(worker_buf_a_raddr2(i)));
-        worker_buf_b_rdata2(i) <= buf_b(i)(safe_addr3(worker_buf_b_raddr2(i)));
+        worker_dmem_bank0_rdata(i) <= dmem_bank0(i)(safe_addr3(worker_dmem_bank0_raddr(i)));
+        worker_dmem_bank1_rdata(i) <= dmem_bank1(i)(safe_addr3(worker_dmem_bank1_raddr(i)));
+        worker_dmem_bank0_rdata2(i) <= dmem_bank0(i)(safe_addr3(worker_dmem_bank0_raddr2(i)));
+        worker_dmem_bank1_rdata2(i) <= dmem_bank1(i)(safe_addr3(worker_dmem_bank1_raddr2(i)));
     end generate;
 
     gen_workers : for i in 0 to 3 generate
@@ -96,26 +96,26 @@ begin
                 port map (
                     clk         => clk,
                     rst         => rst,
-                    buf_a_raddr => worker_buf_a_raddr(i),
-                    buf_a_rdata => worker_buf_a_rdata(i),
-                    buf_a_raddr2 => worker_buf_a_raddr2(i),
-                    buf_a_rdata2 => worker_buf_a_rdata2(i),
-                    buf_b_raddr => worker_buf_b_raddr(i),
-                    buf_b_rdata => worker_buf_b_rdata(i),
-                    buf_b_raddr2 => worker_buf_b_raddr2(i),
-                    buf_b_rdata2 => worker_buf_b_rdata2(i),
-                    buf_a_we    => worker_buf_a_we(i),
-                    buf_a_waddr => worker_buf_a_waddr(i),
-                    buf_a_wdata => worker_buf_a_wdata(i),
-                    buf_a_we2    => worker_buf_a_we2(i),
-                    buf_a_waddr2 => worker_buf_a_waddr2(i),
-                    buf_a_wdata2 => worker_buf_a_wdata2(i),
-                    buf_b_we    => worker_buf_b_we(i),
-                    buf_b_waddr => worker_buf_b_waddr(i),
-                    buf_b_wdata => worker_buf_b_wdata(i),
-                    buf_b_we2    => worker_buf_b_we2(i),
-                    buf_b_waddr2 => worker_buf_b_waddr2(i),
-                    buf_b_wdata2 => worker_buf_b_wdata2(i),
+                    dmem_bank0_raddr => worker_dmem_bank0_raddr(i),
+                    dmem_bank0_rdata => worker_dmem_bank0_rdata(i),
+                    dmem_bank0_raddr2 => worker_dmem_bank0_raddr2(i),
+                    dmem_bank0_rdata2 => worker_dmem_bank0_rdata2(i),
+                    dmem_bank1_raddr => worker_dmem_bank1_raddr(i),
+                    dmem_bank1_rdata => worker_dmem_bank1_rdata(i),
+                    dmem_bank1_raddr2 => worker_dmem_bank1_raddr2(i),
+                    dmem_bank1_rdata2 => worker_dmem_bank1_rdata2(i),
+                    dmem_bank0_we    => worker_dmem_bank0_we(i),
+                    dmem_bank0_waddr => worker_dmem_bank0_waddr(i),
+                    dmem_bank0_wdata => worker_dmem_bank0_wdata(i),
+                    dmem_bank0_we2    => worker_dmem_bank0_we2(i),
+                    dmem_bank0_waddr2 => worker_dmem_bank0_waddr2(i),
+                    dmem_bank0_wdata2 => worker_dmem_bank0_wdata2(i),
+                    dmem_bank1_we    => worker_dmem_bank1_we(i),
+                    dmem_bank1_waddr => worker_dmem_bank1_waddr(i),
+                    dmem_bank1_wdata => worker_dmem_bank1_wdata(i),
+                    dmem_bank1_we2    => worker_dmem_bank1_we2(i),
+                    dmem_bank1_waddr2 => worker_dmem_bank1_waddr2(i),
+                    dmem_bank1_wdata2 => worker_dmem_bank1_wdata2(i),
                     halted      => worker_halted(i),
                     illegal     => worker_illegal(i),
                     pc_debug    => worker_pc_debug(i),
@@ -124,22 +124,22 @@ begin
         end generate;
 
         gen_inactive_worker : if i >= ACTIVE_CORES generate
-            worker_buf_a_raddr(i) <= (others => '0');
-            worker_buf_b_raddr(i) <= (others => '0');
-            worker_buf_a_raddr2(i) <= (others => '0');
-            worker_buf_b_raddr2(i) <= (others => '0');
-            worker_buf_a_we(i) <= '0';
-            worker_buf_b_we(i) <= '0';
-            worker_buf_a_we2(i) <= '0';
-            worker_buf_b_we2(i) <= '0';
-            worker_buf_a_waddr(i) <= (others => '0');
-            worker_buf_b_waddr(i) <= (others => '0');
-            worker_buf_a_waddr2(i) <= (others => '0');
-            worker_buf_b_waddr2(i) <= (others => '0');
-            worker_buf_a_wdata(i) <= (others => '0');
-            worker_buf_b_wdata(i) <= (others => '0');
-            worker_buf_a_wdata2(i) <= (others => '0');
-            worker_buf_b_wdata2(i) <= (others => '0');
+            worker_dmem_bank0_raddr(i) <= (others => '0');
+            worker_dmem_bank1_raddr(i) <= (others => '0');
+            worker_dmem_bank0_raddr2(i) <= (others => '0');
+            worker_dmem_bank1_raddr2(i) <= (others => '0');
+            worker_dmem_bank0_we(i) <= '0';
+            worker_dmem_bank1_we(i) <= '0';
+            worker_dmem_bank0_we2(i) <= '0';
+            worker_dmem_bank1_we2(i) <= '0';
+            worker_dmem_bank0_waddr(i) <= (others => '0');
+            worker_dmem_bank1_waddr(i) <= (others => '0');
+            worker_dmem_bank0_waddr2(i) <= (others => '0');
+            worker_dmem_bank1_waddr2(i) <= (others => '0');
+            worker_dmem_bank0_wdata(i) <= (others => '0');
+            worker_dmem_bank1_wdata(i) <= (others => '0');
+            worker_dmem_bank0_wdata2(i) <= (others => '0');
+            worker_dmem_bank1_wdata2(i) <= (others => '0');
             worker_halted(i) <= '1';
             worker_illegal(i) <= '0';
             worker_pc_debug(i) <= (others => '0');
@@ -147,16 +147,24 @@ begin
         end generate;
     end generate;
 
-    process(output_raddr, buf_b)
+    process(output_raddr, dmem_bank0, dmem_bank1)
         variable idx : natural range 0 to 63;
     begin
         idx := to_integer(unsigned(output_raddr));
-        if idx < 8 then
-            output_rdata <= buf_b(0)(idx)(15 downto 0);
-        elsif idx < 16 then
-            output_rdata <= buf_b(0)(idx - 8)(31 downto 16);
+        if PROGRAM_ID = 1 then
+            if idx < 8 then
+                output_rdata <= dmem_bank0(0)(idx)(15 downto 0);
+            else
+                output_rdata <= (others => '0');
+            end if;
         else
-            output_rdata <= (others => '0');
+            if idx < 8 then
+                output_rdata <= dmem_bank1(0)(idx)(15 downto 0);
+            elsif idx < 16 then
+                output_rdata <= dmem_bank1(0)(idx - 8)(31 downto 16);
+            else
+                output_rdata <= (others => '0');
+            end if;
         end if;
     end process;
 
@@ -172,7 +180,7 @@ begin
                 if slot >= 8 then
                     src_idx := slot - 8;
                     for replica in 0 to 3 loop
-                        buf_a(replica)(BITREV_ORDER(src_idx)) <= pack_q5_to_q12(input_samples(src_idx), input_wdata);
+                        dmem_bank0(replica)(BITREV_ORDER(src_idx)) <= pack_q5_to_q12(input_samples(src_idx), input_wdata);
                     end loop;
                 end if;
             end if;
@@ -181,31 +189,31 @@ begin
             -- using the top-level reset as a data-path gate for every buffer
             -- bit; that reset fanout was one of the 200 MHz critical paths.
             for i in 0 to 3 loop
-                if worker_buf_a_we(i) = '1' then
-                    waddr := to_integer(unsigned(worker_buf_a_waddr(i)));
+                if worker_dmem_bank0_we(i) = '1' then
+                    waddr := to_integer(unsigned(worker_dmem_bank0_waddr(i)));
                     for replica in 0 to 3 loop
-                        buf_a(replica)(waddr) <= worker_buf_a_wdata(i);
+                        dmem_bank0(replica)(waddr) <= worker_dmem_bank0_wdata(i);
                     end loop;
                 end if;
 
-                if worker_buf_a_we2(i) = '1' then
-                    waddr := to_integer(unsigned(worker_buf_a_waddr2(i)));
+                if worker_dmem_bank0_we2(i) = '1' then
+                    waddr := to_integer(unsigned(worker_dmem_bank0_waddr2(i)));
                     for replica in 0 to 3 loop
-                        buf_a(replica)(waddr) <= worker_buf_a_wdata2(i);
+                        dmem_bank0(replica)(waddr) <= worker_dmem_bank0_wdata2(i);
                     end loop;
                 end if;
 
-                if worker_buf_b_we(i) = '1' then
-                    waddr := to_integer(unsigned(worker_buf_b_waddr(i)));
+                if worker_dmem_bank1_we(i) = '1' then
+                    waddr := to_integer(unsigned(worker_dmem_bank1_waddr(i)));
                     for replica in 0 to 3 loop
-                        buf_b(replica)(waddr) <= worker_buf_b_wdata(i);
+                        dmem_bank1(replica)(waddr) <= worker_dmem_bank1_wdata(i);
                     end loop;
                 end if;
 
-                if worker_buf_b_we2(i) = '1' then
-                    waddr := to_integer(unsigned(worker_buf_b_waddr2(i)));
+                if worker_dmem_bank1_we2(i) = '1' then
+                    waddr := to_integer(unsigned(worker_dmem_bank1_waddr2(i)));
                     for replica in 0 to 3 loop
-                        buf_b(replica)(waddr) <= worker_buf_b_wdata2(i);
+                        dmem_bank1(replica)(waddr) <= worker_dmem_bank1_wdata2(i);
                     end loop;
                 end if;
             end loop;

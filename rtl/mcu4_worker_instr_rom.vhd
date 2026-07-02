@@ -33,25 +33,25 @@ architecture rtl of mcu4_worker_instr_rom is
          1 => x"E3A0105B", -- MOV r1, #91
          2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
          3 => x"ED204003", -- SSUB16 r4, r0, r3
-         4 => x"E5905040", -- LDR r5, [buf_a+0]
-         5 => x"E5906044", -- LDR r6, [buf_a+1]
+         4 => x"E5905040", -- LDR r5, [dmem_bank0+0]
+         5 => x"E5906044", -- LDR r6, [dmem_bank0+1]
          6 => x"ED85A006", -- SADD16 r10, r5, r6
          7 => x"ED25B006", -- SSUB16 r11, r5, r6
-         8 => x"E580A080", -- STR r10, [buf_b+0]
-         9 => x"E580B084", -- STR r11, [buf_b+1]
-        10 => x"E5905080", -- LDR r5, [buf_b+0]
-        11 => x"E5906088", -- LDR r6, [buf_b+2]
+         8 => x"E580A080", -- STR r10, [dmem_bank1+0]
+         9 => x"E580B084", -- STR r11, [dmem_bank1+1]
+        10 => x"E5905080", -- LDR r5, [dmem_bank1+0]
+        11 => x"E5906088", -- LDR r6, [dmem_bank1+2]
         12 => x"ED85A006", -- SADD16 r10, r5, r6
         13 => x"ED25B006", -- SSUB16 r11, r5, r6
-        14 => x"E580A040", -- STR r10, [buf_a+0]
-        15 => x"E580B048", -- STR r11, [buf_a+2]
+        14 => x"E580A040", -- STR r10, [dmem_bank0+0]
+        15 => x"E580B048", -- STR r11, [dmem_bank0+2]
         16 => INSTR_NOP,   -- NOP
-        17 => x"E5905040", -- LDR r5, [buf_a+0]
-        18 => x"E5906050", -- LDR r6, [buf_a+4]
+        17 => x"E5905040", -- LDR r5, [dmem_bank0+0]
+        18 => x"E5906050", -- LDR r6, [dmem_bank0+4]
         19 => x"ED85A006", -- SADD16 r10, r5, r6
         20 => x"ED25B006", -- SSUB16 r11, r5, r6
-        21 => x"E580A080", -- STR r10, [buf_b+0]
-        22 => x"E580B090", -- STR r11, [buf_b+4]
+        21 => x"E580A080", -- STR r10, [dmem_bank1+0]
+        22 => x"E580B090", -- STR r11, [dmem_bank1+4]
         23 => INSTR_NOP,   -- NOP
         24 => INSTR_NOP,   -- NOP
         25 => INSTR_NOP,   -- NOP
@@ -64,29 +64,29 @@ architecture rtl of mcu4_worker_instr_rom is
          1 => x"E3A0105B", -- MOV r1, #91
          2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
          3 => x"ED204003", -- SSUB16 r4, r0, r3
-         4 => x"E5905048", -- LDR r5, [buf_a+2]
-         5 => x"E590604C", -- LDR r6, [buf_a+3]
+         4 => x"E5905048", -- LDR r5, [dmem_bank0+2]
+         5 => x"E590604C", -- LDR r6, [dmem_bank0+3]
          6 => x"ED85A006", -- SADD16 r10, r5, r6
          7 => x"ED25B006", -- SSUB16 r11, r5, r6
-         8 => x"E580A088", -- STR r10, [buf_b+2]
-         9 => x"E580B08C", -- STR r11, [buf_b+3]
-        10 => x"E5905084", -- LDR r5, [buf_b+1]
-        11 => x"E590608C", -- LDR r6, [buf_b+3]
+         8 => x"E580A088", -- STR r10, [dmem_bank1+2]
+         9 => x"E580B08C", -- STR r11, [dmem_bank1+3]
+        10 => x"E5905084", -- LDR r5, [dmem_bank1+1]
+        11 => x"E590608C", -- LDR r6, [dmem_bank1+3]
         12 => x"ED009006", -- SSAX r9, r0, r6
         13 => x"ED85A009", -- SADD16 r10, r5, r9
         14 => x"ED25B009", -- SSUB16 r11, r5, r9
-        15 => x"E580A044", -- STR r10, [buf_a+1]
-        16 => x"E580B04C", -- STR r11, [buf_a+3]
-        17 => x"E5905044", -- LDR r5, [buf_a+1]
-        18 => x"E5906054", -- LDR r6, [buf_a+5]
+        15 => x"E580A044", -- STR r10, [dmem_bank0+1]
+        16 => x"E580B04C", -- STR r11, [dmem_bank0+3]
+        17 => x"E5905044", -- LDR r5, [dmem_bank0+1]
+        18 => x"E5906054", -- LDR r6, [dmem_bank0+5]
         19 => x"EC467003", -- SMUAD r7, r6, r3
         20 => x"EC668004", -- SMUSD r8, r6, r4
         21 => x"E3E07387", -- ASR r7, r7, #7
         22 => x"ECA79488", -- PKHBT r9, r7, r8, LSL #9
         23 => x"ED85A009", -- SADD16 r10, r5, r9
         24 => x"ED25B009", -- SSUB16 r11, r5, r9
-        25 => x"E580A084", -- STR r10, [buf_b+1]
-        26 => x"E580B094", -- STR r11, [buf_b+5]
+        25 => x"E580A084", -- STR r10, [dmem_bank1+1]
+        26 => x"E580B094", -- STR r11, [dmem_bank1+5]
         others => INSTR_HALT
     );
 
@@ -95,26 +95,26 @@ architecture rtl of mcu4_worker_instr_rom is
          1 => x"E3A0105B", -- MOV r1, #91
          2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
          3 => x"ED204003", -- SSUB16 r4, r0, r3
-         4 => x"E5905050", -- LDR r5, [buf_a+4]
-         5 => x"E5906054", -- LDR r6, [buf_a+5]
+         4 => x"E5905050", -- LDR r5, [dmem_bank0+4]
+         5 => x"E5906054", -- LDR r6, [dmem_bank0+5]
          6 => x"ED85A006", -- SADD16 r10, r5, r6
          7 => x"ED25B006", -- SSUB16 r11, r5, r6
-         8 => x"E580A090", -- STR r10, [buf_b+4]
-         9 => x"E580B094", -- STR r11, [buf_b+5]
-        10 => x"E5905090", -- LDR r5, [buf_b+4]
-        11 => x"E5906098", -- LDR r6, [buf_b+6]
+         8 => x"E580A090", -- STR r10, [dmem_bank1+4]
+         9 => x"E580B094", -- STR r11, [dmem_bank1+5]
+        10 => x"E5905090", -- LDR r5, [dmem_bank1+4]
+        11 => x"E5906098", -- LDR r6, [dmem_bank1+6]
         12 => x"ED85A006", -- SADD16 r10, r5, r6
         13 => x"ED25B006", -- SSUB16 r11, r5, r6
-        14 => x"E580A050", -- STR r10, [buf_a+4]
-        15 => x"E580B058", -- STR r11, [buf_a+6]
+        14 => x"E580A050", -- STR r10, [dmem_bank0+4]
+        15 => x"E580B058", -- STR r11, [dmem_bank0+6]
         16 => INSTR_NOP,   -- NOP
-        17 => x"E5905048", -- LDR r5, [buf_a+2]
-        18 => x"E5906058", -- LDR r6, [buf_a+6]
+        17 => x"E5905048", -- LDR r5, [dmem_bank0+2]
+        18 => x"E5906058", -- LDR r6, [dmem_bank0+6]
         19 => x"ED009006", -- SSAX r9, r0, r6
         20 => x"ED85A009", -- SADD16 r10, r5, r9
         21 => x"ED25B009", -- SSUB16 r11, r5, r9
-        22 => x"E580A088", -- STR r10, [buf_b+2]
-        23 => x"E580B098", -- STR r11, [buf_b+6]
+        22 => x"E580A088", -- STR r10, [dmem_bank1+2]
+        23 => x"E580B098", -- STR r11, [dmem_bank1+6]
         24 => INSTR_NOP,   -- NOP
         25 => INSTR_NOP,   -- NOP
         26 => INSTR_NOP,   -- NOP
@@ -126,29 +126,29 @@ architecture rtl of mcu4_worker_instr_rom is
          1 => x"E3A0105B", -- MOV r1, #91
          2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
          3 => x"ED204003", -- SSUB16 r4, r0, r3
-         4 => x"E5905058", -- LDR r5, [buf_a+6]
-         5 => x"E590605C", -- LDR r6, [buf_a+7]
+         4 => x"E5905058", -- LDR r5, [dmem_bank0+6]
+         5 => x"E590605C", -- LDR r6, [dmem_bank0+7]
          6 => x"ED85A006", -- SADD16 r10, r5, r6
          7 => x"ED25B006", -- SSUB16 r11, r5, r6
-         8 => x"E580A098", -- STR r10, [buf_b+6]
-         9 => x"E580B09C", -- STR r11, [buf_b+7]
-        10 => x"E5905094", -- LDR r5, [buf_b+5]
-        11 => x"E590609C", -- LDR r6, [buf_b+7]
+         8 => x"E580A098", -- STR r10, [dmem_bank1+6]
+         9 => x"E580B09C", -- STR r11, [dmem_bank1+7]
+        10 => x"E5905094", -- LDR r5, [dmem_bank1+5]
+        11 => x"E590609C", -- LDR r6, [dmem_bank1+7]
         12 => x"ED009006", -- SSAX r9, r0, r6
         13 => x"ED85A009", -- SADD16 r10, r5, r9
         14 => x"ED25B009", -- SSUB16 r11, r5, r9
-        15 => x"E580A054", -- STR r10, [buf_a+5]
-        16 => x"E580B05C", -- STR r11, [buf_a+7]
-        17 => x"E590504C", -- LDR r5, [buf_a+3]
-        18 => x"E590605C", -- LDR r6, [buf_a+7]
+        15 => x"E580A054", -- STR r10, [dmem_bank0+5]
+        16 => x"E580B05C", -- STR r11, [dmem_bank0+7]
+        17 => x"E590504C", -- LDR r5, [dmem_bank0+3]
+        18 => x"E590605C", -- LDR r6, [dmem_bank0+7]
         19 => x"EC667004", -- SMUSD r7, r6, r4
         20 => x"EC468004", -- SMUAD r8, r6, r4
         21 => x"E3E07387", -- ASR r7, r7, #7
         22 => x"ECA79488", -- PKHBT r9, r7, r8, LSL #9
         23 => x"ED85A009", -- SADD16 r10, r5, r9
         24 => x"ED25B009", -- SSUB16 r11, r5, r9
-        25 => x"E580A08C", -- STR r10, [buf_b+3]
-        26 => x"E580B09C", -- STR r11, [buf_b+7]
+        25 => x"E580A08C", -- STR r10, [dmem_bank1+3]
+        26 => x"E580B09C", -- STR r11, [dmem_bank1+7]
         others => INSTR_HALT
     );
 
@@ -163,14 +163,14 @@ architecture rtl of mcu4_worker_instr_rom is
          5 => x"E0035001", -- AND r5, r3, r1
          6 => x"E1856002", -- ORR r6, r5, r2
          7 => x"E1A07006", -- MOV r7, r6
-         8 => x"E5908040", -- LDR r8, [buf_a+0]
+         8 => x"E5908040", -- LDR r8, [r0, #0x40] ; data[0]
          9 => x"E0889007", -- ADD r9, r8, r7
-        10 => x"E5809080", -- STR r9, [buf_b+0]
+        10 => x"E5809044", -- STR r9, [r0, #0x44] ; data[1]
         11 => x"EA000000", -- B selftest_after_skip
-        12 => x"E5801084", -- STR r1, [buf_b+1] ; skipped
+        12 => x"E5801048", -- STR r1, [r0, #0x48] ; data[2], skipped
         13 => x"EB000002", -- BL selftest_subroutine
-        14 => x"E5801084", -- STR r1, [buf_b+1]
-        15 => x"E580A088", -- STR r10, [buf_b+2]
+        14 => x"E5801048", -- STR r1, [r0, #0x48] ; data[2]
+        15 => x"E580A04C", -- STR r10, [r0, #0x4C] ; data[3]
         16 => INSTR_HALT,   -- HALT
         17 => x"E089A004", -- ADD r10, r9, r4
         18 => x"E1A0F00E", -- MOV pc, lr
@@ -251,28 +251,28 @@ architecture rtl of mcu4_worker_instr_rom is
         elsif instr_value(31 downto 20) = x"E59" then
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             word_addr := to_integer(unsigned(instr_value(11 downto 0))) / 4;
-            if word_addr >= WORK_BUF_A_BASE_WORD
-               and word_addr < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
-                op_value := WOP_LDR_A;
-                idx_value := word_addr - WORK_BUF_A_BASE_WORD;
-            elsif word_addr >= WORK_BUF_B_BASE_WORD
-                  and word_addr < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
-                op_value := WOP_LDR_B;
-                idx_value := word_addr - WORK_BUF_B_BASE_WORD;
+            if word_addr >= DMEM_BANK0_BASE_WORD
+               and word_addr < DMEM_BANK0_BASE_WORD + DMEM_BANK_WORDS then
+                op_value := WOP_LDR_BANK0;
+                idx_value := word_addr - DMEM_BANK0_BASE_WORD;
+            elsif word_addr >= DMEM_BANK1_BASE_WORD
+                  and word_addr < DMEM_BANK1_BASE_WORD + DMEM_BANK_WORDS then
+                op_value := WOP_LDR_BANK1;
+                idx_value := word_addr - DMEM_BANK1_BASE_WORD;
             else
                 illegal_value := '1';
             end if;
         elsif instr_value(31 downto 20) = x"E58" then
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             word_addr := to_integer(unsigned(instr_value(11 downto 0))) / 4;
-            if word_addr >= WORK_BUF_A_BASE_WORD
-               and word_addr < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
-                op_value := WOP_STR_A;
-                idx_value := word_addr - WORK_BUF_A_BASE_WORD;
-            elsif word_addr >= WORK_BUF_B_BASE_WORD
-                  and word_addr < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
-                op_value := WOP_STR_B;
-                idx_value := word_addr - WORK_BUF_B_BASE_WORD;
+            if word_addr >= DMEM_BANK0_BASE_WORD
+               and word_addr < DMEM_BANK0_BASE_WORD + DMEM_BANK_WORDS then
+                op_value := WOP_STR_BANK0;
+                idx_value := word_addr - DMEM_BANK0_BASE_WORD;
+            elsif word_addr >= DMEM_BANK1_BASE_WORD
+                  and word_addr < DMEM_BANK1_BASE_WORD + DMEM_BANK_WORDS then
+                op_value := WOP_STR_BANK1;
+                idx_value := word_addr - DMEM_BANK1_BASE_WORD;
             else
                 illegal_value := '1';
             end if;

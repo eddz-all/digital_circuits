@@ -94,9 +94,9 @@ standard ARM DSP packed subtract, not with a custom twiddle instruction.
 The 8-point radix-2 DIT FFT remains split across three stages:
 
 ```text
-stage0: buf_a -> buf_b, W0 butterflies
-stage1: buf_b -> buf_a, W0/W2 butterflies
-stage2: buf_a -> buf_b, W0/W1/W2/W3 butterflies
+stage0: dmem_bank0 -> dmem_bank1, W0 butterflies
+stage1: dmem_bank1 -> dmem_bank0, W0/W2 butterflies
+stage2: dmem_bank0 -> dmem_bank1, W0/W1/W2/W3 butterflies
 ```
 
 Each butterfly is performed by ARM/ARM-DSP style operations:

@@ -13,27 +13,27 @@ entity mcu4_worker_core is
         clk : in std_logic;
         rst : in std_logic;
 
-        buf_a_raddr : out std_logic_vector(2 downto 0);
-        buf_a_rdata : in  word_t;
-        buf_a_raddr2 : out std_logic_vector(2 downto 0);
-        buf_a_rdata2 : in  word_t;
-        buf_b_raddr : out std_logic_vector(2 downto 0);
-        buf_b_rdata : in  word_t;
-        buf_b_raddr2 : out std_logic_vector(2 downto 0);
-        buf_b_rdata2 : in  word_t;
+        dmem_bank0_raddr : out std_logic_vector(2 downto 0);
+        dmem_bank0_rdata : in  word_t;
+        dmem_bank0_raddr2 : out std_logic_vector(2 downto 0);
+        dmem_bank0_rdata2 : in  word_t;
+        dmem_bank1_raddr : out std_logic_vector(2 downto 0);
+        dmem_bank1_rdata : in  word_t;
+        dmem_bank1_raddr2 : out std_logic_vector(2 downto 0);
+        dmem_bank1_rdata2 : in  word_t;
 
-        buf_a_we    : out std_logic;
-        buf_a_waddr : out std_logic_vector(2 downto 0);
-        buf_a_wdata : out word_t;
-        buf_a_we2    : out std_logic;
-        buf_a_waddr2 : out std_logic_vector(2 downto 0);
-        buf_a_wdata2 : out word_t;
-        buf_b_we    : out std_logic;
-        buf_b_waddr : out std_logic_vector(2 downto 0);
-        buf_b_wdata : out word_t;
-        buf_b_we2    : out std_logic;
-        buf_b_waddr2 : out std_logic_vector(2 downto 0);
-        buf_b_wdata2 : out word_t;
+        dmem_bank0_we    : out std_logic;
+        dmem_bank0_waddr : out std_logic_vector(2 downto 0);
+        dmem_bank0_wdata : out word_t;
+        dmem_bank0_we2    : out std_logic;
+        dmem_bank0_waddr2 : out std_logic_vector(2 downto 0);
+        dmem_bank0_wdata2 : out word_t;
+        dmem_bank1_we    : out std_logic;
+        dmem_bank1_waddr : out std_logic_vector(2 downto 0);
+        dmem_bank1_wdata : out word_t;
+        dmem_bank1_we2    : out std_logic;
+        dmem_bank1_waddr2 : out std_logic_vector(2 downto 0);
+        dmem_bank1_wdata2 : out word_t;
 
         halted      : out std_logic;
         illegal     : out std_logic;
@@ -58,10 +58,10 @@ architecture rtl of mcu4_worker_core is
     type worker_pair_t is (
         WPAIR_NONE,
         WPAIR_MOV_IMM,
-        WPAIR_LDR_A,
-        WPAIR_LDR_B,
-        WPAIR_STR_A,
-        WPAIR_STR_B,
+        WPAIR_LDR_BANK0,
+        WPAIR_LDR_BANK1,
+        WPAIR_STR_BANK0,
+        WPAIR_STR_BANK1,
         WPAIR_SADD16_SSUB16
     );
 
@@ -158,15 +158,15 @@ architecture rtl of mcu4_worker_core is
     signal exec_dsp_b    : word_t := (others => '0');
     signal exec_pair_kind : worker_pair_t := WPAIR_NONE;
     signal pair_mov_imm_exec : std_logic := '0';
-    signal pair_ldr_a_exec : std_logic := '0';
-    signal pair_ldr_b_exec : std_logic := '0';
-    signal pair_str_a_exec : std_logic := '0';
-    signal pair_str_b_exec : std_logic := '0';
+    signal pair_ldr_bank0_exec : std_logic := '0';
+    signal pair_ldr_bank1_exec : std_logic := '0';
+    signal pair_str_bank0_exec : std_logic := '0';
+    signal pair_str_bank1_exec : std_logic := '0';
     signal pair_sadd16_ssub16_exec : std_logic := '0';
-    signal pair_ldr_a_mem : std_logic := '0';
-    signal pair_ldr_b_mem : std_logic := '0';
-    signal pair_str_a_mem : std_logic := '0';
-    signal pair_str_b_mem : std_logic := '0';
+    signal pair_ldr_bank0_mem : std_logic := '0';
+    signal pair_ldr_bank1_mem : std_logic := '0';
+    signal pair_str_bank0_mem : std_logic := '0';
+    signal pair_str_bank1_mem : std_logic := '0';
 
     signal dsp_a         : word_t := (others => '0');
     signal dsp_b         : word_t := (others => '0');
@@ -209,15 +209,15 @@ architecture rtl of mcu4_worker_core is
     attribute max_fanout of decode_ctrl_debug : signal is 16;
     attribute max_fanout of dsp_ctrl_debug : signal is 16;
     attribute max_fanout of pair_mov_imm_exec : signal is 8;
-    attribute max_fanout of pair_ldr_a_exec : signal is 8;
-    attribute max_fanout of pair_ldr_b_exec : signal is 8;
-    attribute max_fanout of pair_str_a_exec : signal is 8;
-    attribute max_fanout of pair_str_b_exec : signal is 8;
+    attribute max_fanout of pair_ldr_bank0_exec : signal is 8;
+    attribute max_fanout of pair_ldr_bank1_exec : signal is 8;
+    attribute max_fanout of pair_str_bank0_exec : signal is 8;
+    attribute max_fanout of pair_str_bank1_exec : signal is 8;
     attribute max_fanout of pair_sadd16_ssub16_exec : signal is 8;
-    attribute max_fanout of pair_ldr_a_mem : signal is 4;
-    attribute max_fanout of pair_ldr_b_mem : signal is 4;
-    attribute max_fanout of pair_str_a_mem : signal is 4;
-    attribute max_fanout of pair_str_b_mem : signal is 4;
+    attribute max_fanout of pair_ldr_bank0_mem : signal is 4;
+    attribute max_fanout of pair_ldr_bank1_mem : signal is 4;
+    attribute max_fanout of pair_str_bank0_mem : signal is 4;
+    attribute max_fanout of pair_str_bank1_mem : signal is 4;
     attribute max_fanout of rst_ctrl_local : signal is 16;
     attribute max_fanout of rst_exec_local : signal is 16;
     attribute max_fanout of rst_rf_decode_local : signal is 16;
@@ -381,22 +381,22 @@ architecture rtl of mcu4_worker_core is
               and op_b = WOP_MOV_IMM
               and rd_a /= rd_b then
             return WPAIR_MOV_IMM;
-        elsif op_a = WOP_LDR_A
-              and op_b = WOP_LDR_A
+        elsif op_a = WOP_LDR_BANK0
+              and op_b = WOP_LDR_BANK0
               and rd_a /= rd_b then
-            return WPAIR_LDR_A;
-        elsif op_a = WOP_LDR_B
-              and op_b = WOP_LDR_B
+            return WPAIR_LDR_BANK0;
+        elsif op_a = WOP_LDR_BANK1
+              and op_b = WOP_LDR_BANK1
               and rd_a /= rd_b then
-            return WPAIR_LDR_B;
-        elsif op_a = WOP_STR_A
-              and op_b = WOP_STR_A
+            return WPAIR_LDR_BANK1;
+        elsif op_a = WOP_STR_BANK0
+              and op_b = WOP_STR_BANK0
               and idx_a /= idx_b then
-            return WPAIR_STR_A;
-        elsif op_a = WOP_STR_B
-              and op_b = WOP_STR_B
+            return WPAIR_STR_BANK0;
+        elsif op_a = WOP_STR_BANK1
+              and op_b = WOP_STR_BANK1
               and idx_a /= idx_b then
-            return WPAIR_STR_B;
+            return WPAIR_STR_BANK1;
         elsif op_a = WOP_SADD16
               and op_b = WOP_SSUB16
               and rn_a = rn_b
@@ -453,56 +453,56 @@ begin
             dec_illegal => fetch_pair_dec_illegal
         );
 
-    buf_a_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
-        when run_ctrl_mem = '1' and (exec_op = WOP_LDR_A or exec_op = WOP_STR_A)
+    dmem_bank0_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
+        when run_ctrl_mem = '1' and (exec_op = WOP_LDR_BANK0 or exec_op = WOP_STR_BANK0)
         else (others => '0');
-    buf_a_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
-        when run_ctrl_pair = '1' and pair_ldr_a_mem = '1'
+    dmem_bank0_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
+        when run_ctrl_pair = '1' and pair_ldr_bank0_mem = '1'
         else (others => '0');
-    buf_b_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
-        when run_ctrl_mem = '1' and (exec_op = WOP_LDR_B or exec_op = WOP_STR_B)
+    dmem_bank1_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
+        when run_ctrl_mem = '1' and (exec_op = WOP_LDR_BANK1 or exec_op = WOP_STR_BANK1)
         else (others => '0');
-    buf_b_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
-        when run_ctrl_pair = '1' and pair_ldr_b_mem = '1'
+    dmem_bank1_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
+        when run_ctrl_pair = '1' and pair_ldr_bank1_mem = '1'
         else (others => '0');
 
-    buf_a_we <= '1' when rst_mem_local = '0'
+    dmem_bank0_we <= '1' when rst_mem_local = '0'
                          and halted_reg = '0'
                          and illegal_reg = '0'
                          and run_ctrl_mem = '1'
                          and exec_illegal = '0'
-                         and exec_op = WOP_STR_A
+                         and exec_op = WOP_STR_BANK0
                 else '0';
-    buf_a_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
-    buf_a_wdata <= exec_rd_data;
-    buf_a_we2 <= '1' when rst_mem_local = '0'
+    dmem_bank0_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
+    dmem_bank0_wdata <= exec_rd_data;
+    dmem_bank0_we2 <= '1' when rst_mem_local = '0'
                           and halted_reg = '0'
                           and illegal_reg = '0'
                           and run_ctrl_pair = '1'
                           and exec_illegal = '0'
-                          and pair_str_a_mem = '1'
+                          and pair_str_bank0_mem = '1'
                  else '0';
-    buf_a_waddr2 <= std_logic_vector(to_unsigned(dec_idx, 3));
-    buf_a_wdata2 <= dec_rd_data;
+    dmem_bank0_waddr2 <= std_logic_vector(to_unsigned(dec_idx, 3));
+    dmem_bank0_wdata2 <= dec_rd_data;
 
-    buf_b_we <= '1' when rst_mem_local = '0'
+    dmem_bank1_we <= '1' when rst_mem_local = '0'
                          and halted_reg = '0'
                          and illegal_reg = '0'
                          and run_ctrl_mem = '1'
                          and exec_illegal = '0'
-                         and exec_op = WOP_STR_B
+                         and exec_op = WOP_STR_BANK1
                 else '0';
-    buf_b_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
-    buf_b_wdata <= exec_rd_data;
-    buf_b_we2 <= '1' when rst_mem_local = '0'
+    dmem_bank1_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
+    dmem_bank1_wdata <= exec_rd_data;
+    dmem_bank1_we2 <= '1' when rst_mem_local = '0'
                           and halted_reg = '0'
                           and illegal_reg = '0'
                           and run_ctrl_pair = '1'
                           and exec_illegal = '0'
-                          and pair_str_b_mem = '1'
+                          and pair_str_bank1_mem = '1'
                  else '0';
-    buf_b_waddr2 <= std_logic_vector(to_unsigned(dec_idx, 3));
-    buf_b_wdata2 <= dec_rd_data;
+    dmem_bank1_waddr2 <= std_logic_vector(to_unsigned(dec_idx, 3));
+    dmem_bank1_wdata2 <= dec_rd_data;
 
     process(clk)
         variable res : word_t;
@@ -628,31 +628,31 @@ begin
             exec_pair_kind <= next_pair_kind;
 
             pair_mov_imm_exec <= '0';
-            pair_ldr_a_exec <= '0';
-            pair_ldr_b_exec <= '0';
-            pair_str_a_exec <= '0';
-            pair_str_b_exec <= '0';
+            pair_ldr_bank0_exec <= '0';
+            pair_ldr_bank1_exec <= '0';
+            pair_str_bank0_exec <= '0';
+            pair_str_bank1_exec <= '0';
             pair_sadd16_ssub16_exec <= '0';
-            pair_ldr_a_mem <= '0';
-            pair_ldr_b_mem <= '0';
-            pair_str_a_mem <= '0';
-            pair_str_b_mem <= '0';
+            pair_ldr_bank0_mem <= '0';
+            pair_ldr_bank1_mem <= '0';
+            pair_str_bank0_mem <= '0';
+            pair_str_bank1_mem <= '0';
 
             case next_pair_kind is
                 when WPAIR_MOV_IMM =>
                     pair_mov_imm_exec <= '1';
-                when WPAIR_LDR_A =>
-                    pair_ldr_a_exec <= '1';
-                    pair_ldr_a_mem <= '1';
-                when WPAIR_LDR_B =>
-                    pair_ldr_b_exec <= '1';
-                    pair_ldr_b_mem <= '1';
-                when WPAIR_STR_A =>
-                    pair_str_a_exec <= '1';
-                    pair_str_a_mem <= '1';
-                when WPAIR_STR_B =>
-                    pair_str_b_exec <= '1';
-                    pair_str_b_mem <= '1';
+                when WPAIR_LDR_BANK0 =>
+                    pair_ldr_bank0_exec <= '1';
+                    pair_ldr_bank0_mem <= '1';
+                when WPAIR_LDR_BANK1 =>
+                    pair_ldr_bank1_exec <= '1';
+                    pair_ldr_bank1_mem <= '1';
+                when WPAIR_STR_BANK0 =>
+                    pair_str_bank0_exec <= '1';
+                    pair_str_bank0_mem <= '1';
+                when WPAIR_STR_BANK1 =>
+                    pair_str_bank1_exec <= '1';
+                    pair_str_bank1_mem <= '1';
                 when WPAIR_SADD16_SSUB16 =>
                     pair_sadd16_ssub16_exec <= '1';
                 when WPAIR_NONE =>
@@ -1049,23 +1049,23 @@ begin
                                 wb2_valid := true;
                                 wb2_rd := dec_rd;
                                 wb2_data := std_logic_vector(to_signed(dec_imm, 32));
-                            elsif pair_ldr_a_exec = '1' then
+                            elsif pair_ldr_bank0_exec = '1' then
                                 pair_valid := true;
                                 wb_valid := true;
                                 wb_rd := exec_rd;
-                                wb_data := buf_a_rdata;
+                                wb_data := dmem_bank0_rdata;
                                 wb2_valid := true;
                                 wb2_rd := dec_rd;
-                                wb2_data := buf_a_rdata2;
-                            elsif pair_ldr_b_exec = '1' then
+                                wb2_data := dmem_bank0_rdata2;
+                            elsif pair_ldr_bank1_exec = '1' then
                                 pair_valid := true;
                                 wb_valid := true;
                                 wb_rd := exec_rd;
-                                wb_data := buf_b_rdata;
+                                wb_data := dmem_bank1_rdata;
                                 wb2_valid := true;
                                 wb2_rd := dec_rd;
-                                wb2_data := buf_b_rdata2;
-                            elsif pair_str_a_exec = '1' or pair_str_b_exec = '1' then
+                                wb2_data := dmem_bank1_rdata2;
+                            elsif pair_str_bank0_exec = '1' or pair_str_bank1_exec = '1' then
                                 pair_valid := true;
                             elsif pair_sadd16_ssub16_exec = '1' then
                                 pair_valid := true;
@@ -1132,14 +1132,14 @@ begin
                                         wb_valid := true;
                                         wb_rd := exec_rd;
                                         wb_data := pkhbt_shift(exec_rn_data, exec_rm_data, exec_imm);
-                                    when WOP_LDR_A =>
+                                    when WOP_LDR_BANK0 =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
-                                        wb_data := buf_a_rdata;
-                                    when WOP_LDR_B =>
+                                        wb_data := dmem_bank0_rdata;
+                                    when WOP_LDR_BANK1 =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
-                                        wb_data := buf_b_rdata;
+                                        wb_data := dmem_bank1_rdata;
                                     when WOP_SADD16 =>
                                         wb_valid := true;
                                         wb_rd := exec_rd;
@@ -1188,7 +1188,7 @@ begin
                                         wb_data := std_logic_vector(to_unsigned(next_seq_pc(exec_pc_reg) * 4, 32));
                                         branch_taken := true;
                                         branch_target := clamp_pc(exec_imm);
-                                    when WOP_STR_A | WOP_STR_B =>
+                                    when WOP_STR_BANK0 | WOP_STR_BANK1 =>
                                         null;
                                     when WOP_HALT =>
                                         halted_reg <= '1';

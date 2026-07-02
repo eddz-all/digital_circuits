@@ -40,6 +40,69 @@ constrs/board_top.xdc
 
 If Vivado reports a duplicate clock constraint between `board_top.xdc` and `clk_wiz_0.xdc`, keep only one `create_clock` on `clk_in1`. This is a constraint cleanup issue, not an RTL issue.
 
+## Basic Instruction Board Self-Test
+
+For the basic instruction/PPT demonstration, use the separate board top:
+
+```text
+rtl/board_top_basic_test.vhd
+```
+
+Set `board_top_basic_test` as the top module. This top directly instantiates one
+worker core with:
+
+```text
+WORKER_ID  = 0
+PROGRAM_ID = 1
+```
+
+It does not use `test_ROM`, `verify_RAM`, or `clk_wiz_0`. It runs from the board
+50 MHz input clock and contains a small synthesizable checker. The checker keeps
+one signal high while the basic program is correct:
+
+```text
+test = 1  -- no error observed
+test = 0  -- error latched; reset is required to retry
+```
+
+The checker watches generic MCU behavior rather than private registers:
+
+- `illegal` must never assert.
+- `pc_debug` and `instr_debug` must match the explicit `SELFTEST_ROM` words.
+- the self-test must not access the second internal data region.
+- `data[1]`, `data[2]`, and `data[3]` must each be written once with the expected values.
+- the worker must halt before the timeout.
+
+Use this constraints file:
+
+```text
+constrs/board_top_basic_test.xdc
+```
+
+Generate one extra ILA IP for this top:
+
+```text
+Component name: ila_basic
+probe0 width:   1 bit
+probe0 signal:  test
+```
+
+Recommended capture for presentation:
+
+```text
+Use immediate/manual capture, release reset, and confirm test stays 1.
+```
+
+Optional failure trigger:
+
+```text
+test == 0
+```
+
+If the captured `test` signal stays high for the whole run, the basic instruction
+self-test passed on board. The same `test` signal is also exposed as a top-level
+port and constrained to pin `G9`, matching the reference test pin.
+
 ## Generate IP
 
 ### `clk_wiz_0`
@@ -188,7 +251,7 @@ addr 0F  D874
 - This version uses four parallel worker cores rather than a memory-mapped butterfly accelerator.
 - Each worker has its own PC, 32-bit instruction ROM, decoder, register file, ARM-style ALU/DSP execution, work-memory ports, and halt state.
 - The worker instruction words are visible in `rtl/mcu4_worker_instr_rom.vhd` as `FFT_ROM_W0..FFT_ROM_W3` and `SELFTEST_ROM`.
-- FFT data is stored in the MCU work memory `buf_a/buf_b`, implemented as a small multi-port register array.
+- FFT data is stored in MCU data memory banks `dmem_bank0/dmem_bank1`, implemented as small multi-port register arrays.
 - The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
 - Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
 - `SMUAD` and `SMUSD` are internally multi-cycle to shorten the DSP critical path for 200 MHz-class timing.

@@ -85,28 +85,28 @@ begin
         elsif instr_word(31 downto 20) = x"E59" then
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             word_addr := to_integer(unsigned(instr_word(11 downto 0))) / 4;
-            if word_addr >= WORK_BUF_A_BASE_WORD
-               and word_addr < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
-                op <= WOP_LDR_A;
-                idx <= word_addr - WORK_BUF_A_BASE_WORD;
-            elsif word_addr >= WORK_BUF_B_BASE_WORD
-                  and word_addr < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
-                op <= WOP_LDR_B;
-                idx <= word_addr - WORK_BUF_B_BASE_WORD;
+            if word_addr >= DMEM_BANK0_BASE_WORD
+               and word_addr < DMEM_BANK0_BASE_WORD + DMEM_BANK_WORDS then
+                op <= WOP_LDR_BANK0;
+                idx <= word_addr - DMEM_BANK0_BASE_WORD;
+            elsif word_addr >= DMEM_BANK1_BASE_WORD
+                  and word_addr < DMEM_BANK1_BASE_WORD + DMEM_BANK_WORDS then
+                op <= WOP_LDR_BANK1;
+                idx <= word_addr - DMEM_BANK1_BASE_WORD;
             else
                 illegal <= '1';
             end if;
         elsif instr_word(31 downto 20) = x"E58" then
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             word_addr := to_integer(unsigned(instr_word(11 downto 0))) / 4;
-            if word_addr >= WORK_BUF_A_BASE_WORD
-               and word_addr < WORK_BUF_A_BASE_WORD + WORK_BUF_WORDS then
-                op <= WOP_STR_A;
-                idx <= word_addr - WORK_BUF_A_BASE_WORD;
-            elsif word_addr >= WORK_BUF_B_BASE_WORD
-                  and word_addr < WORK_BUF_B_BASE_WORD + WORK_BUF_WORDS then
-                op <= WOP_STR_B;
-                idx <= word_addr - WORK_BUF_B_BASE_WORD;
+            if word_addr >= DMEM_BANK0_BASE_WORD
+               and word_addr < DMEM_BANK0_BASE_WORD + DMEM_BANK_WORDS then
+                op <= WOP_STR_BANK0;
+                idx <= word_addr - DMEM_BANK0_BASE_WORD;
+            elsif word_addr >= DMEM_BANK1_BASE_WORD
+                  and word_addr < DMEM_BANK1_BASE_WORD + DMEM_BANK_WORDS then
+                op <= WOP_STR_BANK1;
+                idx <= word_addr - DMEM_BANK1_BASE_WORD;
             else
                 illegal <= '1';
             end if;

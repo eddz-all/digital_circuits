@@ -45,6 +45,7 @@ rtl/mcu4_worker_core.vhd
 rtl/mcu4_multicycle_core.vhd
 rtl/mcu_fft_system.vhd
 rtl/board_top.vhd
+rtl/board_top_basic_test.vhd
 ```
 
 Testbenches:
@@ -55,12 +56,14 @@ tb/mcu4_multicycle_core_min_arm_tb.vhd
 tb/mcu4_worker_core_min_arm_tb.vhd
 tb/mcu_fft_system_tb.vhd
 tb/board_top_tb.vhd
+tb/board_top_basic_test_tb.vhd
 ```
 
 Constraints:
 
 ```text
 constrs/board_top.xdc
+constrs/board_top_basic_test.xdc
 ```
 
 Collaboration requirements:
@@ -84,8 +87,8 @@ read path is replicated per worker for timing, while writes update every
 replica:
 
 ```text
-buf_a[0..7]
-buf_b[0..7]
+dmem_bank0[0..7]
+dmem_bank1[0..7]
 ```
 
 Each word is packed complex data:
@@ -167,10 +170,12 @@ readable copy in `asm/mcu4_basic_selftest.s`. It exercises:
 MOV, ADD, SUB, AND, ORR, LDR, STR, B, BL, MOV pc, lr
 ```
 
-The worker-level testbench drives `buf_a[0]=5` and checks stores to `buf_b[0]=8`,
-`buf_b[1]=7`, and `buf_b[2]=15`. The multicycle-level test leaves `buf_a[0]=0`,
-so it checks the same program path with `buf_b[0]=3` and `buf_b[2]=10` at the
-16-bit output port.
+The worker-level testbench drives the self-test data region with `data[0]=5`
+at byte address `0x40`, then checks stores to `data[1]=8`, `data[2]=7`, and
+`data[3]=15`. It also asserts that the basic self-test does not access the
+second internal data region. The multicycle-level test leaves `data[0]=0`, so
+it checks the same program path with `data[1]=3`, `data[2]=7`, and `data[3]=10`
+at the 16-bit output port.
 
 ## Expected Output
 

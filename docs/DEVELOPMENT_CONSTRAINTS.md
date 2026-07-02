@@ -44,7 +44,7 @@ ACTIVE_CORES 改变了单个 core 的 ISA。
 - 验收会看上板结果，不以仿真结果替代现场结果。
 - timing report 必须满足时序，WNS 不能为负。
 - 性能时间按 `cnt` 计数乘以时钟周期计算。
-- 资源效率按 `6 * LUT + 10 * FF` 这类口径统计，DSP 资源另见第 8 节。
+- 资源效率按 `6 * LUT + 10 * FF` 这类口径统计，DSP 资源另见第 9 节。
 
 PPT 中排序与 FFT 都要求展示对应汇编指令。即使我们当前主攻 FFT，架构也必须能解释为
 通用 MCU，而不是 FFT 专用芯片。
@@ -125,7 +125,88 @@ PROGRAM_ID = 1, ACTIVE_CORES = 1  -- 基础指令/PPT 自测程序
 `PROGRAM_ID` 只选择程序，`ACTIVE_CORES` 只选择启用几个 worker。二者都不应该改变某条指令
 本身的语义。
 
-## 6. 允许的优化
+## 6. 命名风格与抽象层级
+
+命名必须服务“通用 MCU”这个口径。不要让代码、注释或文档看起来像 FFT 专用数据通路。
+
+### 程序与答辩口径
+
+汇编清单、学习文档和答辩说明中，基础指令测试应按普通 MCU 数据内存来讲：
+
+```asm
+LDR r8, [r0, #0x40]
+STR r9, [r0, #0x44]
+```
+
+可以把这些地址解释成：
+
+```text
+data[0]  byte address 0x40
+data[1]  byte address 0x44
+data[2]  byte address 0x48
+data[3]  byte address 0x4C
+```
+
+基础测试不应该在程序注释里写成 `LDR [bank0+0]`、`STR [bank1+0]` 这类实现口径。`bank0/bank1`
+是 RTL 内部存储组织，不是指令格式。
+
+### RTL 内部口径
+
+RTL 里允许使用：
+
+```text
+dmem_bank0
+dmem_bank1
+DMEM_BANK0_BASE_WORD
+DMEM_BANK1_BASE_WORD
+dmem_bank_t
+WOP_LDR_BANK0 / WOP_STR_BANK0
+WOP_LDR_BANK1 / WOP_STR_BANK1
+```
+
+含义是“data memory bank 0/1”，也可以对外解释成一块数据内存里的两个地址区域。
+这些名字只描述存储实现和译码后的内部端口，不表示有 FFT 专用 buffer。
+
+### 禁止回退的旧命名
+
+新代码、注释和文档中不要再引入：
+
+```text
+buf_a / buf_b
+WORK_BUF_A_BASE_WORD / WORK_BUF_B_BASE_WORD
+complex8_array_t
+WOP_LDR_A / WOP_STR_B
+```
+
+`buf_a/buf_b` 容易被理解成 FFT ping-pong buffer。当前统一写成 `dmem_bank0/dmem_bank1`。
+如果写给非 RTL 读者看，优先写成 `data[n]` 或“数据内存地址”。
+
+### 寄存器命名
+
+公共 package 里只保留通用寄存器编号：
+
+```text
+REG_R0..REG_R15
+REG_LR
+REG_PC
+```
+
+不要在公共 RTL/package 中恢复 `REG_POS91`、`REG_TMP_RE`、`REG_EVEN` 这类 FFT 程序变量名。
+如果某个程序临时把 `r1` 用作 `+91`，只应写在该程序的汇编注释里，不能让硬件寄存器命名变成 FFT 专用。
+
+### LDR/STR 地址边界说明
+
+当前工程支持 ARM-like 的 `LDR/STR` 立即数地址形式，并由 decoder 把固定地址窗口映射到内部
+data memory bank。展示时可以说“普通 `LDR/STR` 访问数据地址”；但不要夸大成完整 ARM
+任意基址寄存器、任意偏移的大数据 RAM。
+
+一句话：
+
+```text
+程序视角是 data memory address；RTL 视角是 dmem_bank0/dmem_bank1；禁止再用 FFT buffer 命名。
+```
+
+## 7. 允许的优化
 
 允许做大胆的速度优化，资源可以适当放开，但优化依据必须来自通用指令属性、寄存器依赖和
 访存端口约束，而不是来自 FFT 固定位置。
@@ -148,7 +229,7 @@ PROGRAM_ID = 1, ACTIVE_CORES = 1  -- 基础指令/PPT 自测程序
 通常就是通用 MCU 优化；否则很可能是专用硬件捷径。
 ```
 
-## 7. 禁止事项
+## 8. 禁止事项
 
 以下行为会破坏验收口径，禁止加入：
 
@@ -165,7 +246,7 @@ PROGRAM_ID = 1, ACTIVE_CORES = 1  -- 基础指令/PPT 自测程序
 注意：代码中的 “DSP 指令路径” 指 ARM-DSP 风格指令执行逻辑，例如 `SMUAD/SMUSD`。
 这不等于允许使用 Xilinx FPGA 的 DSP48 物理资源。
 
-## 8. DSP 资源约束
+## 9. DSP 资源约束
 
 老师明确要求 MCU 内核不能使用 DSP 资源。推荐 Vivado 设置：
 
@@ -182,14 +263,14 @@ synthesis -max_dsp 0
 如果将来测试平台确实需要 DSP，需要单独证明 MCU core 本身没有使用 DSP；但当前最简单、
 最稳妥的做法是整个工程 `max_dsp=0`。
 
-## 9. I/O、内存与计数边界
+## 10. I/O、内存与计数边界
 
 当前 FFT 上板数据流：
 
 ```text
 test_ROM/test_vector_in
   -> mcu_fft_system 输入加载
-  -> mcu4_multicycle_core 工作内存 buf_a/buf_b
+  -> mcu4_multicycle_core 数据内存 dmem_bank0/dmem_bank1
   -> worker 执行 ROM 指令
   -> mcu_fft_system 输出 dump
   -> verify_RAM/verify_vector_out
@@ -203,10 +284,9 @@ test_ROM/test_vector_in
 - `cnt_start` 应靠近第一条 worker 指令读取。
 - `cnt_stop` 应靠近所有 active worker 最后一条指令完成或 halt。
 
-`buf_a/buf_b` 是 MCU 的工作数据内存，不是外部 `verify_RAM`。它可以为了多核并行和时序复制
-读口，但对指令来说仍应表现为普通 `LDR/STR` 可访问的工作内存。
+`dmem_bank0/dmem_bank1` 是 MCU 的工作数据内存，不是外部 `verify_RAM`。它可以理解成两块小数据内存，也可以理解成一块数据内存的两个地址区域。实现上可以为了多核并行和时序复制读口，但对指令来说仍应表现为普通 `LDR/STR` 可访问的工作内存。
 
-## 10. 基础指令测试要求
+## 11. 基础指令测试要求
 
 基础指令测试不能只靠 FFT 间接证明。必须保留：
 
@@ -236,7 +316,7 @@ halt / illegal
 不要为每条基础指令单独拉一堆专用信号。更好的证明方式是让指令把结果写入通用结果区，
 或者抓通用写回/存储 trace。
 
-## 11. 新增程序流程
+## 12. 新增程序流程
 
 以后如果加入排序、滤波、矩阵运算或其他程序，按以下流程：
 
@@ -250,7 +330,7 @@ halt / illegal
 如果新程序需要 ISA 尚不支持的能力，应该扩展通用指令、decoder 和执行路径；不要新增只服务
 该程序的隐藏数据通路。
 
-## 12. 提交前检查清单
+## 13. 提交前检查清单
 
 功能检查：
 
@@ -267,6 +347,7 @@ RTL/文档搜索：
 ```bash
 rg "ENABLE_FFT_WINDOW_FUSION|scheduled_pair_kind_for_pc|PC-scheduled|fft_.*window" rtl docs
 rg "butterfly|twiddle|FFT" rtl
+rg "buf_a|buf_b|WORK_BUF|complex8_array_t|WOP_LDR_A\\b|WOP_STR_B\\b" rtl docs asm --glob '!docs/DEVELOPMENT_CONSTRAINTS.md'
 ```
 
 第二条搜索不是要求完全没有 `FFT` 字样，而是检查是否出现了专用 opcode、固定 PC 窗口、
