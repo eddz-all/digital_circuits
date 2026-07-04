@@ -13,27 +13,17 @@ entity mcu4_worker_core is
     clk : in std_logic;
     rst : in std_logic;
 
-    dmem_bank0_raddr  : out std_logic_vector(2 downto 0);
-    dmem_bank0_rdata  : in word_t;
-    dmem_bank0_raddr2 : out std_logic_vector(2 downto 0);
-    dmem_bank0_rdata2 : in word_t;
-    dmem_bank1_raddr  : out std_logic_vector(2 downto 0);
-    dmem_bank1_rdata  : in word_t;
-    dmem_bank1_raddr2 : out std_logic_vector(2 downto 0);
-    dmem_bank1_rdata2 : in word_t;
+    dmem_raddr  : out word_t;
+    dmem_rdata  : in word_t;
+    dmem_raddr2 : out word_t;
+    dmem_rdata2 : in word_t;
 
-    dmem_bank0_we     : out std_logic;
-    dmem_bank0_waddr  : out std_logic_vector(2 downto 0);
-    dmem_bank0_wdata  : out word_t;
-    dmem_bank0_we2    : out std_logic;
-    dmem_bank0_waddr2 : out std_logic_vector(2 downto 0);
-    dmem_bank0_wdata2 : out word_t;
-    dmem_bank1_we     : out std_logic;
-    dmem_bank1_waddr  : out std_logic_vector(2 downto 0);
-    dmem_bank1_wdata  : out word_t;
-    dmem_bank1_we2    : out std_logic;
-    dmem_bank1_waddr2 : out std_logic_vector(2 downto 0);
-    dmem_bank1_wdata2 : out word_t;
+    dmem_we     : out std_logic;
+    dmem_waddr  : out word_t;
+    dmem_wdata  : out word_t;
+    dmem_we2    : out std_logic;
+    dmem_waddr2 : out word_t;
+    dmem_wdata2 : out word_t;
 
     halted      : out std_logic;
     illegal     : out std_logic;
@@ -57,10 +47,8 @@ architecture rtl of mcu4_worker_core is
 
   constant WPAIR_NONE_CODE          : std_logic_vector(2 downto 0) := "000";
   constant WPAIR_MOV_IMM_CODE       : std_logic_vector(2 downto 0) := "001";
-  constant WPAIR_LDR_BANK0_CODE     : std_logic_vector(2 downto 0) := "010";
-  constant WPAIR_LDR_BANK1_CODE     : std_logic_vector(2 downto 0) := "011";
-  constant WPAIR_STR_BANK0_CODE     : std_logic_vector(2 downto 0) := "100";
-  constant WPAIR_STR_BANK1_CODE     : std_logic_vector(2 downto 0) := "101";
+  constant WPAIR_LDR_CODE           : std_logic_vector(2 downto 0) := "010";
+  constant WPAIR_STR_CODE           : std_logic_vector(2 downto 0) := "100";
   constant WPAIR_SADD16_SSUB16_CODE : std_logic_vector(2 downto 0) := "110";
 
   signal state_reg           : worker_state_t                := S_FETCH;
@@ -120,7 +108,7 @@ architecture rtl of mcu4_worker_core is
   signal fetch_dec_rn           : natural range 0 to 15       := 0;
   signal fetch_dec_rm           : natural range 0 to 15       := 0;
   signal fetch_dec_imm          : integer range -4096 to 4095 := 0;
-  signal fetch_dec_idx          : natural range 0 to 7        := 0;
+  signal fetch_dec_addr         : word_t                      := (others => '0');
   signal fetch_dec_illegal      : std_logic                   := '0';
   signal fetch_pair_kind        : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
   signal fetch_next_pair_kind   : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
@@ -130,7 +118,7 @@ architecture rtl of mcu4_worker_core is
   signal fetch_pair_dec_rn      : natural range 0 to 15       := 0;
   signal fetch_pair_dec_rm      : natural range 0 to 15       := 0;
   signal fetch_pair_dec_imm     : integer range -4096 to 4095 := 0;
-  signal fetch_pair_dec_idx     : natural range 0 to 7        := 0;
+  signal fetch_pair_dec_addr    : word_t                      := (others => '0');
   signal fetch_pair_dec_illegal : std_logic                   := '0';
 
   signal dec_op      : worker_op_t                 := WOP_NOP;
@@ -138,7 +126,7 @@ architecture rtl of mcu4_worker_core is
   signal dec_rn      : natural range 0 to 15       := 0;
   signal dec_rm      : natural range 0 to 15       := 0;
   signal dec_imm     : integer range -4096 to 4095 := 0;
-  signal dec_idx     : natural range 0 to 7        := 0;
+  signal dec_addr    : word_t                      := (others => '0');
   signal dec_illegal : std_logic                   := '0';
   signal dec_rd_data : word_t                      := (others => '0');
   signal dec_pair_kind : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
@@ -148,7 +136,7 @@ architecture rtl of mcu4_worker_core is
   signal exec_rn                 : natural range 0 to 15       := 0;
   signal exec_rm                 : natural range 0 to 15       := 0;
   signal exec_imm                : integer range -4096 to 4095 := 0;
-  signal exec_idx                : natural range 0 to 7        := 0;
+  signal exec_addr               : word_t                      := (others => '0');
   signal exec_illegal            : std_logic                   := '0';
   signal exec_instr              : word_t                      := x"E1A00000";
   signal exec_pc_reg             : word_t                      := (others => '0');
@@ -157,15 +145,11 @@ architecture rtl of mcu4_worker_core is
   signal exec_rd_data            : word_t                      := (others => '0');
   signal exec_pair_kind          : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
   signal pair_mov_imm_exec       : std_logic                   := '0';
-  signal pair_ldr_bank0_exec     : std_logic                   := '0';
-  signal pair_ldr_bank1_exec     : std_logic                   := '0';
-  signal pair_str_bank0_exec     : std_logic                   := '0';
-  signal pair_str_bank1_exec     : std_logic                   := '0';
+  signal pair_ldr_exec           : std_logic                   := '0';
+  signal pair_str_exec           : std_logic                   := '0';
   signal pair_sadd16_ssub16_exec : std_logic                   := '0';
-  signal pair_ldr_bank0_mem      : std_logic                   := '0';
-  signal pair_ldr_bank1_mem      : std_logic                   := '0';
-  signal pair_str_bank0_mem      : std_logic                   := '0';
-  signal pair_str_bank1_mem      : std_logic                   := '0';
+  signal pair_ldr_mem            : std_logic                   := '0';
+  signal pair_str_mem            : std_logic                   := '0';
 
   signal dsp_a               : word_t                := (others => '0');
   signal dsp_b               : word_t                := (others => '0');
@@ -217,15 +201,11 @@ architecture rtl of mcu4_worker_core is
   attribute max_fanout of decode_ctrl_debug       : signal is 16;
   attribute max_fanout of dsp_ctrl_debug          : signal is 16;
   attribute max_fanout of pair_mov_imm_exec       : signal is 8;
-  attribute max_fanout of pair_ldr_bank0_exec     : signal is 8;
-  attribute max_fanout of pair_ldr_bank1_exec     : signal is 8;
-  attribute max_fanout of pair_str_bank0_exec     : signal is 8;
-  attribute max_fanout of pair_str_bank1_exec     : signal is 8;
+  attribute max_fanout of pair_ldr_exec           : signal is 8;
+  attribute max_fanout of pair_str_exec           : signal is 8;
   attribute max_fanout of pair_sadd16_ssub16_exec : signal is 8;
-  attribute max_fanout of pair_ldr_bank0_mem      : signal is 4;
-  attribute max_fanout of pair_ldr_bank1_mem      : signal is 4;
-  attribute max_fanout of pair_str_bank0_mem      : signal is 4;
-  attribute max_fanout of pair_str_bank1_mem      : signal is 4;
+  attribute max_fanout of pair_ldr_mem            : signal is 4;
+  attribute max_fanout of pair_str_mem            : signal is 4;
   attribute max_fanout of rst_ctrl_local          : signal is 16;
   attribute max_fanout of rst_exec_local          : signal is 16;
   attribute max_fanout of rst_rf_decode_local     : signal is 16;
@@ -602,7 +582,7 @@ begin
       dec_rn      => fetch_dec_rn,
       dec_rm      => fetch_dec_rm,
       dec_imm     => fetch_dec_imm,
-      dec_idx     => fetch_dec_idx,
+      dec_addr    => fetch_dec_addr,
       dec_illegal => fetch_dec_illegal,
       pair_kind   => fetch_pair_kind,
       next_pair_kind => fetch_next_pair_kind
@@ -622,70 +602,39 @@ begin
       dec_rn      => fetch_pair_dec_rn,
       dec_rm      => fetch_pair_dec_rm,
       dec_imm     => fetch_pair_dec_imm,
-      dec_idx     => fetch_pair_dec_idx,
+      dec_addr    => fetch_pair_dec_addr,
       dec_illegal => fetch_pair_dec_illegal,
       pair_kind   => open,
       next_pair_kind => open
     );
 
-  dmem_bank0_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
-    when run_ctrl_mem = '1' and (exec_op = WOP_LDR_BANK0 or exec_op = WOP_STR_BANK0)
-    else
-    (others => '0');
-  dmem_bank0_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
-    when run_ctrl_pair = '1' and pair_ldr_bank0_mem = '1'
-    else
-    (others => '0');
-  dmem_bank1_raddr <= std_logic_vector(to_unsigned(exec_idx, 3))
-    when run_ctrl_mem = '1' and (exec_op = WOP_LDR_BANK1 or exec_op = WOP_STR_BANK1)
-    else
-    (others => '0');
-  dmem_bank1_raddr2 <= std_logic_vector(to_unsigned(dec_idx, 3))
-    when run_ctrl_pair = '1' and pair_ldr_bank1_mem = '1'
-    else
-    (others => '0');
+  dmem_raddr <= exec_addr
+    when run_ctrl_mem = '1' and (exec_op = WOP_LDR or exec_op = WOP_STR)
+    else (others => '0');
+  dmem_raddr2 <= dec_addr
+    when run_ctrl_pair = '1' and pair_ldr_mem = '1'
+    else (others => '0');
 
-  dmem_bank0_we <= '1' when rst_mem_local = '0'
+  dmem_we <= '1' when rst_mem_local = '0'
     and halted_reg = '0'
     and illegal_reg = '0'
     and run_ctrl_mem = '1'
     and exec_illegal = '0'
-    and exec_op = WOP_STR_BANK0
+    and exec_op = WOP_STR
     else
     '0';
-  dmem_bank0_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
-  dmem_bank0_wdata <= exec_rd_data;
-  dmem_bank0_we2   <= '1' when rst_mem_local = '0'
+  dmem_waddr <= exec_addr;
+  dmem_wdata <= exec_rd_data;
+  dmem_we2   <= '1' when rst_mem_local = '0'
     and halted_reg = '0'
     and illegal_reg = '0'
     and run_ctrl_pair = '1'
     and exec_illegal = '0'
-    and pair_str_bank0_mem = '1'
+    and pair_str_mem = '1'
     else
     '0';
-  dmem_bank0_waddr2 <= std_logic_vector(to_unsigned(dec_idx, 3));
-  dmem_bank0_wdata2 <= dec_rd_data;
-
-  dmem_bank1_we <= '1' when rst_mem_local = '0'
-    and halted_reg = '0'
-    and illegal_reg = '0'
-    and run_ctrl_mem = '1'
-    and exec_illegal = '0'
-    and exec_op = WOP_STR_BANK1
-    else
-    '0';
-  dmem_bank1_waddr <= std_logic_vector(to_unsigned(exec_idx, 3));
-  dmem_bank1_wdata <= exec_rd_data;
-  dmem_bank1_we2   <= '1' when rst_mem_local = '0'
-    and halted_reg = '0'
-    and illegal_reg = '0'
-    and run_ctrl_pair = '1'
-    and exec_illegal = '0'
-    and pair_str_bank1_mem = '1'
-    else
-    '0';
-  dmem_bank1_waddr2 <= std_logic_vector(to_unsigned(dec_idx, 3));
-  dmem_bank1_wdata2 <= dec_rd_data;
+  dmem_waddr2 <= dec_addr;
+  dmem_wdata2 <= dec_rd_data;
 
   process (clk)
     variable res            : word_t;
@@ -811,31 +760,21 @@ begin
       exec_pair_kind <= next_pair_kind;
 
       pair_mov_imm_exec       <= '0';
-      pair_ldr_bank0_exec     <= '0';
-      pair_ldr_bank1_exec     <= '0';
-      pair_str_bank0_exec     <= '0';
-      pair_str_bank1_exec     <= '0';
+      pair_ldr_exec           <= '0';
+      pair_str_exec           <= '0';
       pair_sadd16_ssub16_exec <= '0';
-      pair_ldr_bank0_mem      <= '0';
-      pair_ldr_bank1_mem      <= '0';
-      pair_str_bank0_mem      <= '0';
-      pair_str_bank1_mem      <= '0';
+      pair_ldr_mem            <= '0';
+      pair_str_mem            <= '0';
 
       case next_pair_kind is
         when WPAIR_MOV_IMM_CODE =>
           pair_mov_imm_exec <= '1';
-        when WPAIR_LDR_BANK0_CODE =>
-          pair_ldr_bank0_exec <= '1';
-          pair_ldr_bank0_mem  <= '1';
-        when WPAIR_LDR_BANK1_CODE =>
-          pair_ldr_bank1_exec <= '1';
-          pair_ldr_bank1_mem  <= '1';
-        when WPAIR_STR_BANK0_CODE =>
-          pair_str_bank0_exec <= '1';
-          pair_str_bank0_mem  <= '1';
-        when WPAIR_STR_BANK1_CODE =>
-          pair_str_bank1_exec <= '1';
-          pair_str_bank1_mem  <= '1';
+        when WPAIR_LDR_CODE =>
+          pair_ldr_exec <= '1';
+          pair_ldr_mem  <= '1';
+        when WPAIR_STR_CODE =>
+          pair_str_exec <= '1';
+          pair_str_mem  <= '1';
         when WPAIR_SADD16_SSUB16_CODE =>
           pair_sadd16_ssub16_exec <= '1';
         when others =>
@@ -873,7 +812,7 @@ begin
       exec_rn      <= dec_rn;
       exec_rm      <= dec_rm;
       exec_imm     <= dec_imm;
-      exec_idx     <= dec_idx;
+      exec_addr    <= dec_addr;
       exec_illegal <= dec_illegal;
       exec_instr   <= instr_reg;
       exec_pc_reg  <= instr_pc_reg;
@@ -915,7 +854,7 @@ begin
       exec_rn      <= dec_rn;
       exec_rm      <= dec_rm;
       exec_imm     <= dec_imm;
-      exec_idx     <= dec_idx;
+      exec_addr    <= dec_addr;
       exec_illegal <= dec_illegal;
       exec_instr   <= instr_reg;
       exec_pc_reg  <= instr_pc_reg;
@@ -957,7 +896,7 @@ begin
       exec_rn      <= fetch_dec_rn;
       exec_rm      <= fetch_dec_rm;
       exec_imm     <= fetch_dec_imm;
-      exec_idx     <= fetch_dec_idx;
+      exec_addr    <= fetch_dec_addr;
       exec_illegal <= fetch_dec_illegal;
       exec_instr   <= instr_word;
       exec_pc_reg  <= pc_fetch_reg;
@@ -972,7 +911,7 @@ begin
       dec_rn       <= fetch_pair_dec_rn;
       dec_rm       <= fetch_pair_dec_rm;
       dec_imm      <= fetch_pair_dec_imm;
-      dec_idx      <= fetch_pair_dec_idx;
+      dec_addr     <= fetch_pair_dec_addr;
       dec_illegal  <= fetch_pair_dec_illegal;
       dec_pair_kind <= fetch_next_pair_kind;
       dec_rd_data  <= forwarded_store_reg_value(
@@ -1030,7 +969,7 @@ begin
       dec_rn       <= fetch_dec_rn;
       dec_rm       <= fetch_dec_rm;
       dec_imm      <= fetch_dec_imm;
-      dec_idx      <= fetch_dec_idx;
+      dec_addr     <= fetch_dec_addr;
       dec_illegal  <= fetch_dec_illegal;
       dec_pair_kind <= fetch_pair_kind;
       dec_rd_data  <= forwarded_store_reg_value(
@@ -1201,23 +1140,15 @@ begin
                     wb2_valid  := true;
                     wb2_rd     := dec_rd;
                     wb2_data   := std_logic_vector(to_signed(dec_imm, 32));
-                  elsif pair_ldr_bank0_exec = '1' then
+                  elsif pair_ldr_exec = '1' then
                     pair_valid := true;
                     wb_valid   := true;
                     wb_rd      := exec_rd;
-                    wb_data    := dmem_bank0_rdata;
+                    wb_data    := dmem_rdata;
                     wb2_valid  := true;
                     wb2_rd     := dec_rd;
-                    wb2_data   := dmem_bank0_rdata2;
-                  elsif pair_ldr_bank1_exec = '1' then
-                    pair_valid := true;
-                    wb_valid   := true;
-                    wb_rd      := exec_rd;
-                    wb_data    := dmem_bank1_rdata;
-                    wb2_valid  := true;
-                    wb2_rd     := dec_rd;
-                    wb2_data   := dmem_bank1_rdata2;
-                  elsif pair_str_bank0_exec = '1' or pair_str_bank1_exec = '1' then
+                    wb2_data   := dmem_rdata2;
+                  elsif pair_str_exec = '1' then
                     pair_valid := true;
                   elsif pair_sadd16_ssub16_exec = '1' then
                     pair_valid := true;
@@ -1284,14 +1215,10 @@ begin
                         wb_valid := true;
                         wb_rd    := exec_rd;
                         wb_data  := pkhbt_shift(exec_rn_data, exec_rm_data, exec_imm);
-                      when WOP_LDR_BANK0 =>
+                      when WOP_LDR =>
                         wb_valid := true;
                         wb_rd    := exec_rd;
-                        wb_data  := dmem_bank0_rdata;
-                      when WOP_LDR_BANK1 =>
-                        wb_valid := true;
-                        wb_rd    := exec_rd;
-                        wb_data  := dmem_bank1_rdata;
+                        wb_data  := dmem_rdata;
                       when WOP_SADD16 =>
                         wb_valid := true;
                         wb_rd    := exec_rd;
@@ -1352,7 +1279,7 @@ begin
                         wb_data       := next_seq_pc(exec_pc_reg);
                         branch_taken  := true;
                         branch_target := clamp_pc(exec_imm);
-                      when WOP_STR_BANK0 | WOP_STR_BANK1 =>
+                      when WOP_STR =>
                         null;
                     end case;
 
@@ -1374,7 +1301,7 @@ begin
                       dec_rn       <= 0;
                       dec_rm       <= 0;
                       dec_imm      <= 0;
-                      dec_idx      <= 0;
+                      dec_addr     <= (others => '0');
                       dec_illegal  <= '0';
                       dec_pair_kind <= WPAIR_NONE_CODE;
                       dec_rd_data  <= (others => '0');

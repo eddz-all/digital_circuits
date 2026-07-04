@@ -14,11 +14,9 @@ entity mcu4_multicycle_core is
         rst           : in  std_logic;
 
         dmem_we       : in  std_logic;
-        dmem_wbank    : in  std_logic;
-        dmem_waddr    : in  std_logic_vector(2 downto 0);
+        dmem_waddr    : in  word_t;
         dmem_wdata    : in  word_t;
-        dmem_rbank    : in  std_logic;
-        dmem_raddr    : in  std_logic_vector(2 downto 0);
+        dmem_raddr    : in  word_t;
         dmem_rdata    : out word_t;
 
         pc_debug      : out word_t;
@@ -33,34 +31,22 @@ end entity mcu4_multicycle_core;
 architecture rtl of mcu4_multicycle_core is
     constant INSTR_DONE_SENTINEL : word_t := x"EAFFFFFE";
 
-    type worker_addr_array_t is array (0 to 3) of std_logic_vector(2 downto 0);
     type worker_flag_array_t is array (0 to 3) of std_logic;
-    type worker_buffer_array_t is array (0 to 3) of dmem_bank_t;
+    type worker_dmem_array_t is array (0 to 3) of dmem_t;
 
-    signal dmem_bank0         : worker_buffer_array_t := (others => (others => (others => '0')));
-    signal dmem_bank1         : worker_buffer_array_t := (others => (others => (others => '0')));
+    signal dmem         : worker_dmem_array_t := (others => (others => (others => '0')));
 
-    signal worker_dmem_bank0_raddr : worker_addr_array_t := (others => (others => '0'));
-    signal worker_dmem_bank1_raddr : worker_addr_array_t := (others => (others => '0'));
-    signal worker_dmem_bank0_raddr2 : worker_addr_array_t := (others => (others => '0'));
-    signal worker_dmem_bank1_raddr2 : worker_addr_array_t := (others => (others => '0'));
-    signal worker_dmem_bank0_rdata : lane4_word_array_t := (others => (others => '0'));
-    signal worker_dmem_bank1_rdata : lane4_word_array_t := (others => (others => '0'));
-    signal worker_dmem_bank0_rdata2 : lane4_word_array_t := (others => (others => '0'));
-    signal worker_dmem_bank1_rdata2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_raddr : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_raddr2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_rdata : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_rdata2 : lane4_word_array_t := (others => (others => '0'));
 
-    signal worker_dmem_bank0_we    : worker_flag_array_t := (others => '0');
-    signal worker_dmem_bank1_we    : worker_flag_array_t := (others => '0');
-    signal worker_dmem_bank0_we2   : worker_flag_array_t := (others => '0');
-    signal worker_dmem_bank1_we2   : worker_flag_array_t := (others => '0');
-    signal worker_dmem_bank0_waddr : worker_addr_array_t := (others => (others => '0'));
-    signal worker_dmem_bank1_waddr : worker_addr_array_t := (others => (others => '0'));
-    signal worker_dmem_bank0_waddr2 : worker_addr_array_t := (others => (others => '0'));
-    signal worker_dmem_bank1_waddr2 : worker_addr_array_t := (others => (others => '0'));
-    signal worker_dmem_bank0_wdata : lane4_word_array_t := (others => (others => '0'));
-    signal worker_dmem_bank1_wdata : lane4_word_array_t := (others => (others => '0'));
-    signal worker_dmem_bank0_wdata2 : lane4_word_array_t := (others => (others => '0'));
-    signal worker_dmem_bank1_wdata2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_we    : worker_flag_array_t := (others => '0');
+    signal worker_dmem_we2   : worker_flag_array_t := (others => '0');
+    signal worker_dmem_waddr : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_waddr2 : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_wdata : lane4_word_array_t := (others => (others => '0'));
+    signal worker_dmem_wdata2 : lane4_word_array_t := (others => (others => '0'));
 
     signal worker_halted : std_logic_vector(3 downto 0) := (others => '0');
     signal worker_done_raw : std_logic_vector(3 downto 0) := (others => '0');
@@ -72,26 +58,20 @@ architecture rtl of mcu4_multicycle_core is
     signal all_halted : std_logic;
     signal any_illegal : std_logic;
 
-    function safe_addr3(addr : std_logic_vector(2 downto 0)) return natural is
-        variable idx : natural range 0 to 7 := 0;
+    function safe_dmem_index(addr : word_t) return natural is
+        variable idx : natural range 0 to DMEM_WORDS - 1 := 0;
     begin
-        if addr(0) = '1' then
-            idx := idx + 1;
-        end if;
-        if addr(1) = '1' then
-            idx := idx + 2;
-        end if;
-        if addr(2) = '1' then
-            idx := idx + 4;
-        end if;
+        for bit_pos in 2 to 7 loop
+            if addr(bit_pos) = '1' then
+                idx := idx + (2 ** (bit_pos - 2));
+            end if;
+        end loop;
         return idx;
     end function;
 begin
     gen_worker_read_data : for i in 0 to 3 generate
-        worker_dmem_bank0_rdata(i) <= dmem_bank0(i)(safe_addr3(worker_dmem_bank0_raddr(i)));
-        worker_dmem_bank1_rdata(i) <= dmem_bank1(i)(safe_addr3(worker_dmem_bank1_raddr(i)));
-        worker_dmem_bank0_rdata2(i) <= dmem_bank0(i)(safe_addr3(worker_dmem_bank0_raddr2(i)));
-        worker_dmem_bank1_rdata2(i) <= dmem_bank1(i)(safe_addr3(worker_dmem_bank1_raddr2(i)));
+        worker_dmem_rdata(i) <= dmem(i)(safe_dmem_index(worker_dmem_raddr(i)));
+        worker_dmem_rdata2(i) <= dmem(i)(safe_dmem_index(worker_dmem_raddr2(i)));
     end generate;
 
     gen_workers : for i in 0 to 3 generate
@@ -104,26 +84,16 @@ begin
                 port map (
                     clk         => clk,
                     rst         => rst,
-                    dmem_bank0_raddr => worker_dmem_bank0_raddr(i),
-                    dmem_bank0_rdata => worker_dmem_bank0_rdata(i),
-                    dmem_bank0_raddr2 => worker_dmem_bank0_raddr2(i),
-                    dmem_bank0_rdata2 => worker_dmem_bank0_rdata2(i),
-                    dmem_bank1_raddr => worker_dmem_bank1_raddr(i),
-                    dmem_bank1_rdata => worker_dmem_bank1_rdata(i),
-                    dmem_bank1_raddr2 => worker_dmem_bank1_raddr2(i),
-                    dmem_bank1_rdata2 => worker_dmem_bank1_rdata2(i),
-                    dmem_bank0_we    => worker_dmem_bank0_we(i),
-                    dmem_bank0_waddr => worker_dmem_bank0_waddr(i),
-                    dmem_bank0_wdata => worker_dmem_bank0_wdata(i),
-                    dmem_bank0_we2    => worker_dmem_bank0_we2(i),
-                    dmem_bank0_waddr2 => worker_dmem_bank0_waddr2(i),
-                    dmem_bank0_wdata2 => worker_dmem_bank0_wdata2(i),
-                    dmem_bank1_we    => worker_dmem_bank1_we(i),
-                    dmem_bank1_waddr => worker_dmem_bank1_waddr(i),
-                    dmem_bank1_wdata => worker_dmem_bank1_wdata(i),
-                    dmem_bank1_we2    => worker_dmem_bank1_we2(i),
-                    dmem_bank1_waddr2 => worker_dmem_bank1_waddr2(i),
-                    dmem_bank1_wdata2 => worker_dmem_bank1_wdata2(i),
+                    dmem_raddr => worker_dmem_raddr(i),
+                    dmem_rdata => worker_dmem_rdata(i),
+                    dmem_raddr2 => worker_dmem_raddr2(i),
+                    dmem_rdata2 => worker_dmem_rdata2(i),
+                    dmem_we    => worker_dmem_we(i),
+                    dmem_waddr => worker_dmem_waddr(i),
+                    dmem_wdata => worker_dmem_wdata(i),
+                    dmem_we2    => worker_dmem_we2(i),
+                    dmem_waddr2 => worker_dmem_waddr2(i),
+                    dmem_wdata2 => worker_dmem_wdata2(i),
                     halted      => worker_halted(i),
                     illegal     => worker_illegal(i),
                     pc_debug    => worker_pc_debug(i),
@@ -136,22 +106,14 @@ begin
         end generate;
 
         gen_inactive_worker : if i >= ACTIVE_CORES generate
-            worker_dmem_bank0_raddr(i) <= (others => '0');
-            worker_dmem_bank1_raddr(i) <= (others => '0');
-            worker_dmem_bank0_raddr2(i) <= (others => '0');
-            worker_dmem_bank1_raddr2(i) <= (others => '0');
-            worker_dmem_bank0_we(i) <= '0';
-            worker_dmem_bank1_we(i) <= '0';
-            worker_dmem_bank0_we2(i) <= '0';
-            worker_dmem_bank1_we2(i) <= '0';
-            worker_dmem_bank0_waddr(i) <= (others => '0');
-            worker_dmem_bank1_waddr(i) <= (others => '0');
-            worker_dmem_bank0_waddr2(i) <= (others => '0');
-            worker_dmem_bank1_waddr2(i) <= (others => '0');
-            worker_dmem_bank0_wdata(i) <= (others => '0');
-            worker_dmem_bank1_wdata(i) <= (others => '0');
-            worker_dmem_bank0_wdata2(i) <= (others => '0');
-            worker_dmem_bank1_wdata2(i) <= (others => '0');
+            worker_dmem_raddr(i) <= (others => '0');
+            worker_dmem_raddr2(i) <= (others => '0');
+            worker_dmem_we(i) <= '0';
+            worker_dmem_we2(i) <= '0';
+            worker_dmem_waddr(i) <= (others => '0');
+            worker_dmem_waddr2(i) <= (others => '0');
+            worker_dmem_wdata(i) <= (others => '0');
+            worker_dmem_wdata2(i) <= (others => '0');
             worker_halted(i) <= '1';
             worker_done_raw(i) <= '1';
             worker_illegal(i) <= '0';
@@ -160,12 +122,10 @@ begin
         end generate;
     end generate;
 
-    dmem_rdata <= dmem_bank0(0)(safe_addr3(dmem_raddr))
-        when dmem_rbank = '0'
-        else dmem_bank1(0)(safe_addr3(dmem_raddr));
+    dmem_rdata <= dmem(0)(safe_dmem_index(dmem_raddr));
 
     process(clk)
-        variable waddr : natural range 0 to 7;
+        variable waddr : natural range 0 to DMEM_WORDS - 1;
     begin
         if rising_edge(clk) then
             if rst = '1' then
@@ -189,47 +149,27 @@ begin
             end if;
 
             if dmem_we = '1' then
-                waddr := to_integer(unsigned(dmem_waddr));
-                if dmem_wbank = '0' then
-                    for replica in 0 to 3 loop
-                        dmem_bank0(replica)(waddr) <= dmem_wdata;
-                    end loop;
-                else
-                    for replica in 0 to 3 loop
-                        dmem_bank1(replica)(waddr) <= dmem_wdata;
-                    end loop;
-                end if;
+                waddr := safe_dmem_index(dmem_waddr);
+                for replica in 0 to 3 loop
+                    dmem(replica)(waddr) <= dmem_wdata;
+                end loop;
             end if;
 
             -- Worker write enables are already suppressed outside S_RUN. Avoid
             -- using the top-level reset as a data-path gate for every buffer
             -- bit; that reset fanout was one of the 200 MHz critical paths.
             for i in 0 to 3 loop
-                if worker_dmem_bank0_we(i) = '1' then
-                    waddr := to_integer(unsigned(worker_dmem_bank0_waddr(i)));
+                if worker_dmem_we(i) = '1' then
+                    waddr := safe_dmem_index(worker_dmem_waddr(i));
                     for replica in 0 to 3 loop
-                        dmem_bank0(replica)(waddr) <= worker_dmem_bank0_wdata(i);
+                        dmem(replica)(waddr) <= worker_dmem_wdata(i);
                     end loop;
                 end if;
 
-                if worker_dmem_bank0_we2(i) = '1' then
-                    waddr := to_integer(unsigned(worker_dmem_bank0_waddr2(i)));
+                if worker_dmem_we2(i) = '1' then
+                    waddr := safe_dmem_index(worker_dmem_waddr2(i));
                     for replica in 0 to 3 loop
-                        dmem_bank0(replica)(waddr) <= worker_dmem_bank0_wdata2(i);
-                    end loop;
-                end if;
-
-                if worker_dmem_bank1_we(i) = '1' then
-                    waddr := to_integer(unsigned(worker_dmem_bank1_waddr(i)));
-                    for replica in 0 to 3 loop
-                        dmem_bank1(replica)(waddr) <= worker_dmem_bank1_wdata(i);
-                    end loop;
-                end if;
-
-                if worker_dmem_bank1_we2(i) = '1' then
-                    waddr := to_integer(unsigned(worker_dmem_bank1_waddr2(i)));
-                    for replica in 0 to 3 loop
-                        dmem_bank1(replica)(waddr) <= worker_dmem_bank1_wdata2(i);
+                        dmem(replica)(waddr) <= worker_dmem_wdata2(i);
                     end loop;
                 end if;
             end loop;

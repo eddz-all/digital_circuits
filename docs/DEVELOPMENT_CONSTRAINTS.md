@@ -48,7 +48,7 @@ Vivado: 目标频率下 WNS/WHS >= 0，DSP = 0，top/IP/probe 宽度与本文档
 
 ## 1. 总体定位
 
-本工程当前位于 `MCU_4cores_muticycle`，目标是一个四核、多周期、支持 ARM/ARM-DSP
+本工程当前位于 `MCU_4cores_muticycle_arm_a32`，目标是一个四核、多周期、支持 ARM/ARM-DSP
 风格指令的 MCU。现在 ROM 里恰好放了 FFT 程序，并额外放了基础指令自测程序。
 
 允许的说法：
@@ -186,25 +186,25 @@ data[6]  byte address 0x58
 data[7]  byte address 0x5C
 ```
 
-基础测试不应该在程序注释里写成 `LDR [bank0+0]`、`STR [bank1+0]` 这类实现口径。`bank0/bank1`
-是 RTL 内部存储组织，不是指令格式。
+基础测试不应该在程序注释里写成“某个 bank 加下标”的实现口径。
+当前版本没有指令可见 bank；A/B 只是统一数据内存中的地址区域。
 
 ### RTL 内部口径
 
-RTL 里允许使用：
+RTL 里应保持统一数据内存和 32-bit byte address 口径，允许使用：
 
 ```text
-dmem_bank0
-dmem_bank1
-DMEM_BANK0_BASE_WORD
-DMEM_BANK1_BASE_WORD
-dmem_bank_t
-WOP_LDR_BANK0 / WOP_STR_BANK0
-WOP_LDR_BANK1 / WOP_STR_BANK1
+dmem
+DMEM_WORDS
+DMEM_REGION_A_BASE_WORD
+DMEM_REGION_B_BASE_WORD
+dmem_t
+WOP_LDR / WOP_STR
+dmem_raddr / dmem_waddr
 ```
 
-含义是“data memory bank 0/1”，也可以对外解释成一块数据内存里的两个地址区域。
-这些名字只描述存储实现和译码后的内部端口，不表示有 FFT 专用 buffer。
+含义是一块统一的 MCU data memory。A/B 只表示当前程序约定使用的两个地址区间，不是两个
+指令可见 bank，也不是 FFT 专用 buffer。
 
 ### 禁止回退的旧命名
 
@@ -215,10 +215,11 @@ buf_a / buf_b
 WORK_BUF_A_BASE_WORD / WORK_BUF_B_BASE_WORD
 complex8_array_t
 WOP_LDR_A / WOP_STR_B
+旧 bank 分裂式数据内存命名
 ```
 
-`buf_a/buf_b` 容易被理解成 FFT ping-pong buffer。当前统一写成 `dmem_bank0/dmem_bank1`。
-如果写给非 RTL 读者看，优先写成 `data[n]` 或“数据内存地址”。
+`buf_a/buf_b` 容易被理解成 FFT ping-pong buffer；旧 bank 分裂式命名又容易被理解成两个
+指令可见存储器。新版本统一写成 `dmem`、`data[n]`、“数据内存地址”或“work area A/B”。
 
 ### 寄存器命名
 
@@ -235,14 +236,15 @@ REG_PC
 
 ### LDR/STR 地址边界说明
 
-当前工程支持 A32 标准编码子集中的 `LDR/STR [r0,#imm12]` 立即数地址形式，并由 decoder 把固定地址窗口映射到内部
-data memory bank。展示时可以说“普通 `LDR/STR` 访问数据地址”；但不要夸大成完整 ARM
-任意基址寄存器、任意偏移的大数据 RAM。
+当前工程支持 A32 标准编码子集中的 `LDR/STR [r0,#imm12]` 立即数地址形式。decoder 输出
+完整 32-bit byte address；当前实现窗口是 `0x00000000..0x000000FC`，地址必须 word-aligned。
+展示时可以说“普通 `LDR/STR` 访问数据地址”；但不要夸大成完整 ARM 任意基址寄存器、
+任意偏移的大数据 RAM。
 
 一句话：
 
 ```text
-程序视角是 data memory address；RTL 视角是 dmem_bank0/dmem_bank1；禁止再用 FFT buffer 命名。
+程序视角和 RTL 接口都是 data memory byte address；实现可复制读口，但禁止再用 bank/index 或 FFT buffer 命名。
 ```
 
 ## 7. 允许的优化
@@ -253,7 +255,7 @@ data memory bank。展示时可以说“普通 `LDR/STR` 访问数据地址”�
 允许：
 
 - 取指、译码、执行、写回流水化。
-- ROM-local predecode，提前拆出 opcode、寄存器号、立即数、访存索引。
+- ROM-local predecode，提前拆出 opcode、寄存器号、立即数、访存 32-bit byte address。
 - 多周期 `SMUAD/SMUSD`，用更短关键路径换高频。
 - 基于 opcode 和依赖关系的通用双发射。
 - 安全的 `MOV/MOV`、`LDR/LDR`、`STR/STR`、`SADD16/SSUB16` 同拍退休。
@@ -309,7 +311,7 @@ synthesis -max_dsp 0
 ```text
 test_ROM/test_vector_in
   -> mcu_fft_system 输入加载、bit-reversal、16-bit to 32-bit 打包
-  -> mcu4_multicycle_core 通用数据内存 dmem_bank0/dmem_bank1
+  -> mcu4_multicycle_core 统一通用数据内存
   -> worker 执行 ROM 指令
   -> mcu_fft_system 32-bit to 16-bit 输出拆包和 dump
   -> verify_RAM/verify_vector_out
@@ -326,11 +328,13 @@ test_ROM/test_vector_in
 - `cnt_start` 应靠近第一条 worker 指令读取。
 - `cnt_stop` 应靠近所有 active worker 到达 `B .` 完成哨兵。
 
-`dmem_bank0/dmem_bank1` 是 MCU 的工作数据内存，不是外部 `verify_RAM`。它可以理解成两块小数据内存，也可以理解成一块数据内存的两个地址区域。实现上可以为了多核并行和时序复制读口，但对指令来说仍应表现为普通 `LDR/STR` 可访问的工作内存。
+统一 `dmem` 是 MCU 的工作数据内存，不是外部 `verify_RAM`。当前程序把 `0x40..0x5C`
+作为工作区 A，把 `0x80..0x9C` 作为工作区 B/输出区。实现上可以为了多核并行和时序复制读口，
+但对指令来说仍应表现为普通 `LDR/STR` 可访问的工作内存。
 
 边界规则：
 
-- `mcu4_multicycle_core` 只暴露通用 `dmem_*` 访问口：选 bank、3-bit word 地址、32-bit 数据。
+- `mcu4_multicycle_core` 只暴露通用 `dmem_*` 访问口：32-bit byte address、32-bit 数据和写使能。
 - FFT 的外部 16-bit 输入、real/imag 拼包、`BITREV_ORDER` 装载、输出高低半字拆包，都必须放在 `mcu_fft_system` 或更外层 wrapper。
 - `mcu4_multicycle_core` 内不要恢复 `input_we/input_waddr/input_wdata` 或 `output_raddr/output_rdata` 这类 FFT stream 端口。
 
@@ -338,7 +342,7 @@ test_ROM/test_vector_in
 
 ```text
 外部通用 dmem 写口/读口
-  -> 内部 dmem_bank0/dmem_bank1
+  -> 内部统一 dmem
   -> ACTIVE_CORES 个 worker core
   -> done/illegal/debug 汇总
 ```
@@ -375,7 +379,7 @@ basic 上板 checker 应检查通用行为结果，而不是依赖某个私有�
 illegal 必须为 0
 worker 必须在 timeout 前 halt
 data[1..7] 必须读回 MOV/ADD/SUB/AND/ORR/LDR/控制流 signature
-dmem_bank1 必须保持 0，用于证明 basic 程序没有误访问第二数据区
+B/output address region 必须保持 0，用于证明 basic 程序没有误访问第二数据区
 ```
 
 `pc_debug/instr_debug` 可以作为 ILA trace 或仿真辅助，但不要让板级 `test` 信号依赖逐周期

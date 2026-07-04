@@ -8,7 +8,7 @@ package mcu4_multi_pkg is
     subtype reg_addr_t is std_logic_vector(3 downto 0);
 
     type sample16_array_t is array (0 to 15) of half_t;
-    type dmem_bank_t is array (0 to 7) of word_t;
+    type dmem_t is array (0 to 63) of word_t;
     type lane4_word_array_t is array (0 to 3) of word_t;
     type reg_file_t is array (0 to 15) of word_t;
     type program_rom_t is array (0 to 63) of word_t;
@@ -25,10 +25,8 @@ package mcu4_multi_pkg is
         WOP_AND,
         WOP_ORR,
         WOP_PKHBT,
-        WOP_LDR_BANK0,
-        WOP_LDR_BANK1,
-        WOP_STR_BANK0,
-        WOP_STR_BANK1,
+        WOP_LDR,
+        WOP_STR,
         WOP_SADD16,
         WOP_SSUB16,
         WOP_SSAX,
@@ -58,9 +56,10 @@ package mcu4_multi_pkg is
     constant REG_LR  : natural := REG_R14;
     constant REG_PC  : natural := REG_R15;
 
-    constant DMEM_BANK0_BASE_WORD : natural := 16;
-    constant DMEM_BANK1_BASE_WORD : natural := 32;
-    constant DMEM_BANK_WORDS       : natural := 8;
+    constant DMEM_WORDS              : natural := 64;
+    constant DMEM_REGION_A_BASE_WORD : natural := 16; -- byte address 0x40
+    constant DMEM_REGION_B_BASE_WORD : natural := 32; -- byte address 0x80
+    constant DMEM_REGION_WORDS       : natural := 8;
 
     function pkhbt_shift(
         low_value  : word_t;
@@ -69,6 +68,7 @@ package mcu4_multi_pkg is
     ) return word_t;
 
     function pack_q5_to_q12(real_q5 : half_t; imag_q5 : half_t) return word_t;
+    function dmem_word_addr(word_index : natural) return word_t;
 end package mcu4_multi_pkg;
 
 package body mcu4_multi_pkg is
@@ -90,5 +90,10 @@ package body mcu4_multi_pkg is
         real32 := std_logic_vector(shift_left(resize(signed(real_q5), 32), 7));
         imag32 := std_logic_vector(resize(signed(imag_q5), 32));
         return pkhbt_shift(real32, imag32, 23);
+    end function;
+
+    function dmem_word_addr(word_index : natural) return word_t is
+    begin
+        return std_logic_vector(shift_left(to_unsigned(word_index, 32), 2));
     end function;
 end package body mcu4_multi_pkg;

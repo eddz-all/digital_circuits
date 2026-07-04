@@ -81,7 +81,7 @@ Timing pragmas: selected replicated control, register-file, and DSP pipeline sig
 ROM predecode: emits decode fields next to the 32-bit instruction word for each selected program.
 Decode operand staging: pre-reads rn/rm/rd operands into decode-stage registers before execute to cut route-heavy instruction/control-to-execute operand paths.
 Fetch register-file replica: spends flip-flops to split fetch/pair read fanout from decode/execute/store register reads.
-Worker-local data-memory bank replicas: spends storage to split shared data-memory read fanout across the four workers.
+Worker-local unified data-memory replicas: spends storage to split shared data-memory read fanout across the four workers.
 Control class predecode: carries registered opcode class flags through decode/execute instead of re-decoding common control cases on every high-fanout path.
 ```
 
@@ -97,7 +97,7 @@ Deep pipelining: fetch/decode/execute operand staging and DSP internal stages.
 Superscalar: safe local dual-issue retires selected adjacent ARM/ARM-DSP instructions together.
 SIMD: ARM DSP packed operations such as SADD16, SSUB16, SSAX, SMUAD, and SMUSD operate on packed lanes.
 Multiprocessors: four worker cores split the FFT lanes.
-Resource replication: register-file and data-memory bank replicas reduce fanout/routing pressure.
+Resource replication: register-file and unified data-memory replicas reduce fanout/routing pressure.
 ```
 
 The following techniques are intentionally not used in the current RTL because

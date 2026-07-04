@@ -54,11 +54,9 @@ architecture rtl of mcu_fft_system is
     signal core_release_req : std_logic := '0';
     signal core_rst         : std_logic := '1';
     signal core_dmem_we    : std_logic := '0';
-    signal core_dmem_wbank : std_logic := '0';
-    signal core_dmem_waddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal core_dmem_waddr : word_t := (others => '0');
     signal core_dmem_wdata : word_t := (others => '0');
-    signal core_dmem_rbank : std_logic := '0';
-    signal core_dmem_raddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal core_dmem_raddr : word_t := (others => '0');
     signal core_dmem_rdata : word_t;
 
     signal core_halted  : std_logic;
@@ -89,10 +87,8 @@ begin
             clk           => clk,
             rst           => core_rst,
             dmem_we       => core_dmem_we,
-            dmem_wbank    => core_dmem_wbank,
             dmem_waddr    => core_dmem_waddr,
             dmem_wdata    => core_dmem_wdata,
-            dmem_rbank    => core_dmem_rbank,
             dmem_raddr    => core_dmem_raddr,
             dmem_rdata    => core_dmem_rdata,
             pc_debug      => pc_debug,
@@ -106,10 +102,9 @@ begin
     illegal <= core_illegal;
     done <= '1' when state = S_DONE else '0';
     cnt_stop <= '1' when state = S_RUN and (core_halted = '1' or core_illegal = '1') else '0';
-    core_dmem_rbank <= '1' when state = S_DUMP_WRITE else '0';
-    core_dmem_raddr <= std_logic_vector(to_unsigned(dump_idx, 3))
+    core_dmem_raddr <= dmem_word_addr(DMEM_REGION_B_BASE_WORD + dump_idx)
         when state = S_DUMP_WRITE and dump_idx < 8
-        else std_logic_vector(to_unsigned(dump_idx - 8, 3))
+        else dmem_word_addr(DMEM_REGION_B_BASE_WORD + dump_idx - 8)
         when state = S_DUMP_WRITE
         else (others => '0');
 
@@ -130,7 +125,6 @@ begin
                 core_rst <= '1';
                 input_samples <= (others => (others => '0'));
                 core_dmem_we <= '0';
-                core_dmem_wbank <= '0';
                 core_dmem_waddr <= (others => '0');
                 core_dmem_wdata <= (others => '0');
                 test_rom_addr <= (others => '0');
@@ -162,8 +156,7 @@ begin
                         if load_idx >= 8 then
                             src_idx := load_idx - 8;
                             core_dmem_we <= '1';
-                            core_dmem_wbank <= '0';
-                            core_dmem_waddr <= std_logic_vector(to_unsigned(BITREV_ORDER(src_idx), 3));
+                            core_dmem_waddr <= dmem_word_addr(DMEM_REGION_A_BASE_WORD + BITREV_ORDER(src_idx));
                             core_dmem_wdata <= pack_q5_to_q12(input_samples(src_idx), test_vector_in);
                         end if;
                         if load_idx = last_input then

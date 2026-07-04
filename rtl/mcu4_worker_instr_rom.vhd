@@ -17,7 +17,7 @@ entity mcu4_worker_instr_rom is
         dec_rn      : out natural range 0 to 15;
         dec_rm      : out natural range 0 to 15;
         dec_imm     : out integer range -4096 to 4095;
-        dec_idx     : out natural range 0 to 7;
+        dec_addr    : out word_t;
         dec_illegal : out std_logic;
         pair_kind   : out std_logic_vector(2 downto 0);
         next_pair_kind : out std_logic_vector(2 downto 0)
@@ -32,7 +32,7 @@ architecture rtl of mcu4_worker_instr_rom is
         rn      : natural range 0 to 15;
         rm      : natural range 0 to 15;
         imm     : integer range -4096 to 4095;
-        idx     : natural range 0 to 7;
+        addr    : word_t;
         illegal : std_logic;
     end record;
     type worker_decode_rom_t is array (0 to 63) of worker_decode_entry_t;
@@ -43,16 +43,14 @@ architecture rtl of mcu4_worker_instr_rom is
         rn      => 0,
         rm      => 0,
         imm     => 0,
-        idx     => 0,
+        addr    => (others => '0'),
         illegal => '0'
     );
 
     constant WPAIR_NONE_CODE          : std_logic_vector(2 downto 0) := "000";
     constant WPAIR_MOV_IMM_CODE       : std_logic_vector(2 downto 0) := "001";
-    constant WPAIR_LDR_BANK0_CODE     : std_logic_vector(2 downto 0) := "010";
-    constant WPAIR_LDR_BANK1_CODE     : std_logic_vector(2 downto 0) := "011";
-    constant WPAIR_STR_BANK0_CODE     : std_logic_vector(2 downto 0) := "100";
-    constant WPAIR_STR_BANK1_CODE     : std_logic_vector(2 downto 0) := "101";
+    constant WPAIR_LDR_CODE           : std_logic_vector(2 downto 0) := "010";
+    constant WPAIR_STR_CODE           : std_logic_vector(2 downto 0) := "100";
     constant WPAIR_SADD16_SSUB16_CODE : std_logic_vector(2 downto 0) := "110";
 
     constant INSTR_NOP  : word_t := x"E1A00000";
@@ -65,25 +63,25 @@ architecture rtl of mcu4_worker_instr_rom is
          1 => x"E3A0105B", -- MOV r1, #91
          2 => x"E6813811", -- PKHBT r3, r1, r1, LSL #16
          3 => x"E6104F73", -- SSUB16 r4, r0, r3
-         4 => x"E5905040", -- LDR r5, [dmem_bank0+0]
-         5 => x"E5906044", -- LDR r6, [dmem_bank0+1]
+         4 => x"E5905040", -- LDR r5, [r0, #0x40]
+         5 => x"E5906044", -- LDR r6, [r0, #0x44]
          6 => x"E615AF16", -- SADD16 r10, r5, r6
          7 => x"E615BF76", -- SSUB16 r11, r5, r6
-         8 => x"E580A080", -- STR r10, [dmem_bank1+0]
-         9 => x"E580B084", -- STR r11, [dmem_bank1+1]
-        10 => x"E5905080", -- LDR r5, [dmem_bank1+0]
-        11 => x"E5906088", -- LDR r6, [dmem_bank1+2]
+         8 => x"E580A080", -- STR r10, [r0, #0x80]
+         9 => x"E580B084", -- STR r11, [r0, #0x84]
+        10 => x"E5905080", -- LDR r5, [r0, #0x80]
+        11 => x"E5906088", -- LDR r6, [r0, #0x88]
         12 => x"E615AF16", -- SADD16 r10, r5, r6
         13 => x"E615BF76", -- SSUB16 r11, r5, r6
-        14 => x"E580A040", -- STR r10, [dmem_bank0+0]
-        15 => x"E580B048", -- STR r11, [dmem_bank0+2]
+        14 => x"E580A040", -- STR r10, [r0, #0x40]
+        15 => x"E580B048", -- STR r11, [r0, #0x48]
         16 => INSTR_NOP,   -- NOP
-        17 => x"E5905040", -- LDR r5, [dmem_bank0+0]
-        18 => x"E5906050", -- LDR r6, [dmem_bank0+4]
+        17 => x"E5905040", -- LDR r5, [r0, #0x40]
+        18 => x"E5906050", -- LDR r6, [r0, #0x50]
         19 => x"E615AF16", -- SADD16 r10, r5, r6
         20 => x"E615BF76", -- SSUB16 r11, r5, r6
-        21 => x"E580A080", -- STR r10, [dmem_bank1+0]
-        22 => x"E580B090", -- STR r11, [dmem_bank1+4]
+        21 => x"E580A080", -- STR r10, [r0, #0x80]
+        22 => x"E580B090", -- STR r11, [r0, #0x90]
         23 => INSTR_NOP,   -- NOP
         24 => INSTR_NOP,   -- NOP
         25 => INSTR_NOP,   -- NOP
@@ -96,29 +94,29 @@ architecture rtl of mcu4_worker_instr_rom is
          1 => x"E3A0105B", -- MOV r1, #91
          2 => x"E6813811", -- PKHBT r3, r1, r1, LSL #16
          3 => x"E6104F73", -- SSUB16 r4, r0, r3
-         4 => x"E5905048", -- LDR r5, [dmem_bank0+2]
-         5 => x"E590604C", -- LDR r6, [dmem_bank0+3]
+         4 => x"E5905048", -- LDR r5, [r0, #0x48]
+         5 => x"E590604C", -- LDR r6, [r0, #0x4C]
          6 => x"E615AF16", -- SADD16 r10, r5, r6
          7 => x"E615BF76", -- SSUB16 r11, r5, r6
-         8 => x"E580A088", -- STR r10, [dmem_bank1+2]
-         9 => x"E580B08C", -- STR r11, [dmem_bank1+3]
-        10 => x"E5905084", -- LDR r5, [dmem_bank1+1]
-        11 => x"E590608C", -- LDR r6, [dmem_bank1+3]
+         8 => x"E580A088", -- STR r10, [r0, #0x88]
+         9 => x"E580B08C", -- STR r11, [r0, #0x8C]
+        10 => x"E5905084", -- LDR r5, [r0, #0x84]
+        11 => x"E590608C", -- LDR r6, [r0, #0x8C]
         12 => x"E6109F56", -- SSAX r9, r0, r6
         13 => x"E615AF19", -- SADD16 r10, r5, r9
         14 => x"E615BF79", -- SSUB16 r11, r5, r9
-        15 => x"E580A044", -- STR r10, [dmem_bank0+1]
-        16 => x"E580B04C", -- STR r11, [dmem_bank0+3]
-        17 => x"E5905044", -- LDR r5, [dmem_bank0+1]
-        18 => x"E5906054", -- LDR r6, [dmem_bank0+5]
+        15 => x"E580A044", -- STR r10, [r0, #0x44]
+        16 => x"E580B04C", -- STR r11, [r0, #0x4C]
+        17 => x"E5905044", -- LDR r5, [r0, #0x44]
+        18 => x"E5906054", -- LDR r6, [r0, #0x54]
         19 => x"E707F316", -- SMUAD r7, r6, r3
         20 => x"E708F456", -- SMUSD r8, r6, r4
         21 => x"E1A073C7", -- ASR r7, r7, #7
         22 => x"E6879498", -- PKHBT r9, r7, r8, LSL #9
         23 => x"E615AF19", -- SADD16 r10, r5, r9
         24 => x"E615BF79", -- SSUB16 r11, r5, r9
-        25 => x"E580A084", -- STR r10, [dmem_bank1+1]
-        26 => x"E580B094", -- STR r11, [dmem_bank1+5]
+        25 => x"E580A084", -- STR r10, [r0, #0x84]
+        26 => x"E580B094", -- STR r11, [r0, #0x94]
         others => INSTR_DONE
     );
 
@@ -127,26 +125,26 @@ architecture rtl of mcu4_worker_instr_rom is
          1 => x"E3A0105B", -- MOV r1, #91
          2 => x"E6813811", -- PKHBT r3, r1, r1, LSL #16
          3 => x"E6104F73", -- SSUB16 r4, r0, r3
-         4 => x"E5905050", -- LDR r5, [dmem_bank0+4]
-         5 => x"E5906054", -- LDR r6, [dmem_bank0+5]
+         4 => x"E5905050", -- LDR r5, [r0, #0x50]
+         5 => x"E5906054", -- LDR r6, [r0, #0x54]
          6 => x"E615AF16", -- SADD16 r10, r5, r6
          7 => x"E615BF76", -- SSUB16 r11, r5, r6
-         8 => x"E580A090", -- STR r10, [dmem_bank1+4]
-         9 => x"E580B094", -- STR r11, [dmem_bank1+5]
-        10 => x"E5905090", -- LDR r5, [dmem_bank1+4]
-        11 => x"E5906098", -- LDR r6, [dmem_bank1+6]
+         8 => x"E580A090", -- STR r10, [r0, #0x90]
+         9 => x"E580B094", -- STR r11, [r0, #0x94]
+        10 => x"E5905090", -- LDR r5, [r0, #0x90]
+        11 => x"E5906098", -- LDR r6, [r0, #0x98]
         12 => x"E615AF16", -- SADD16 r10, r5, r6
         13 => x"E615BF76", -- SSUB16 r11, r5, r6
-        14 => x"E580A050", -- STR r10, [dmem_bank0+4]
-        15 => x"E580B058", -- STR r11, [dmem_bank0+6]
+        14 => x"E580A050", -- STR r10, [r0, #0x50]
+        15 => x"E580B058", -- STR r11, [r0, #0x58]
         16 => INSTR_NOP,   -- NOP
-        17 => x"E5905048", -- LDR r5, [dmem_bank0+2]
-        18 => x"E5906058", -- LDR r6, [dmem_bank0+6]
+        17 => x"E5905048", -- LDR r5, [r0, #0x48]
+        18 => x"E5906058", -- LDR r6, [r0, #0x58]
         19 => x"E6109F56", -- SSAX r9, r0, r6
         20 => x"E615AF19", -- SADD16 r10, r5, r9
         21 => x"E615BF79", -- SSUB16 r11, r5, r9
-        22 => x"E580A088", -- STR r10, [dmem_bank1+2]
-        23 => x"E580B098", -- STR r11, [dmem_bank1+6]
+        22 => x"E580A088", -- STR r10, [r0, #0x88]
+        23 => x"E580B098", -- STR r11, [r0, #0x98]
         24 => INSTR_NOP,   -- NOP
         25 => INSTR_NOP,   -- NOP
         26 => INSTR_NOP,   -- NOP
@@ -158,29 +156,29 @@ architecture rtl of mcu4_worker_instr_rom is
          1 => x"E3A0105B", -- MOV r1, #91
          2 => x"E6813811", -- PKHBT r3, r1, r1, LSL #16
          3 => x"E6104F73", -- SSUB16 r4, r0, r3
-         4 => x"E5905058", -- LDR r5, [dmem_bank0+6]
-         5 => x"E590605C", -- LDR r6, [dmem_bank0+7]
+         4 => x"E5905058", -- LDR r5, [r0, #0x58]
+         5 => x"E590605C", -- LDR r6, [r0, #0x5C]
          6 => x"E615AF16", -- SADD16 r10, r5, r6
          7 => x"E615BF76", -- SSUB16 r11, r5, r6
-         8 => x"E580A098", -- STR r10, [dmem_bank1+6]
-         9 => x"E580B09C", -- STR r11, [dmem_bank1+7]
-        10 => x"E5905094", -- LDR r5, [dmem_bank1+5]
-        11 => x"E590609C", -- LDR r6, [dmem_bank1+7]
+         8 => x"E580A098", -- STR r10, [r0, #0x98]
+         9 => x"E580B09C", -- STR r11, [r0, #0x9C]
+        10 => x"E5905094", -- LDR r5, [r0, #0x94]
+        11 => x"E590609C", -- LDR r6, [r0, #0x9C]
         12 => x"E6109F56", -- SSAX r9, r0, r6
         13 => x"E615AF19", -- SADD16 r10, r5, r9
         14 => x"E615BF79", -- SSUB16 r11, r5, r9
-        15 => x"E580A054", -- STR r10, [dmem_bank0+5]
-        16 => x"E580B05C", -- STR r11, [dmem_bank0+7]
-        17 => x"E590504C", -- LDR r5, [dmem_bank0+3]
-        18 => x"E590605C", -- LDR r6, [dmem_bank0+7]
+        15 => x"E580A054", -- STR r10, [r0, #0x54]
+        16 => x"E580B05C", -- STR r11, [r0, #0x5C]
+        17 => x"E590504C", -- LDR r5, [r0, #0x4C]
+        18 => x"E590605C", -- LDR r6, [r0, #0x5C]
         19 => x"E707F456", -- SMUSD r7, r6, r4
         20 => x"E708F416", -- SMUAD r8, r6, r4
         21 => x"E1A073C7", -- ASR r7, r7, #7
         22 => x"E6879498", -- PKHBT r9, r7, r8, LSL #9
         23 => x"E615AF19", -- SADD16 r10, r5, r9
         24 => x"E615BF79", -- SSUB16 r11, r5, r9
-        25 => x"E580A08C", -- STR r10, [dmem_bank1+3]
-        26 => x"E580B09C", -- STR r11, [dmem_bank1+7]
+        25 => x"E580A08C", -- STR r10, [r0, #0x8C]
+        26 => x"E580B09C", -- STR r11, [r0, #0x9C]
         others => INSTR_DONE
     );
 
@@ -221,7 +219,7 @@ architecture rtl of mcu4_worker_instr_rom is
         variable rn_value      : out natural range 0 to 15;
         variable rm_value      : out natural range 0 to 15;
         variable imm_value     : out integer range -4096 to 4095;
-        variable idx_value     : out natural range 0 to 7;
+        variable addr_value    : out word_t;
         variable illegal_value : out std_logic
     ) is
         variable word_addr : natural range 0 to 1023;
@@ -234,7 +232,7 @@ architecture rtl of mcu4_worker_instr_rom is
         rn_value := 0;
         rm_value := 0;
         imm_value := 0;
-        idx_value := 0;
+        addr_value := (others => '0');
         illegal_value := '0';
 
         pc_value := to_integer(unsigned(pc_value_in));
@@ -300,14 +298,9 @@ architecture rtl of mcu4_worker_instr_rom is
           and instr_value(19 downto 16) = x"0" then
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             word_addr := to_integer(unsigned(instr_value(11 downto 0))) / 4;
-            if word_addr >= DMEM_BANK0_BASE_WORD
-               and word_addr < DMEM_BANK0_BASE_WORD + DMEM_BANK_WORDS then
-                op_value := WOP_LDR_BANK0;
-                idx_value := word_addr - DMEM_BANK0_BASE_WORD;
-            elsif word_addr >= DMEM_BANK1_BASE_WORD
-                  and word_addr < DMEM_BANK1_BASE_WORD + DMEM_BANK_WORDS then
-                op_value := WOP_LDR_BANK1;
-                idx_value := word_addr - DMEM_BANK1_BASE_WORD;
+            if instr_value(1 downto 0) = "00" and word_addr < DMEM_WORDS then
+                op_value := WOP_LDR;
+                addr_value := dmem_word_addr(word_addr);
             else
                 illegal_value := '1';
             end if;
@@ -315,14 +308,9 @@ architecture rtl of mcu4_worker_instr_rom is
           and instr_value(19 downto 16) = x"0" then
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             word_addr := to_integer(unsigned(instr_value(11 downto 0))) / 4;
-            if word_addr >= DMEM_BANK0_BASE_WORD
-               and word_addr < DMEM_BANK0_BASE_WORD + DMEM_BANK_WORDS then
-                op_value := WOP_STR_BANK0;
-                idx_value := word_addr - DMEM_BANK0_BASE_WORD;
-            elsif word_addr >= DMEM_BANK1_BASE_WORD
-                  and word_addr < DMEM_BANK1_BASE_WORD + DMEM_BANK_WORDS then
-                op_value := WOP_STR_BANK1;
-                idx_value := word_addr - DMEM_BANK1_BASE_WORD;
+            if instr_value(1 downto 0) = "00" and word_addr < DMEM_WORDS then
+                op_value := WOP_STR;
+                addr_value := dmem_word_addr(word_addr);
             else
                 illegal_value := '1';
             end if;
@@ -383,13 +371,13 @@ architecture rtl of mcu4_worker_instr_rom is
         constant rd_a      : natural range 0 to 15;
         constant rn_a      : natural range 0 to 15;
         constant rm_a      : natural range 0 to 15;
-        constant idx_a     : natural range 0 to 7;
+        constant addr_a    : word_t;
         constant illegal_a : std_logic;
         constant op_b      : worker_op_t;
         constant rd_b      : natural range 0 to 15;
         constant rn_b      : natural range 0 to 15;
         constant rm_b      : natural range 0 to 15;
-        constant idx_b     : natural range 0 to 7;
+        constant addr_b    : word_t;
         constant illegal_b : std_logic
     ) return std_logic_vector is
     begin
@@ -399,22 +387,14 @@ architecture rtl of mcu4_worker_instr_rom is
           and op_b = WOP_MOV_IMM
           and rd_a /= rd_b then
             return WPAIR_MOV_IMM_CODE;
-        elsif op_a = WOP_LDR_BANK0
-          and op_b = WOP_LDR_BANK0
+        elsif op_a = WOP_LDR
+          and op_b = WOP_LDR
           and rd_a /= rd_b then
-            return WPAIR_LDR_BANK0_CODE;
-        elsif op_a = WOP_LDR_BANK1
-          and op_b = WOP_LDR_BANK1
-          and rd_a /= rd_b then
-            return WPAIR_LDR_BANK1_CODE;
-        elsif op_a = WOP_STR_BANK0
-          and op_b = WOP_STR_BANK0
-          and idx_a /= idx_b then
-            return WPAIR_STR_BANK0_CODE;
-        elsif op_a = WOP_STR_BANK1
-          and op_b = WOP_STR_BANK1
-          and idx_a /= idx_b then
-            return WPAIR_STR_BANK1_CODE;
+            return WPAIR_LDR_CODE;
+        elsif op_a = WOP_STR
+          and op_b = WOP_STR
+          and addr_a /= addr_b then
+            return WPAIR_STR_CODE;
         elsif op_a = WOP_SADD16
           and op_b = WOP_SSUB16
           and rn_a = rn_b
@@ -434,7 +414,7 @@ architecture rtl of mcu4_worker_instr_rom is
         variable rn_v : natural range 0 to 15;
         variable rm_v : natural range 0 to 15;
         variable imm_v : integer range -4096 to 4095;
-        variable idx_v : natural range 0 to 7;
+        variable addr_v : word_t;
         variable illegal_v : std_logic;
     begin
         for pc in 0 to 63 loop
@@ -447,7 +427,7 @@ architecture rtl of mcu4_worker_instr_rom is
                 rn_v,
                 rm_v,
                 imm_v,
-                idx_v,
+                addr_v,
                 illegal_v
             );
 
@@ -456,7 +436,7 @@ architecture rtl of mcu4_worker_instr_rom is
             result(pc).rn      := rn_v;
             result(pc).rm      := rm_v;
             result(pc).imm     := imm_v;
-            result(pc).idx     := idx_v;
+            result(pc).addr    := addr_v;
             result(pc).illegal := illegal_v;
         end loop;
 
@@ -473,14 +453,14 @@ architecture rtl of mcu4_worker_instr_rom is
         variable rn_a : natural range 0 to 15;
         variable rm_a : natural range 0 to 15;
         variable imm_a : integer range -4096 to 4095;
-        variable idx_a : natural range 0 to 7;
+        variable addr_a : word_t;
         variable illegal_a : std_logic;
         variable op_b : worker_op_t;
         variable rd_b : natural range 0 to 15;
         variable rn_b : natural range 0 to 15;
         variable rm_b : natural range 0 to 15;
         variable imm_b : integer range -4096 to 4095;
-        variable idx_b : natural range 0 to 7;
+        variable addr_b : word_t;
         variable illegal_b : std_logic;
     begin
         for pc in 0 to 63 loop
@@ -501,7 +481,7 @@ architecture rtl of mcu4_worker_instr_rom is
                 rn_a,
                 rm_a,
                 imm_a,
-                idx_a,
+                addr_a,
                 illegal_a
             );
             decode_instr_word(
@@ -512,7 +492,7 @@ architecture rtl of mcu4_worker_instr_rom is
                 rn_b,
                 rm_b,
                 imm_b,
-                idx_b,
+                addr_b,
                 illegal_b
             );
 
@@ -521,13 +501,13 @@ architecture rtl of mcu4_worker_instr_rom is
                 rd_a,
                 rn_a,
                 rm_a,
-                idx_a,
+                addr_a,
                 illegal_a,
                 op_b,
                 rd_b,
                 rn_b,
                 rm_b,
-                idx_b,
+                addr_b,
                 illegal_b
             );
         end loop;
@@ -597,7 +577,7 @@ begin
         dec_rn <= decode_value.rn;
         dec_rm <= decode_value.rm;
         dec_imm <= decode_value.imm;
-        dec_idx <= decode_value.idx;
+        dec_addr <= decode_value.addr;
         dec_illegal <= decode_value.illegal;
         pair_kind <= pair_value;
         next_pair_kind <= next_pair_value;

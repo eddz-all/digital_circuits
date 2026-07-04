@@ -12,11 +12,9 @@ architecture sim of mcu4_multicycle_core_min_arm_tb is
     signal clk : std_logic := '0';
     signal rst : std_logic := '1';
     signal dmem_we : std_logic := '0';
-    signal dmem_wbank : std_logic := '0';
-    signal dmem_waddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal dmem_waddr : word_t := (others => '0');
     signal dmem_wdata : word_t := (others => '0');
-    signal dmem_rbank : std_logic := '0';
-    signal dmem_raddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal dmem_raddr : word_t := (others => '0');
     signal dmem_rdata : word_t;
     signal pc_debug : std_logic_vector(31 downto 0);
     signal instr_debug : std_logic_vector(31 downto 0);
@@ -36,10 +34,8 @@ begin
             clk           => clk,
             rst           => rst,
             dmem_we       => dmem_we,
-            dmem_wbank    => dmem_wbank,
             dmem_waddr    => dmem_waddr,
             dmem_wdata    => dmem_wdata,
-            dmem_rbank    => dmem_rbank,
             dmem_raddr    => dmem_raddr,
             dmem_rdata    => dmem_rdata,
             pc_debug      => pc_debug,
@@ -51,14 +47,13 @@ begin
         );
 
     stim : process
-        procedure check_bank0(
+        procedure check_addr(
             constant addr : in natural;
             constant expected : in word_t;
             constant label_text : in string
         ) is
         begin
-            dmem_rbank <= '0';
-            dmem_raddr <= std_logic_vector(to_unsigned(addr, 3));
+            dmem_raddr <= dmem_word_addr(DMEM_REGION_A_BASE_WORD + addr);
             wait for 1 ns;
             assert dmem_rdata = expected
                 report "single-core minimum ARM program " & label_text & " mismatch"
@@ -73,8 +68,7 @@ begin
         end procedure;
     begin
         wait_cycles(2);
-        dmem_wbank <= '0';
-        dmem_waddr <= std_logic_vector(to_unsigned(0, 3));
+        dmem_waddr <= dmem_word_addr(DMEM_REGION_A_BASE_WORD);
         dmem_wdata <= x"00000005";
         dmem_we <= '1';
         wait until rising_edge(clk);
@@ -94,13 +88,13 @@ begin
             report "single-core minimum ARM program hit illegal instruction"
             severity failure;
 
-        check_bank0(1, x"00000007", "dmem_bank0[1]");
-        check_bank0(2, x"0000000A", "dmem_bank0[2]");
-        check_bank0(3, x"00000007", "dmem_bank0[3]");
-        check_bank0(4, x"00000002", "dmem_bank0[4]");
-        check_bank0(5, x"00000003", "dmem_bank0[5]");
-        check_bank0(6, x"00000005", "dmem_bank0[6]");
-        check_bank0(7, x"0000000F", "dmem_bank0[7]");
+        check_addr(1, x"00000007", "address 0x44");
+        check_addr(2, x"0000000A", "address 0x48");
+        check_addr(3, x"00000007", "address 0x4C");
+        check_addr(4, x"00000002", "address 0x50");
+        check_addr(5, x"00000003", "address 0x54");
+        check_addr(6, x"00000005", "address 0x58");
+        check_addr(7, x"0000000F", "address 0x5C");
 
         report "mcu4_multicycle_core_min_arm_tb passed" severity note;
         finish;

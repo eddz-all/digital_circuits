@@ -3,6 +3,8 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use std.env.all;
 
+use work.mcu4_multi_pkg.all;
+
 entity mcu4_worker_core_min_arm_tb is
 end entity mcu4_worker_core_min_arm_tb;
 
@@ -10,27 +12,26 @@ architecture sim of mcu4_worker_core_min_arm_tb is
     signal clk : std_logic := '0';
     signal rst : std_logic := '1';
 
-    signal dmem_bank0_raddr : std_logic_vector(2 downto 0);
-    signal dmem_bank0_rdata : std_logic_vector(31 downto 0);
-    signal dmem_bank0_raddr2 : std_logic_vector(2 downto 0);
-    signal dmem_bank0_rdata2 : std_logic_vector(31 downto 0);
-    signal dmem_bank1_raddr : std_logic_vector(2 downto 0);
-    signal dmem_bank1_rdata : std_logic_vector(31 downto 0) := (others => '0');
-    signal dmem_bank1_raddr2 : std_logic_vector(2 downto 0);
-    signal dmem_bank1_rdata2 : std_logic_vector(31 downto 0) := (others => '0');
+    constant ADDR_INPUT   : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 0);
+    constant ADDR_MOV     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 1);
+    constant ADDR_ADD     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 2);
+    constant ADDR_SUB     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 3);
+    constant ADDR_AND     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 4);
+    constant ADDR_ORR     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 5);
+    constant ADDR_LDR     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 6);
+    constant ADDR_CONTROL : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 7);
 
-    signal dmem_bank0_we    : std_logic;
-    signal dmem_bank0_waddr : std_logic_vector(2 downto 0);
-    signal dmem_bank0_wdata : std_logic_vector(31 downto 0);
-    signal dmem_bank0_we2    : std_logic;
-    signal dmem_bank0_waddr2 : std_logic_vector(2 downto 0);
-    signal dmem_bank0_wdata2 : std_logic_vector(31 downto 0);
-    signal dmem_bank1_we    : std_logic;
-    signal dmem_bank1_waddr : std_logic_vector(2 downto 0);
-    signal dmem_bank1_wdata : std_logic_vector(31 downto 0);
-    signal dmem_bank1_we2    : std_logic;
-    signal dmem_bank1_waddr2 : std_logic_vector(2 downto 0);
-    signal dmem_bank1_wdata2 : std_logic_vector(31 downto 0);
+    signal dmem_raddr : word_t;
+    signal dmem_rdata : word_t;
+    signal dmem_raddr2 : word_t;
+    signal dmem_rdata2 : word_t;
+
+    signal dmem_we    : std_logic;
+    signal dmem_waddr : word_t;
+    signal dmem_wdata : word_t;
+    signal dmem_we2    : std_logic;
+    signal dmem_waddr2 : word_t;
+    signal dmem_wdata2 : word_t;
 
     signal halted      : std_logic;
     signal illegal     : std_logic;
@@ -47,8 +48,8 @@ architecture sim of mcu4_worker_core_min_arm_tb is
 begin
     clk <= not clk after 5 ns;
 
-    dmem_bank0_rdata <= x"00000005" when dmem_bank0_raddr = "000" else (others => '0');
-    dmem_bank0_rdata2 <= x"00000005" when dmem_bank0_raddr2 = "000" else (others => '0');
+    dmem_rdata <= x"00000005" when dmem_raddr = ADDR_INPUT else (others => '0');
+    dmem_rdata2 <= x"00000005" when dmem_raddr2 = ADDR_INPUT else (others => '0');
 
     dut : entity work.mcu4_worker_core
         generic map (
@@ -58,26 +59,16 @@ begin
         port map (
             clk         => clk,
             rst         => rst,
-            dmem_bank0_raddr => dmem_bank0_raddr,
-            dmem_bank0_rdata => dmem_bank0_rdata,
-            dmem_bank0_raddr2 => dmem_bank0_raddr2,
-            dmem_bank0_rdata2 => dmem_bank0_rdata2,
-            dmem_bank1_raddr => dmem_bank1_raddr,
-            dmem_bank1_rdata => dmem_bank1_rdata,
-            dmem_bank1_raddr2 => dmem_bank1_raddr2,
-            dmem_bank1_rdata2 => dmem_bank1_rdata2,
-            dmem_bank0_we    => dmem_bank0_we,
-            dmem_bank0_waddr => dmem_bank0_waddr,
-            dmem_bank0_wdata => dmem_bank0_wdata,
-            dmem_bank0_we2    => dmem_bank0_we2,
-            dmem_bank0_waddr2 => dmem_bank0_waddr2,
-            dmem_bank0_wdata2 => dmem_bank0_wdata2,
-            dmem_bank1_we    => dmem_bank1_we,
-            dmem_bank1_waddr => dmem_bank1_waddr,
-            dmem_bank1_wdata => dmem_bank1_wdata,
-            dmem_bank1_we2    => dmem_bank1_we2,
-            dmem_bank1_waddr2 => dmem_bank1_waddr2,
-            dmem_bank1_wdata2 => dmem_bank1_wdata2,
+            dmem_raddr => dmem_raddr,
+            dmem_rdata => dmem_rdata,
+            dmem_raddr2 => dmem_raddr2,
+            dmem_rdata2 => dmem_rdata2,
+            dmem_we    => dmem_we,
+            dmem_waddr => dmem_waddr,
+            dmem_wdata => dmem_wdata,
+            dmem_we2    => dmem_we2,
+            dmem_waddr2 => dmem_waddr2,
+            dmem_wdata2 => dmem_wdata2,
             halted      => halted,
             illegal     => illegal,
             pc_debug    => pc_debug,
@@ -87,61 +78,53 @@ begin
     monitor : process(clk)
     begin
         if rising_edge(clk) then
-            assert dmem_bank1_we = '0'
-                report "minimum ARM self-test unexpectedly wrote dmem_bank1"
-                severity failure;
-            assert dmem_bank1_we2 = '0'
-                report "minimum ARM self-test unexpectedly wrote dmem_bank1 second port"
-                severity failure;
-
-            if rst = '0' and dmem_bank0_we = '1' then
-                case to_integer(unsigned(dmem_bank0_waddr)) is
-                    when 1 =>
-                        assert dmem_bank0_wdata = x"00000007"
-                            report "MOV result write mismatch at dmem_bank0[1]"
-                            severity failure;
-                        saw_result1 <= '1';
-                    when 2 =>
-                        assert dmem_bank0_wdata = x"0000000A"
-                            report "ADD result write mismatch at dmem_bank0[2]"
-                            severity failure;
-                        saw_result2 <= '1';
-                    when 3 =>
-                        assert dmem_bank0_wdata = x"00000007"
-                            report "SUB result write mismatch at dmem_bank0[3]"
-                            severity failure;
-                        saw_result3 <= '1';
-                    when 4 =>
-                        assert dmem_bank0_wdata = x"00000002"
-                            report "AND result write mismatch at dmem_bank0[4]"
-                            severity failure;
-                        saw_result4 <= '1';
-                    when 5 =>
-                        assert dmem_bank0_wdata = x"00000003"
-                            report "ORR result write mismatch at dmem_bank0[5]"
-                            severity failure;
-                        saw_result5 <= '1';
-                    when 6 =>
-                        assert dmem_bank0_wdata = x"00000005"
-                            report "LDR result write mismatch at dmem_bank0[6]"
-                            severity failure;
-                        saw_result6 <= '1';
-                    when 7 =>
-                        assert dmem_bank0_wdata = x"0000000F"
-                            report "BL/MOV pc,lr result write mismatch at dmem_bank0[7]"
-                            severity failure;
-                        saw_result7 <= '1';
-                    when others =>
-                        assert false
-                            report "unexpected STR target dmem_bank0["
-                                & integer'image(to_integer(unsigned(dmem_bank0_waddr))) & "]"
-                            severity failure;
-                end case;
+            if rst = '0' and dmem_we = '1' then
+                if dmem_waddr = ADDR_MOV then
+                    assert dmem_wdata = x"00000007"
+                        report "MOV result write mismatch at address 0x44"
+                        severity failure;
+                    saw_result1 <= '1';
+                elsif dmem_waddr = ADDR_ADD then
+                    assert dmem_wdata = x"0000000A"
+                        report "ADD result write mismatch at address 0x48"
+                        severity failure;
+                    saw_result2 <= '1';
+                elsif dmem_waddr = ADDR_SUB then
+                    assert dmem_wdata = x"00000007"
+                        report "SUB result write mismatch at address 0x4C"
+                        severity failure;
+                    saw_result3 <= '1';
+                elsif dmem_waddr = ADDR_AND then
+                    assert dmem_wdata = x"00000002"
+                        report "AND result write mismatch at address 0x50"
+                        severity failure;
+                    saw_result4 <= '1';
+                elsif dmem_waddr = ADDR_ORR then
+                    assert dmem_wdata = x"00000003"
+                        report "ORR result write mismatch at address 0x54"
+                        severity failure;
+                    saw_result5 <= '1';
+                elsif dmem_waddr = ADDR_LDR then
+                    assert dmem_wdata = x"00000005"
+                        report "LDR result write mismatch at address 0x58"
+                        severity failure;
+                    saw_result6 <= '1';
+                elsif dmem_waddr = ADDR_CONTROL then
+                    assert dmem_wdata = x"0000000F"
+                        report "BL/MOV pc,lr result write mismatch at address 0x5C"
+                        severity failure;
+                    saw_result7 <= '1';
+                else
+                    assert false
+                        report "unexpected STR target byte address "
+                            & integer'image(to_integer(unsigned(dmem_waddr(11 downto 0))))
+                        severity failure;
+                end if;
             end if;
 
-            if rst = '0' and dmem_bank0_we2 = '1' then
+            if rst = '0' and dmem_we2 = '1' then
                 assert false
-                    report "legacy minimum ARM self-test unexpectedly used dmem_bank0 second write port"
+                    report "minimum ARM self-test unexpectedly used second write port"
                     severity failure;
             end if;
         end if;

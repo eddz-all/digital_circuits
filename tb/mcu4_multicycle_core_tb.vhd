@@ -12,11 +12,9 @@ architecture sim of mcu4_multicycle_core_tb is
     signal clk : std_logic := '0';
     signal rst : std_logic := '1';
     signal dmem_we : std_logic := '0';
-    signal dmem_wbank : std_logic := '0';
-    signal dmem_waddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal dmem_waddr : word_t := (others => '0');
     signal dmem_wdata : word_t := (others => '0');
-    signal dmem_rbank : std_logic := '0';
-    signal dmem_raddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal dmem_raddr : word_t := (others => '0');
     signal dmem_rdata : word_t;
     signal pc_debug : std_logic_vector(31 downto 0);
     signal instr_debug : std_logic_vector(31 downto 0);
@@ -47,10 +45,8 @@ begin
             clk           => clk,
             rst           => rst,
             dmem_we       => dmem_we,
-            dmem_wbank    => dmem_wbank,
             dmem_waddr    => dmem_waddr,
             dmem_wdata    => dmem_wdata,
-            dmem_rbank    => dmem_rbank,
             dmem_raddr    => dmem_raddr,
             dmem_rdata    => dmem_rdata,
             pc_debug      => pc_debug,
@@ -81,8 +77,7 @@ begin
                 dmem_we <= '0';
             else
                 src_idx := i - 8;
-                dmem_wbank <= '0';
-                dmem_waddr <= std_logic_vector(to_unsigned(BITREV_ORDER(src_idx), 3));
+                dmem_waddr <= dmem_word_addr(DMEM_REGION_A_BASE_WORD + BITREV_ORDER(src_idx));
                 dmem_wdata <= pack_q5_to_q12(samples(src_idx), slv16(FFT_INPUT(i)));
                 dmem_we <= '1';
             end if;
@@ -101,13 +96,12 @@ begin
         assert illegal_debug = '0' report "core hit illegal instruction" severity failure;
 
         for slot in FFT_EXPECTED_OUTPUT'range loop
-            dmem_rbank <= '1';
             if slot < 8 then
-                dmem_raddr <= std_logic_vector(to_unsigned(slot, 3));
+                dmem_raddr <= dmem_word_addr(DMEM_REGION_B_BASE_WORD + slot);
                 wait for 1 ns;
                 output_half := dmem_rdata(15 downto 0);
             else
-                dmem_raddr <= std_logic_vector(to_unsigned(slot - 8, 3));
+                dmem_raddr <= dmem_word_addr(DMEM_REGION_B_BASE_WORD + slot - 8);
                 wait for 1 ns;
                 output_half := dmem_rdata(31 downto 16);
             end if;

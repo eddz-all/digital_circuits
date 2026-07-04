@@ -33,9 +33,9 @@ FFT butterfly 由 ARM/ARM DSP 指令序列组合完成。
 ```text
 test_ROM[128..143]
   -> mcu_fft_system 输入控制器、bit-reversal、16-bit to 32-bit 打包
-  -> MCU 内部数据内存 dmem_bank0/dmem_bank1
+  -> MCU 内部统一数据内存 work area A
   -> 四个 ARM worker core 执行 FFT 指令序列
-  -> MCU 内部数据内存 dmem_bank1
+  -> MCU 内部统一数据内存 work area B
   -> mcu_fft_system 输出控制器、32-bit to 16-bit 拆包
   -> verify_RAM[0..15]
 ```
@@ -60,7 +60,7 @@ test_ROM[128..143]
                              |
                  +-----------v-------------+
                  | multi-port work memory |
-                 | dmem_bank0 / dmem_bank1 |
+                 | unified 32-bit dmem    |
                  +-------------------------+
 ```
 
@@ -123,11 +123,13 @@ PROGRAM_ID = 1, ACTIVE_CORES = 1  -- 基础指令测试程序
 
 ## 6. 数据内存设计
 
-不再保留单独且几乎不用的传统 `data_mem`。MCU 的内部数据内存定义为：
+不再保留单独且几乎不用的传统 `data_mem`，也不再把程序可见内存拆成两个 bank。
+MCU 的内部数据内存定义为一块统一的 32-bit word memory：
 
 ```text
-dmem_bank0[0..7]
-dmem_bank1[0..7]
+unified dmem word[0..63]
+architectural byte address = word_index * 4
+implemented byte address window = 0x00000000..0x000000FC
 ```
 
 每个元素是一个 32-bit word。FFT 程序把这个 word 当作 32-bit 复数：
@@ -150,19 +152,20 @@ word[31:16]  = imag
 推荐地址映射：
 
 ```text
-0x0000..0x003F  控制/同步寄存器
-0x0040..0x005C  dmem_bank0[0..7]
-0x0080..0x009C  dmem_bank1[0..7]
+0x0000..0x003F  预留/普通数据区
+0x0040..0x005C  当前 FFT 工作区 A，dmem word[16..23]
+0x0080..0x009C  当前 FFT 工作区 B/输出区，dmem word[32..39]
 ```
 
 示例：
 
 ```asm
-LDR r2, [r0, #64]     ; read dmem_bank0[0]
-STR r3, [r0, #128]    ; write dmem_bank1[0]
+LDR r2, [r0, #64]     ; read byte address 0x40, dmem word[16]
+STR r3, [r0, #128]    ; write byte address 0x80, dmem word[32]
 ```
 
-这里 `dmem_bank0/dmem_bank1` 不是隐藏缓存，而是 MCU 的工作数据内存。它用寄存器阵列实现，因此可以提供多读多写带宽。对程序展示时，也可以把它们解释成一块数据内存里的两个地址区域。
+这里 A/B 只是当前程序的软件地址区域，不是两个指令可见 bank。实现上为了四核并行和时序复制读口，
+但 `LDR/STR` 接收和检查的是完整 32-bit byte address。
 
 ## 7. 同步机制
 
@@ -192,7 +195,7 @@ BNE wait
 ```text
 16 个 16-bit 输入 = 8 个 real + 8 个 imag
 外层输入控制器打包成 8 个 32-bit complex word
-并按 bit-reversal 顺序写入 dmem_bank0
+并按 bit-reversal 顺序写入统一数据内存的 work area A
 ```
 
 使用 radix-2 DIT FFT，三层 stage：
@@ -203,15 +206,15 @@ stage1: (0,2), (1,3), (4,6), (5,7), W0/W2
 stage2: (0,4), (1,5), (2,6), (3,7), W0/W1/W2/W3
 ```
 
-ping-pong 工作内存：
+ping-pong 工作区域：
 
 ```text
-stage0: dmem_bank0 -> dmem_bank1
-stage1: dmem_bank1 -> dmem_bank0
-stage2: dmem_bank0 -> dmem_bank1
+stage0: work area A -> work area B
+stage1: work area B -> work area A
+stage2: work area A -> work area B
 ```
 
-最终 `dmem_bank1` 中保存 FFT 输出，`mcu_fft_system` 再拆成 16-bit 流写入 `verify_RAM`。
+最终 work area B 中保存 FFT 输出，`mcu_fft_system` 再拆成 16-bit 流写入 `verify_RAM`。
 
 ## 9. Butterfly 的 ARM 指令拆法
 
@@ -337,7 +340,7 @@ rtl/mcu4_worker_decoder.vhd
 rtl/mcu4_worker_core.vhd
 ```
 
-4. 共享 `dmem_bank0/dmem_bank1` 多端口工作数据内存在 `mcu4_multicycle_core` 内保留；FFT 输入输出格式转换在 `mcu_fft_system` 内完成。
+4. 统一多端口工作数据内存在 `mcu4_multicycle_core` 内保留；A/B 是地址区域，不是独立 bank；FFT 输入输出格式转换在 `mcu_fft_system` 内完成。
 5. 每个 worker 从自己的 lane-specific 32-bit 指令 ROM 取指；ROM 中显式保存 `FFT_ROM_W0..W3` 和 `SELFTEST_ROM` 常量表。
 6. `cnt_stop` 由顶层对所有 active worker 的 `B .` 完成哨兵检测产生，不等待输出 dump。
 7. Worker core 已补足课程最低 ARM 风格操作：`ADD/SUB/AND/ORR/MOV/LDR/STR/B/BL`。
@@ -348,4 +351,4 @@ rtl/mcu4_worker_core.vhd
 
 推荐表述：
 
-> 我们采用四核多周期 ARM 指令执行结构。每个 core 都有 PC、32 位指令 ROM、译码器、寄存器组、ALU 和 ARM DSP 指令执行单元。ROM 中实际使用的机器码采用 Armv7-A/R AArch32 A32 标准编码子集。FFT 数据存储在多端口数据内存 `dmem_bank0/dmem_bank1` 中，普通 ARM `LDR/STR` 可以单口访问该内存，四个 core 也可以并行访问。外部 16-bit 输入输出流的打包、bit-reversal 装载和拆包由 `mcu_fft_system` 完成。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持的 `SADD16/SSUB16/SSAX/SMUAD/SMUSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM 指令序列。
+> 我们采用四核多周期 ARM 指令执行结构。每个 core 都有 PC、32 位指令 ROM、译码器、寄存器组、ALU 和 ARM DSP 指令执行单元。ROM 中实际使用的机器码采用 Armv7-A/R AArch32 A32 标准编码子集。FFT 数据存储在一块统一的 32-bit 数据内存中，普通 ARM `LDR/STR` 使用 32-bit byte address 访问；当前程序把 `0x40..0x5C` 作为工作区 A、`0x80..0x9C` 作为工作区 B/输出区。实现上为了四核并行复制读口和写广播，但对指令不暴露 bank 或 3-bit 下标。外部 16-bit 输入输出流的打包、bit-reversal 装载和拆包由 `mcu_fft_system` 完成。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持的 `SADD16/SSUB16/SSAX/SMUAD/SMUSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM 指令序列。

@@ -26,6 +26,7 @@ S_RUN 状态
 | `exec_rm_data` | `rm` 的值 |
 | `exec_rd_data` | `rd` 的旧值，主要给 `STR` 用 |
 | `exec_imm` | 立即数 |
+| `exec_addr` | `LDR/STR` 使用的 32-bit byte address |
 
 ## ALU 输出
 
@@ -55,17 +56,15 @@ S_RUN 状态
 
 | 指令 | ALU 做什么 |
 | --- | --- |
-| `LDR_BANK0` | 选择 bank0 读数据，写回 `rd` |
-| `LDR_BANK1` | 选择 bank1 读数据，写回 `rd` |
-| `STR_BANK0` | 输出 bank0 写使能、写地址、写数据 |
-| `STR_BANK1` | 输出 bank1 写使能、写地址、写数据 |
+| `LDR` | 用 `exec_addr` 读统一 data memory，写回 `rd` |
+| `STR` | 输出统一 data memory 写使能、32-bit 写地址、写数据 |
 
 地址不是在 ALU 里动态加出来的。
 
 地址在译码阶段已经变成：
 
 ```text
-bank + idx
+32-bit byte address
 ```
 
 ## SIMD 运算

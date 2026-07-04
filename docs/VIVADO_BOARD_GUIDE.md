@@ -114,14 +114,14 @@ If `probe0` drops to 0, read `probe2`:
 7  data[5] ORR result mismatch, expected 0x00000003
 8  data[6] LDR result mismatch, expected 0x00000005
 9  data[7] control-flow result mismatch, expected 0x0000000F
-A  dmem_bank1 was not zero
+A  output/B address region was not zero
 ```
 
 `probe3` shows the checker state:
 
 ```text
-0 init bank0
-1 init bank1
+0 init work area A
+1 init work area B
 2 run
 3 check data[1]
 4 check data[2]
@@ -130,7 +130,7 @@ A  dmem_bank1 was not zero
 7 check data[5]
 8 check data[6]
 9 check data[7]
-A check bank1
+A check work area B
 B done
 ```
 
@@ -318,7 +318,7 @@ addr 0F  D874
 - This version uses four parallel worker cores rather than a memory-mapped butterfly accelerator.
 - Each worker has its own PC, 32-bit instruction ROM, decoder, register file, A32-decoded ALU/DSP execution, work-memory ports, and top-level `B .` completion detection.
 - The worker instruction words are visible in `rtl/mcu4_worker_instr_rom.vhd` as `FFT_ROM_W0..FFT_ROM_W3` and `SELFTEST_ROM`.
-- MCU data is stored in data memory banks `dmem_bank0/dmem_bank1`, implemented as small multi-port register arrays. The FFT system wrapper packs/unpacks external 16-bit streams around these generic 32-bit words.
+- MCU data is stored in one unified 32-bit data memory. Current software uses byte address `0x40..0x5C` as work area A and `0x80..0x9C` as work area B/output; the FFT system wrapper packs/unpacks external 16-bit streams around these generic 32-bit words.
 - The worker core supports the course minimum A32-encoded ARM operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
 - Each butterfly is computed by worker instructions using A32-encoded ARM/ARM-DSP operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
 - `SMUAD` and `SMUSD` are internally multi-cycle to shorten the DSP critical path for 200 MHz-class timing.

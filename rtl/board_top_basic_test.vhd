@@ -24,8 +24,8 @@ architecture rtl of board_top_basic_test is
     end component;
 
     type state_t is (
-        S_INIT_BANK0,
-        S_INIT_BANK1,
+        S_INIT_REGION_A,
+        S_INIT_REGION_B,
         S_RUN,
         S_CHECK_MOV,
         S_CHECK_ADD,
@@ -34,7 +34,7 @@ architecture rtl of board_top_basic_test is
         S_CHECK_ORR,
         S_CHECK_LDR,
         S_CHECK_CONTROL,
-        S_CHECK_BANK1,
+        S_CHECK_REGION_B,
         S_DONE
     );
 
@@ -49,16 +49,16 @@ architecture rtl of board_top_basic_test is
     constant ERROR_ORR         : std_logic_vector(3 downto 0) := x"7";
     constant ERROR_LDR         : std_logic_vector(3 downto 0) := x"8";
     constant ERROR_CONTROL     : std_logic_vector(3 downto 0) := x"9";
-    constant ERROR_BANK1_DIRTY : std_logic_vector(3 downto 0) := x"A";
+    constant ERROR_REGION_B_DIRTY : std_logic_vector(3 downto 0) := x"A";
 
-    constant ADDR_INPUT   : natural := 0;
-    constant ADDR_MOV     : natural := 1;
-    constant ADDR_ADD     : natural := 2;
-    constant ADDR_SUB     : natural := 3;
-    constant ADDR_AND     : natural := 4;
-    constant ADDR_ORR     : natural := 5;
-    constant ADDR_LDR     : natural := 6;
-    constant ADDR_CONTROL : natural := 7;
+    constant ADDR_INPUT   : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 0);
+    constant ADDR_MOV     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 1);
+    constant ADDR_ADD     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 2);
+    constant ADDR_SUB     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 3);
+    constant ADDR_AND     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 4);
+    constant ADDR_ORR     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 5);
+    constant ADDR_LDR     : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 6);
+    constant ADDR_CONTROL : word_t := dmem_word_addr(DMEM_REGION_A_BASE_WORD + 7);
 
     constant EXPECT_INPUT   : word_t := x"00000005";
     constant EXPECT_MOV     : word_t := x"00000007";
@@ -72,17 +72,15 @@ architecture rtl of board_top_basic_test is
     signal sys_clk : std_logic;
     signal sys_rst : std_logic;
 
-    signal state : state_t := S_INIT_BANK0;
+    signal state : state_t := S_INIT_REGION_A;
     signal init_idx : natural range 0 to 7 := 0;
-    signal bank1_check_idx : natural range 0 to 7 := 0;
+    signal region_b_check_idx : natural range 0 to 7 := 0;
 
     signal core_rst : std_logic := '1';
     signal dmem_we : std_logic := '0';
-    signal dmem_wbank : std_logic := '0';
-    signal dmem_waddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal dmem_waddr : word_t := (others => '0');
     signal dmem_wdata : word_t := (others => '0');
-    signal dmem_rbank : std_logic := '0';
-    signal dmem_raddr : std_logic_vector(2 downto 0) := (others => '0');
+    signal dmem_raddr : word_t := (others => '0');
     signal dmem_rdata : word_t;
 
     signal halted      : std_logic;
@@ -107,8 +105,8 @@ begin
     test_vec(0) <= test_reg;
     rst_vec(0) <= sys_rst;
     with state select state_code <=
-        x"0" when S_INIT_BANK0,
-        x"1" when S_INIT_BANK1,
+        x"0" when S_INIT_REGION_A,
+        x"1" when S_INIT_REGION_B,
         x"2" when S_RUN,
         x"3" when S_CHECK_MOV,
         x"4" when S_CHECK_ADD,
@@ -117,7 +115,7 @@ begin
         x"7" when S_CHECK_ORR,
         x"8" when S_CHECK_LDR,
         x"9" when S_CHECK_CONTROL,
-        x"A" when S_CHECK_BANK1,
+        x"A" when S_CHECK_REGION_B,
         x"B" when S_DONE;
 
     u_core : entity work.mcu4_multicycle_core
@@ -129,10 +127,8 @@ begin
             clk           => sys_clk,
             rst           => core_rst,
             dmem_we       => dmem_we,
-            dmem_wbank    => dmem_wbank,
             dmem_waddr    => dmem_waddr,
             dmem_wdata    => dmem_wdata,
-            dmem_rbank    => dmem_rbank,
             dmem_raddr    => dmem_raddr,
             dmem_rdata    => dmem_rdata,
             pc_debug      => pc_debug,
@@ -148,15 +144,13 @@ begin
     begin
         if rising_edge(sys_clk) then
             if sys_rst = '1' then
-                state <= S_INIT_BANK0;
+                state <= S_INIT_REGION_A;
                 init_idx <= 0;
-                bank1_check_idx <= 0;
+                region_b_check_idx <= 0;
                 core_rst <= '1';
                 dmem_we <= '0';
-                dmem_wbank <= '0';
                 dmem_waddr <= (others => '0');
                 dmem_wdata <= (others => '0');
-                dmem_rbank <= '0';
                 dmem_raddr <= (others => '0');
                 test_reg <= '1';
                 error_code <= ERROR_NONE;
@@ -167,12 +161,11 @@ begin
                 dmem_we <= '0';
 
                 case state is
-                    when S_INIT_BANK0 =>
+                    when S_INIT_REGION_A =>
                         core_rst <= '1';
                         dmem_we <= '1';
-                        dmem_wbank <= '0';
-                        dmem_waddr <= std_logic_vector(to_unsigned(init_idx, 3));
-                        if init_idx = ADDR_INPUT then
+                        dmem_waddr <= dmem_word_addr(DMEM_REGION_A_BASE_WORD + init_idx);
+                        if init_idx = 0 then
                             dmem_wdata <= EXPECT_INPUT;
                         else
                             dmem_wdata <= (others => '0');
@@ -180,16 +173,15 @@ begin
 
                         if init_idx = 7 then
                             init_idx <= 0;
-                            state <= S_INIT_BANK1;
+                            state <= S_INIT_REGION_B;
                         else
                             init_idx <= init_idx + 1;
                         end if;
 
-                    when S_INIT_BANK1 =>
+                    when S_INIT_REGION_B =>
                         core_rst <= '1';
                         dmem_we <= '1';
-                        dmem_wbank <= '1';
-                        dmem_waddr <= std_logic_vector(to_unsigned(init_idx, 3));
+                        dmem_waddr <= dmem_word_addr(DMEM_REGION_B_BASE_WORD + init_idx);
                         dmem_wdata <= (others => '0');
 
                         if init_idx = 7 then
@@ -214,8 +206,7 @@ begin
                             if done_seen = '0' then
                                 if halted = '1' then
                                     done_seen <= '1';
-                                    dmem_rbank <= '0';
-                                    dmem_raddr <= std_logic_vector(to_unsigned(ADDR_MOV, 3));
+                                    dmem_raddr <= ADDR_MOV;
                                     state <= S_CHECK_MOV;
                                 elsif cycle_count = TIMEOUT_CYCLES then
                                     next_test := '0';
@@ -237,7 +228,7 @@ begin
                                 error_code <= ERROR_MOV;
                             end if;
                         end if;
-                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_ADD, 3));
+                        dmem_raddr <= ADDR_ADD;
                         state <= S_CHECK_ADD;
 
                     when S_CHECK_ADD =>
@@ -248,7 +239,7 @@ begin
                                 error_code <= ERROR_ADD;
                             end if;
                         end if;
-                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_SUB, 3));
+                        dmem_raddr <= ADDR_SUB;
                         state <= S_CHECK_SUB;
 
                     when S_CHECK_SUB =>
@@ -259,7 +250,7 @@ begin
                                 error_code <= ERROR_SUB;
                             end if;
                         end if;
-                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_AND, 3));
+                        dmem_raddr <= ADDR_AND;
                         state <= S_CHECK_AND;
 
                     when S_CHECK_AND =>
@@ -270,7 +261,7 @@ begin
                                 error_code <= ERROR_AND;
                             end if;
                         end if;
-                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_ORR, 3));
+                        dmem_raddr <= ADDR_ORR;
                         state <= S_CHECK_ORR;
 
                     when S_CHECK_ORR =>
@@ -281,7 +272,7 @@ begin
                                 error_code <= ERROR_ORR;
                             end if;
                         end if;
-                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_LDR, 3));
+                        dmem_raddr <= ADDR_LDR;
                         state <= S_CHECK_LDR;
 
                     when S_CHECK_LDR =>
@@ -292,7 +283,7 @@ begin
                                 error_code <= ERROR_LDR;
                             end if;
                         end if;
-                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_CONTROL, 3));
+                        dmem_raddr <= ADDR_CONTROL;
                         state <= S_CHECK_CONTROL;
 
                     when S_CHECK_CONTROL =>
@@ -303,25 +294,24 @@ begin
                                 error_code <= ERROR_CONTROL;
                             end if;
                         end if;
-                        bank1_check_idx <= 0;
-                        dmem_rbank <= '1';
-                        dmem_raddr <= std_logic_vector(to_unsigned(0, 3));
-                        state <= S_CHECK_BANK1;
+                        region_b_check_idx <= 0;
+                        dmem_raddr <= dmem_word_addr(DMEM_REGION_B_BASE_WORD);
+                        state <= S_CHECK_REGION_B;
 
-                    when S_CHECK_BANK1 =>
+                    when S_CHECK_REGION_B =>
                         core_rst <= '0';
                         if dmem_rdata /= x"00000000" then
                             next_test := '0';
                             if error_code = ERROR_NONE then
-                                error_code <= ERROR_BANK1_DIRTY;
+                                error_code <= ERROR_REGION_B_DIRTY;
                             end if;
                         end if;
 
-                        if bank1_check_idx = 7 then
+                        if region_b_check_idx = 7 then
                             state <= S_DONE;
                         else
-                            bank1_check_idx <= bank1_check_idx + 1;
-                            dmem_raddr <= std_logic_vector(to_unsigned(bank1_check_idx + 1, 3));
+                            region_b_check_idx <= region_b_check_idx + 1;
+                            dmem_raddr <= dmem_word_addr(DMEM_REGION_B_BASE_WORD + region_b_check_idx + 1);
                         end if;
 
                     when S_DONE =>

@@ -14,7 +14,7 @@ entity mcu4_worker_decoder is
         rn      : out natural range 0 to 15;
         rm      : out natural range 0 to 15;
         imm     : out integer range -4096 to 4095;
-        idx     : out natural range 0 to 7;
+        addr    : out word_t;
         illegal : out std_logic
     );
 end entity mcu4_worker_decoder;
@@ -32,7 +32,7 @@ begin
         rn <= 0;
         rm <= 0;
         imm <= 0;
-        idx <= 0;
+        addr <= (others => '0');
         illegal <= '0';
 
         pc_value := to_integer(unsigned(pc_index));
@@ -98,14 +98,9 @@ begin
           and instr_word(19 downto 16) = x"0" then
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             word_addr := to_integer(unsigned(instr_word(11 downto 0))) / 4;
-            if word_addr >= DMEM_BANK0_BASE_WORD
-               and word_addr < DMEM_BANK0_BASE_WORD + DMEM_BANK_WORDS then
-                op <= WOP_LDR_BANK0;
-                idx <= word_addr - DMEM_BANK0_BASE_WORD;
-            elsif word_addr >= DMEM_BANK1_BASE_WORD
-                  and word_addr < DMEM_BANK1_BASE_WORD + DMEM_BANK_WORDS then
-                op <= WOP_LDR_BANK1;
-                idx <= word_addr - DMEM_BANK1_BASE_WORD;
+            if instr_word(1 downto 0) = "00" and word_addr < DMEM_WORDS then
+                op <= WOP_LDR;
+                addr <= dmem_word_addr(word_addr);
             else
                 illegal <= '1';
             end if;
@@ -113,14 +108,9 @@ begin
           and instr_word(19 downto 16) = x"0" then
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             word_addr := to_integer(unsigned(instr_word(11 downto 0))) / 4;
-            if word_addr >= DMEM_BANK0_BASE_WORD
-               and word_addr < DMEM_BANK0_BASE_WORD + DMEM_BANK_WORDS then
-                op <= WOP_STR_BANK0;
-                idx <= word_addr - DMEM_BANK0_BASE_WORD;
-            elsif word_addr >= DMEM_BANK1_BASE_WORD
-                  and word_addr < DMEM_BANK1_BASE_WORD + DMEM_BANK_WORDS then
-                op <= WOP_STR_BANK1;
-                idx <= word_addr - DMEM_BANK1_BASE_WORD;
+            if instr_word(1 downto 0) = "00" and word_addr < DMEM_WORDS then
+                op <= WOP_STR;
+                addr <= dmem_word_addr(word_addr);
             else
                 illegal <= '1';
             end if;
