@@ -71,11 +71,15 @@ architecture rtl of mcu4_multicycle_core is
     function safe_addr3(addr : std_logic_vector(2 downto 0)) return natural is
         variable idx : natural range 0 to 7 := 0;
     begin
-        for bit_pos in 0 to 2 loop
-            if addr(bit_pos) = '1' then
-                idx := idx + (2 ** bit_pos);
-            end if;
-        end loop;
+        if addr(0) = '1' then
+            idx := idx + 1;
+        end if;
+        if addr(1) = '1' then
+            idx := idx + 2;
+        end if;
+        if addr(2) = '1' then
+            idx := idx + 4;
+        end if;
         return idx;
     end function;
 begin

@@ -242,14 +242,14 @@ architecture rtl of mcu4_worker_core is
   attribute max_fanout of rf_wb2_exec_we          : signal is 8;
   attribute max_fanout of rf_wb_store_we          : signal is 8;
   attribute max_fanout of rf_wb2_store_we         : signal is 8;
-  attribute max_fanout of dsp_a_lo_mul            : signal is 2;
-  attribute max_fanout of dsp_a_hi_mul            : signal is 2;
-  attribute max_fanout of dsp_b_lo_mul            : signal is 2;
-  attribute max_fanout of dsp_b_hi_mul            : signal is 2;
-  attribute max_fanout of dsp2_a_lo_mul           : signal is 2;
-  attribute max_fanout of dsp2_a_hi_mul           : signal is 2;
-  attribute max_fanout of dsp2_b_lo_mul           : signal is 2;
-  attribute max_fanout of dsp2_b_hi_mul           : signal is 2;
+  attribute max_fanout of dsp_a_lo_mul            : signal is 4;
+  attribute max_fanout of dsp_a_hi_mul            : signal is 4;
+  attribute max_fanout of dsp_b_lo_mul            : signal is 4;
+  attribute max_fanout of dsp_b_hi_mul            : signal is 4;
+  attribute max_fanout of dsp2_a_lo_mul           : signal is 4;
+  attribute max_fanout of dsp2_a_hi_mul           : signal is 4;
+  attribute max_fanout of dsp2_b_lo_mul           : signal is 4;
+  attribute max_fanout of dsp2_b_hi_mul           : signal is 4;
   attribute keep of regs_decode                   : signal is "true";
   attribute keep of regs_exec                     : signal is "true";
   attribute keep of regs_store                    : signal is "true";
@@ -366,14 +366,13 @@ architecture rtl of mcu4_worker_core is
   end function;
 
   function word_to_pc(value : word_t) return natural is
-    variable idx              : natural range 0 to 63 := 0;
   begin
-    for bit_pos in 2 to 7 loop
-      if value(bit_pos) = '1' then
-        idx := idx + (2 ** (bit_pos - 2));
-      end if;
-    end loop;
-    return idx;
+    return to_integer(unsigned(value(7 downto 2)));
+  end function;
+
+  function pc_to_byte_word(value : natural) return word_t is
+  begin
+    return std_logic_vector(shift_left(to_unsigned(value, 32), 2));
   end function;
 
 begin
@@ -1111,6 +1110,8 @@ begin
                         dsp_a_hi_mul <= exec_rn_data(31 downto 16);
                         dsp_b_lo_mul <= exec_rm_data(15 downto 0);
                         dsp_b_hi_mul <= exec_rm_data(31 downto 16);
+                        dsp_prod_lo  <= signed(exec_rn_data(15 downto 0)) * signed(exec_rm_data(15 downto 0));
+                        dsp_prod_hi  <= signed(exec_rn_data(31 downto 16)) * signed(exec_rm_data(31 downto 16));
                         dsp_rd       <= exec_rd;
                         if exec_op = WOP_SMUSD then
                           dsp_sub <= '1';
@@ -1141,7 +1142,7 @@ begin
                       when WOP_BL =>
                         wb_valid      := true;
                         wb_rd         := REG_LR;
-                        wb_data       := std_logic_vector(to_unsigned(next_seq_pc(exec_pc_reg) * 4, 32));
+                        wb_data       := pc_to_byte_word(next_seq_pc(exec_pc_reg));
                         branch_taken  := true;
                         branch_target := clamp_pc(exec_imm);
                       when WOP_STR_BANK0 | WOP_STR_BANK1 =>
@@ -1195,8 +1196,6 @@ begin
               end if;
 
             when S_DSP_MUL =>
-              dsp_prod_lo <= signed(dsp_a_lo_mul) * signed(dsp_b_lo_mul);
-              dsp_prod_hi <= signed(dsp_a_hi_mul) * signed(dsp_b_hi_mul);
               dsp_sub_acc <= dsp_sub;
               -- Signal reads use the previous cycle's precomputed value here.
               dsp_pair_ready <= '0';
@@ -1207,6 +1206,8 @@ begin
                 dsp2_a_hi_mul <= exec_rn_data(31 downto 16);
                 dsp2_b_lo_mul <= exec_rm_data(15 downto 0);
                 dsp2_b_hi_mul <= exec_rm_data(31 downto 16);
+                dsp2_prod_lo  <= signed(exec_rn_data(15 downto 0)) * signed(exec_rm_data(15 downto 0));
+                dsp2_prod_hi  <= signed(exec_rn_data(31 downto 16)) * signed(exec_rm_data(31 downto 16));
                 dsp2_rd       <= exec_rd;
                 if exec_op = WOP_SMUSD then
                   dsp2_sub <= '1';
@@ -1246,8 +1247,6 @@ begin
             when S_DSP_PAIR_MUL_ACC =>
               dsp_sum      <= std_logic_vector(dsp_prod_lo + dsp_prod_hi);
               dsp_diff     <= std_logic_vector(dsp_prod_lo - dsp_prod_hi);
-              dsp2_prod_lo <= signed(dsp2_a_lo_mul) * signed(dsp2_b_lo_mul);
-              dsp2_prod_hi <= signed(dsp2_a_hi_mul) * signed(dsp2_b_hi_mul);
               dsp2_sub_acc <= dsp2_sub;
               set_worker_state(S_DSP_PAIR_WB_ACC);
 
@@ -1355,16 +1354,16 @@ begin
 
   halted   <= halted_reg;
   illegal  <= illegal_reg;
-  pc_debug <= std_logic_vector(to_unsigned(dsp_pc_reg * 4, 32))
+  pc_debug <= pc_to_byte_word(dsp_pc_reg)
     when dsp_ctrl_debug = '1'
     else
-    std_logic_vector(to_unsigned(exec_pc_reg * 4, 32))
+    pc_to_byte_word(exec_pc_reg)
     when run_ctrl_debug = '1'
     else
-    std_logic_vector(to_unsigned(instr_pc_reg * 4, 32))
+    pc_to_byte_word(instr_pc_reg)
     when decode_ctrl_debug = '1'
     else
-    std_logic_vector(to_unsigned(pc_fetch_reg * 4, 32));
+    pc_to_byte_word(pc_fetch_reg);
   instr_debug <= dsp_instr_reg
     when dsp_ctrl_debug = '1'
     else
