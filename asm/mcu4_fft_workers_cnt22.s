@@ -19,9 +19,9 @@
  *   r10 even
  *   r11 odd
  *
- * Memory aliases:
- *   A[n] = work buffer A word n
- *   B[n] = work buffer B word n
+ * Data memory convention:
+ *   [r0, #0x40 + 4*n] = work area A word n
+ *   [r0, #0x80 + 4*n] = work area B/output word n
  *
  * Visible instruction count is still the ROM PC window. The worker core uses
  * local dual issue for safe MOV/MOV, LDR/LDR, STR/STR, and SADD16/SSUB16
@@ -38,25 +38,25 @@ pc03:   SSUB16  r4, r0, r3               /* packed -91/-91 */
 
 /* Worker 0 */
 worker0:
-pc04:   LDR     r5, A[0]
-pc05:   LDR     r6, A[1]
+pc04:   LDR     r5, [r0, #0x40]
+pc05:   LDR     r6, [r0, #0x44]
 pc06:   SADD16  r10, r5, r6
 pc07:   SSUB16  r11, r5, r6
-pc08:   STR     r10, B[0]
-pc09:   STR     r11, B[1]
-pc10:   LDR     r5, B[0]
-pc11:   LDR     r6, B[2]
+pc08:   STR     r10, [r0, #0x80]
+pc09:   STR     r11, [r0, #0x84]
+pc10:   LDR     r5, [r0, #0x80]
+pc11:   LDR     r6, [r0, #0x88]
 pc12:   SADD16  r10, r5, r6
 pc13:   SSUB16  r11, r5, r6
-pc14:   STR     r10, A[0]
-pc15:   STR     r11, A[2]
+pc14:   STR     r10, [r0, #0x40]
+pc15:   STR     r11, [r0, #0x48]
 pc16:   NOP
-pc17:   LDR     r5, A[0]
-pc18:   LDR     r6, A[4]
+pc17:   LDR     r5, [r0, #0x40]
+pc18:   LDR     r6, [r0, #0x50]
 pc19:   SADD16  r10, r5, r6
 pc20:   SSUB16  r11, r5, r6
-pc21:   STR     r10, B[0]
-pc22:   STR     r11, B[4]
+pc21:   STR     r10, [r0, #0x80]
+pc22:   STR     r11, [r0, #0x90]
 pc23:   NOP
 pc24:   NOP
 pc25:   NOP
@@ -65,53 +65,53 @@ pc27:   B       .                       /* encoded as ARM B . completion sentine
 
 /* Worker 1 */
 worker1:
-pc04:   LDR     r5, A[2]
-pc05:   LDR     r6, A[3]
+pc04:   LDR     r5, [r0, #0x48]
+pc05:   LDR     r6, [r0, #0x4C]
 pc06:   SADD16  r10, r5, r6
 pc07:   SSUB16  r11, r5, r6
-pc08:   STR     r10, B[2]
-pc09:   STR     r11, B[3]
-pc10:   LDR     r5, B[1]
-pc11:   LDR     r6, B[3]
+pc08:   STR     r10, [r0, #0x88]
+pc09:   STR     r11, [r0, #0x8C]
+pc10:   LDR     r5, [r0, #0x84]
+pc11:   LDR     r6, [r0, #0x8C]
 pc12:   SSAX    r9, r0, r6
 pc13:   SADD16  r10, r5, r9
 pc14:   SSUB16  r11, r5, r9
-pc15:   STR     r10, A[1]
-pc16:   STR     r11, A[3]
-pc17:   LDR     r5, A[1]
-pc18:   LDR     r6, A[5]
+pc15:   STR     r10, [r0, #0x44]
+pc16:   STR     r11, [r0, #0x4C]
+pc17:   LDR     r5, [r0, #0x44]
+pc18:   LDR     r6, [r0, #0x54]
 pc19:   SMUAD   r7, r6, r3
 pc20:   SMUSD   r8, r6, r4
 pc21:   ASR     r7, r7, #7
 pc22:   PKHBT   r9, r7, r8, LSL #9
 pc23:   SADD16  r10, r5, r9
 pc24:   SSUB16  r11, r5, r9
-pc25:   STR     r10, B[1]
-pc26:   STR     r11, B[5]
+pc25:   STR     r10, [r0, #0x84]
+pc26:   STR     r11, [r0, #0x94]
 pc27:   B       .                       /* encoded as ARM B . completion sentinel */
 
 /* Worker 2 */
 worker2:
-pc04:   LDR     r5, A[4]
-pc05:   LDR     r6, A[5]
+pc04:   LDR     r5, [r0, #0x50]
+pc05:   LDR     r6, [r0, #0x54]
 pc06:   SADD16  r10, r5, r6
 pc07:   SSUB16  r11, r5, r6
-pc08:   STR     r10, B[4]
-pc09:   STR     r11, B[5]
-pc10:   LDR     r5, B[4]
-pc11:   LDR     r6, B[6]
+pc08:   STR     r10, [r0, #0x90]
+pc09:   STR     r11, [r0, #0x94]
+pc10:   LDR     r5, [r0, #0x90]
+pc11:   LDR     r6, [r0, #0x98]
 pc12:   SADD16  r10, r5, r6
 pc13:   SSUB16  r11, r5, r6
-pc14:   STR     r10, A[4]
-pc15:   STR     r11, A[6]
+pc14:   STR     r10, [r0, #0x50]
+pc15:   STR     r11, [r0, #0x58]
 pc16:   NOP
-pc17:   LDR     r5, A[2]
-pc18:   LDR     r6, A[6]
+pc17:   LDR     r5, [r0, #0x48]
+pc18:   LDR     r6, [r0, #0x58]
 pc19:   SSAX    r9, r0, r6
 pc20:   SADD16  r10, r5, r9
 pc21:   SSUB16  r11, r5, r9
-pc22:   STR     r10, B[2]
-pc23:   STR     r11, B[6]
+pc22:   STR     r10, [r0, #0x88]
+pc23:   STR     r11, [r0, #0x98]
 pc24:   NOP
 pc25:   NOP
 pc26:   NOP
@@ -119,27 +119,27 @@ pc27:   B       .                       /* encoded as ARM B . completion sentine
 
 /* Worker 3 */
 worker3:
-pc04:   LDR     r5, A[6]
-pc05:   LDR     r6, A[7]
+pc04:   LDR     r5, [r0, #0x58]
+pc05:   LDR     r6, [r0, #0x5C]
 pc06:   SADD16  r10, r5, r6
 pc07:   SSUB16  r11, r5, r6
-pc08:   STR     r10, B[6]
-pc09:   STR     r11, B[7]
-pc10:   LDR     r5, B[5]
-pc11:   LDR     r6, B[7]
+pc08:   STR     r10, [r0, #0x98]
+pc09:   STR     r11, [r0, #0x9C]
+pc10:   LDR     r5, [r0, #0x94]
+pc11:   LDR     r6, [r0, #0x9C]
 pc12:   SSAX    r9, r0, r6
 pc13:   SADD16  r10, r5, r9
 pc14:   SSUB16  r11, r5, r9
-pc15:   STR     r10, A[5]
-pc16:   STR     r11, A[7]
-pc17:   LDR     r5, A[3]
-pc18:   LDR     r6, A[7]
+pc15:   STR     r10, [r0, #0x54]
+pc16:   STR     r11, [r0, #0x5C]
+pc17:   LDR     r5, [r0, #0x4C]
+pc18:   LDR     r6, [r0, #0x5C]
 pc19:   SMUSD   r7, r6, r4
 pc20:   SMUAD   r8, r6, r4
 pc21:   ASR     r7, r7, #7
 pc22:   PKHBT   r9, r7, r8, LSL #9
 pc23:   SADD16  r10, r5, r9
 pc24:   SSUB16  r11, r5, r9
-pc25:   STR     r10, B[3]
-pc26:   STR     r11, B[7]
+pc25:   STR     r10, [r0, #0x8C]
+pc26:   STR     r11, [r0, #0x9C]
 pc27:   B       .                       /* encoded as ARM B . completion sentinel */
