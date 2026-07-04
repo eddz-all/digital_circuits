@@ -56,132 +56,132 @@ architecture rtl of mcu4_worker_instr_rom is
     constant WPAIR_SADD16_SSUB16_CODE : std_logic_vector(2 downto 0) := "110";
 
     constant INSTR_NOP  : word_t := x"E1A00000";
-    constant INSTR_HALT : word_t := x"EAFFFFFE";
+    constant INSTR_DONE : word_t := x"EAFFFFFE";
 
     -- PROGRAM_ID = 0: FFT worker programs. Each worker has a concrete 32-bit
     -- instruction ROM image; these words are not built by an RTL encoder.
     constant FFT_ROM_W0 : program_rom_t := (
          0 => x"E3A00000", -- MOV r0, #0
          1 => x"E3A0105B", -- MOV r1, #91
-         2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
-         3 => x"ED204003", -- SSUB16 r4, r0, r3
+         2 => x"E6813811", -- PKHBT r3, r1, r1, LSL #16
+         3 => x"E6104F73", -- SSUB16 r4, r0, r3
          4 => x"E5905040", -- LDR r5, [dmem_bank0+0]
          5 => x"E5906044", -- LDR r6, [dmem_bank0+1]
-         6 => x"ED85A006", -- SADD16 r10, r5, r6
-         7 => x"ED25B006", -- SSUB16 r11, r5, r6
+         6 => x"E615AF16", -- SADD16 r10, r5, r6
+         7 => x"E615BF76", -- SSUB16 r11, r5, r6
          8 => x"E580A080", -- STR r10, [dmem_bank1+0]
          9 => x"E580B084", -- STR r11, [dmem_bank1+1]
         10 => x"E5905080", -- LDR r5, [dmem_bank1+0]
         11 => x"E5906088", -- LDR r6, [dmem_bank1+2]
-        12 => x"ED85A006", -- SADD16 r10, r5, r6
-        13 => x"ED25B006", -- SSUB16 r11, r5, r6
+        12 => x"E615AF16", -- SADD16 r10, r5, r6
+        13 => x"E615BF76", -- SSUB16 r11, r5, r6
         14 => x"E580A040", -- STR r10, [dmem_bank0+0]
         15 => x"E580B048", -- STR r11, [dmem_bank0+2]
         16 => INSTR_NOP,   -- NOP
         17 => x"E5905040", -- LDR r5, [dmem_bank0+0]
         18 => x"E5906050", -- LDR r6, [dmem_bank0+4]
-        19 => x"ED85A006", -- SADD16 r10, r5, r6
-        20 => x"ED25B006", -- SSUB16 r11, r5, r6
+        19 => x"E615AF16", -- SADD16 r10, r5, r6
+        20 => x"E615BF76", -- SSUB16 r11, r5, r6
         21 => x"E580A080", -- STR r10, [dmem_bank1+0]
         22 => x"E580B090", -- STR r11, [dmem_bank1+4]
         23 => INSTR_NOP,   -- NOP
         24 => INSTR_NOP,   -- NOP
         25 => INSTR_NOP,   -- NOP
         26 => INSTR_NOP,   -- NOP
-        others => INSTR_HALT
+        others => INSTR_DONE
     );
 
     constant FFT_ROM_W1 : program_rom_t := (
          0 => x"E3A00000", -- MOV r0, #0
          1 => x"E3A0105B", -- MOV r1, #91
-         2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
-         3 => x"ED204003", -- SSUB16 r4, r0, r3
+         2 => x"E6813811", -- PKHBT r3, r1, r1, LSL #16
+         3 => x"E6104F73", -- SSUB16 r4, r0, r3
          4 => x"E5905048", -- LDR r5, [dmem_bank0+2]
          5 => x"E590604C", -- LDR r6, [dmem_bank0+3]
-         6 => x"ED85A006", -- SADD16 r10, r5, r6
-         7 => x"ED25B006", -- SSUB16 r11, r5, r6
+         6 => x"E615AF16", -- SADD16 r10, r5, r6
+         7 => x"E615BF76", -- SSUB16 r11, r5, r6
          8 => x"E580A088", -- STR r10, [dmem_bank1+2]
          9 => x"E580B08C", -- STR r11, [dmem_bank1+3]
         10 => x"E5905084", -- LDR r5, [dmem_bank1+1]
         11 => x"E590608C", -- LDR r6, [dmem_bank1+3]
-        12 => x"ED009006", -- SSAX r9, r0, r6
-        13 => x"ED85A009", -- SADD16 r10, r5, r9
-        14 => x"ED25B009", -- SSUB16 r11, r5, r9
+        12 => x"E6109F56", -- SSAX r9, r0, r6
+        13 => x"E615AF19", -- SADD16 r10, r5, r9
+        14 => x"E615BF79", -- SSUB16 r11, r5, r9
         15 => x"E580A044", -- STR r10, [dmem_bank0+1]
         16 => x"E580B04C", -- STR r11, [dmem_bank0+3]
         17 => x"E5905044", -- LDR r5, [dmem_bank0+1]
         18 => x"E5906054", -- LDR r6, [dmem_bank0+5]
-        19 => x"EC467003", -- SMUAD r7, r6, r3
-        20 => x"EC668004", -- SMUSD r8, r6, r4
-        21 => x"E3E07387", -- ASR r7, r7, #7
-        22 => x"ECA79488", -- PKHBT r9, r7, r8, LSL #9
-        23 => x"ED85A009", -- SADD16 r10, r5, r9
-        24 => x"ED25B009", -- SSUB16 r11, r5, r9
+        19 => x"E707F316", -- SMUAD r7, r6, r3
+        20 => x"E708F456", -- SMUSD r8, r6, r4
+        21 => x"E1A073C7", -- ASR r7, r7, #7
+        22 => x"E6879498", -- PKHBT r9, r7, r8, LSL #9
+        23 => x"E615AF19", -- SADD16 r10, r5, r9
+        24 => x"E615BF79", -- SSUB16 r11, r5, r9
         25 => x"E580A084", -- STR r10, [dmem_bank1+1]
         26 => x"E580B094", -- STR r11, [dmem_bank1+5]
-        others => INSTR_HALT
+        others => INSTR_DONE
     );
 
     constant FFT_ROM_W2 : program_rom_t := (
          0 => x"E3A00000", -- MOV r0, #0
          1 => x"E3A0105B", -- MOV r1, #91
-         2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
-         3 => x"ED204003", -- SSUB16 r4, r0, r3
+         2 => x"E6813811", -- PKHBT r3, r1, r1, LSL #16
+         3 => x"E6104F73", -- SSUB16 r4, r0, r3
          4 => x"E5905050", -- LDR r5, [dmem_bank0+4]
          5 => x"E5906054", -- LDR r6, [dmem_bank0+5]
-         6 => x"ED85A006", -- SADD16 r10, r5, r6
-         7 => x"ED25B006", -- SSUB16 r11, r5, r6
+         6 => x"E615AF16", -- SADD16 r10, r5, r6
+         7 => x"E615BF76", -- SSUB16 r11, r5, r6
          8 => x"E580A090", -- STR r10, [dmem_bank1+4]
          9 => x"E580B094", -- STR r11, [dmem_bank1+5]
         10 => x"E5905090", -- LDR r5, [dmem_bank1+4]
         11 => x"E5906098", -- LDR r6, [dmem_bank1+6]
-        12 => x"ED85A006", -- SADD16 r10, r5, r6
-        13 => x"ED25B006", -- SSUB16 r11, r5, r6
+        12 => x"E615AF16", -- SADD16 r10, r5, r6
+        13 => x"E615BF76", -- SSUB16 r11, r5, r6
         14 => x"E580A050", -- STR r10, [dmem_bank0+4]
         15 => x"E580B058", -- STR r11, [dmem_bank0+6]
         16 => INSTR_NOP,   -- NOP
         17 => x"E5905048", -- LDR r5, [dmem_bank0+2]
         18 => x"E5906058", -- LDR r6, [dmem_bank0+6]
-        19 => x"ED009006", -- SSAX r9, r0, r6
-        20 => x"ED85A009", -- SADD16 r10, r5, r9
-        21 => x"ED25B009", -- SSUB16 r11, r5, r9
+        19 => x"E6109F56", -- SSAX r9, r0, r6
+        20 => x"E615AF19", -- SADD16 r10, r5, r9
+        21 => x"E615BF79", -- SSUB16 r11, r5, r9
         22 => x"E580A088", -- STR r10, [dmem_bank1+2]
         23 => x"E580B098", -- STR r11, [dmem_bank1+6]
         24 => INSTR_NOP,   -- NOP
         25 => INSTR_NOP,   -- NOP
         26 => INSTR_NOP,   -- NOP
-        others => INSTR_HALT
+        others => INSTR_DONE
     );
 
     constant FFT_ROM_W3 : program_rom_t := (
          0 => x"E3A00000", -- MOV r0, #0
          1 => x"E3A0105B", -- MOV r1, #91
-         2 => x"ECA13801", -- PKHBT r3, r1, r1, LSL #16
-         3 => x"ED204003", -- SSUB16 r4, r0, r3
+         2 => x"E6813811", -- PKHBT r3, r1, r1, LSL #16
+         3 => x"E6104F73", -- SSUB16 r4, r0, r3
          4 => x"E5905058", -- LDR r5, [dmem_bank0+6]
          5 => x"E590605C", -- LDR r6, [dmem_bank0+7]
-         6 => x"ED85A006", -- SADD16 r10, r5, r6
-         7 => x"ED25B006", -- SSUB16 r11, r5, r6
+         6 => x"E615AF16", -- SADD16 r10, r5, r6
+         7 => x"E615BF76", -- SSUB16 r11, r5, r6
          8 => x"E580A098", -- STR r10, [dmem_bank1+6]
          9 => x"E580B09C", -- STR r11, [dmem_bank1+7]
         10 => x"E5905094", -- LDR r5, [dmem_bank1+5]
         11 => x"E590609C", -- LDR r6, [dmem_bank1+7]
-        12 => x"ED009006", -- SSAX r9, r0, r6
-        13 => x"ED85A009", -- SADD16 r10, r5, r9
-        14 => x"ED25B009", -- SSUB16 r11, r5, r9
+        12 => x"E6109F56", -- SSAX r9, r0, r6
+        13 => x"E615AF19", -- SADD16 r10, r5, r9
+        14 => x"E615BF79", -- SSUB16 r11, r5, r9
         15 => x"E580A054", -- STR r10, [dmem_bank0+5]
         16 => x"E580B05C", -- STR r11, [dmem_bank0+7]
         17 => x"E590504C", -- LDR r5, [dmem_bank0+3]
         18 => x"E590605C", -- LDR r6, [dmem_bank0+7]
-        19 => x"EC667004", -- SMUSD r7, r6, r4
-        20 => x"EC468004", -- SMUAD r8, r6, r4
-        21 => x"E3E07387", -- ASR r7, r7, #7
-        22 => x"ECA79488", -- PKHBT r9, r7, r8, LSL #9
-        23 => x"ED85A009", -- SADD16 r10, r5, r9
-        24 => x"ED25B009", -- SSUB16 r11, r5, r9
+        19 => x"E707F456", -- SMUSD r7, r6, r4
+        20 => x"E708F416", -- SMUAD r8, r6, r4
+        21 => x"E1A073C7", -- ASR r7, r7, #7
+        22 => x"E6879498", -- PKHBT r9, r7, r8, LSL #9
+        23 => x"E615AF19", -- SADD16 r10, r5, r9
+        24 => x"E615BF79", -- SSUB16 r11, r5, r9
         25 => x"E580A08C", -- STR r10, [dmem_bank1+3]
         26 => x"E580B09C", -- STR r11, [dmem_bank1+7]
-        others => INSTR_HALT
+        others => INSTR_DONE
     );
 
     -- PROGRAM_ID = 1: single-core PPT/basic-instruction test program.
@@ -207,10 +207,10 @@ architecture rtl of mcu4_worker_instr_rom is
         17 => x"EB000002", -- BL selftest_subroutine
         18 => x"E08AC00B", -- ADD r12, r10, r11
         19 => x"E580C05C", -- STR r12, [r0, #0x5C] ; data[7] = control-flow result
-        20 => INSTR_HALT,   -- HALT
+        20 => INSTR_DONE,   -- B . completion sentinel
         21 => x"E3A0A00F", -- MOV r10, #15
         22 => x"E1A0F00E", -- MOV pc, lr
-        others => INSTR_HALT
+        others => INSTR_DONE
     );
 
     procedure decode_instr_word(
@@ -225,7 +225,7 @@ architecture rtl of mcu4_worker_instr_rom is
         variable illegal_value : out std_logic
     ) is
         variable word_addr : natural range 0 to 1023;
-        variable target_pc : integer range -4096 to 4095;
+        variable target_index : integer range -4096 to 4095;
         variable branch_off : integer range -8388608 to 8388607;
         variable pc_value : integer range 0 to 63;
     begin
@@ -239,18 +239,23 @@ architecture rtl of mcu4_worker_instr_rom is
 
         pc_value := to_integer(unsigned(pc_value_in));
 
-        if instr_value = INSTR_HALT then
-            op_value := WOP_HALT;
-        elsif instr_value(31 downto 20) = x"E3A" then
+        if instr_value(31 downto 20) = x"E3A"
+          and instr_value(19 downto 16) = x"0"
+          and instr_value(11 downto 8) = x"0" then
             op_value := WOP_MOV_IMM;
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
-            imm_value := to_integer(unsigned(instr_value(11 downto 0)));
-        elsif instr_value(31 downto 20) = x"E3E" then
+            imm_value := to_integer(unsigned(instr_value(7 downto 0)));
+        elsif instr_value(31 downto 20) = x"E1A"
+          and instr_value(19 downto 16) = x"0"
+          and instr_value(6 downto 5) = "10"
+          and instr_value(4) = '0' then
             op_value := WOP_ASR;
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             rn_value := to_integer(unsigned(instr_value(3 downto 0)));
             imm_value := to_integer(unsigned(instr_value(11 downto 7)));
-        elsif instr_value(31 downto 20) = x"E1A" then
+        elsif instr_value(31 downto 20) = x"E1A"
+          and instr_value(19 downto 16) = x"0"
+          and instr_value(11 downto 4) = x"00" then
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             rm_value := to_integer(unsigned(instr_value(3 downto 0)));
             if instr_value(15 downto 12) = x"0" and instr_value(3 downto 0) = x"0" then
@@ -258,33 +263,41 @@ architecture rtl of mcu4_worker_instr_rom is
             else
                 op_value := WOP_MOV_REG;
             end if;
-        elsif instr_value(31 downto 20) = x"E08" then
+        elsif instr_value(31 downto 20) = x"E08"
+          and instr_value(11 downto 4) = x"00" then
             op_value := WOP_ADD;
             rn_value := to_integer(unsigned(instr_value(19 downto 16)));
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             rm_value := to_integer(unsigned(instr_value(3 downto 0)));
-        elsif instr_value(31 downto 20) = x"E04" then
+        elsif instr_value(31 downto 20) = x"E04"
+          and instr_value(11 downto 4) = x"00" then
             op_value := WOP_SUB;
             rn_value := to_integer(unsigned(instr_value(19 downto 16)));
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             rm_value := to_integer(unsigned(instr_value(3 downto 0)));
-        elsif instr_value(31 downto 20) = x"E00" then
+        elsif instr_value(31 downto 20) = x"E00"
+          and instr_value(11 downto 4) = x"00" then
             op_value := WOP_AND;
             rn_value := to_integer(unsigned(instr_value(19 downto 16)));
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             rm_value := to_integer(unsigned(instr_value(3 downto 0)));
-        elsif instr_value(31 downto 20) = x"E18" then
+        elsif instr_value(31 downto 20) = x"E18"
+          and instr_value(11 downto 4) = x"00" then
             op_value := WOP_ORR;
             rn_value := to_integer(unsigned(instr_value(19 downto 16)));
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             rm_value := to_integer(unsigned(instr_value(3 downto 0)));
-        elsif instr_value(31 downto 20) = x"ECA" then
+        elsif instr_value(31 downto 28) = x"E"
+          and instr_value(27 downto 20) = x"68"
+          and instr_value(6 downto 5) = "00"
+          and instr_value(4) = '1' then
             op_value := WOP_PKHBT;
             rn_value := to_integer(unsigned(instr_value(19 downto 16)));
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             rm_value := to_integer(unsigned(instr_value(3 downto 0)));
             imm_value := to_integer(unsigned(instr_value(11 downto 7)));
-        elsif instr_value(31 downto 20) = x"E59" then
+        elsif instr_value(31 downto 20) = x"E59"
+          and instr_value(19 downto 16) = x"0" then
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             word_addr := to_integer(unsigned(instr_value(11 downto 0))) / 4;
             if word_addr >= DMEM_BANK0_BASE_WORD
@@ -298,7 +311,8 @@ architecture rtl of mcu4_worker_instr_rom is
             else
                 illegal_value := '1';
             end if;
-        elsif instr_value(31 downto 20) = x"E58" then
+        elsif instr_value(31 downto 20) = x"E58"
+          and instr_value(19 downto 16) = x"0" then
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             word_addr := to_integer(unsigned(instr_value(11 downto 0))) / 4;
             if word_addr >= DMEM_BANK0_BASE_WORD
@@ -312,13 +326,16 @@ architecture rtl of mcu4_worker_instr_rom is
             else
                 illegal_value := '1';
             end if;
-        elsif instr_value(31 downto 24) = x"ED" then
-            case instr_value(23 downto 20) is
-                when x"8" =>
+        elsif instr_value(31 downto 28) = x"E"
+          and instr_value(27 downto 20) = x"61"
+          and instr_value(11 downto 8) = x"F"
+          and instr_value(4) = '1' then
+            case instr_value(7 downto 4) is
+                when x"1" =>
                     op_value := WOP_SADD16;
-                when x"2" =>
+                when x"7" =>
                     op_value := WOP_SSUB16;
-                when x"0" =>
+                when x"5" =>
                     op_value := WOP_SSAX;
                 when others =>
                     illegal_value := '1';
@@ -326,27 +343,29 @@ architecture rtl of mcu4_worker_instr_rom is
             rn_value := to_integer(unsigned(instr_value(19 downto 16)));
             rd_value := to_integer(unsigned(instr_value(15 downto 12)));
             rm_value := to_integer(unsigned(instr_value(3 downto 0)));
-        elsif instr_value(31 downto 24) = x"EC" then
-            case instr_value(23 downto 20) is
-                when x"4" =>
+        elsif instr_value(31 downto 28) = x"E"
+          and instr_value(27 downto 20) = x"70"
+          and instr_value(15 downto 12) = x"F" then
+            case instr_value(7 downto 4) is
+                when x"1" =>
                     op_value := WOP_SMUAD;
-                when x"6" =>
+                when x"5" =>
                     op_value := WOP_SMUSD;
                 when others =>
                     illegal_value := '1';
             end case;
-            rn_value := to_integer(unsigned(instr_value(19 downto 16)));
-            rd_value := to_integer(unsigned(instr_value(15 downto 12)));
-            rm_value := to_integer(unsigned(instr_value(3 downto 0)));
+            rd_value := to_integer(unsigned(instr_value(19 downto 16)));
+            rn_value := to_integer(unsigned(instr_value(3 downto 0)));
+            rm_value := to_integer(unsigned(instr_value(11 downto 8)));
         elsif instr_value(31 downto 24) = x"EA"
               or instr_value(31 downto 24) = x"EB" then
             branch_off := to_integer(signed(instr_value(23 downto 0)));
-            target_pc := pc_value + 2 + branch_off;
-            if target_pc < 0 or target_pc > 63 then
+            target_index := pc_value + 2 + branch_off;
+            if target_index < 0 or target_index > 63 then
                 illegal_value := '1';
                 imm_value := 0;
             else
-                imm_value := target_pc;
+                imm_value := target_index * 4;
             end if;
 
             if instr_value(31 downto 24) = x"EB" then

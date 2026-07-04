@@ -31,6 +31,8 @@ entity mcu4_multicycle_core is
 end entity mcu4_multicycle_core;
 
 architecture rtl of mcu4_multicycle_core is
+    constant INSTR_DONE_SENTINEL : word_t := x"EAFFFFFE";
+
     type worker_addr_array_t is array (0 to 3) of std_logic_vector(2 downto 0);
     type worker_flag_array_t is array (0 to 3) of std_logic;
     type worker_buffer_array_t is array (0 to 3) of dmem_bank_t;
@@ -61,6 +63,8 @@ architecture rtl of mcu4_multicycle_core is
     signal worker_dmem_bank1_wdata2 : lane4_word_array_t := (others => (others => '0'));
 
     signal worker_halted : std_logic_vector(3 downto 0) := (others => '0');
+    signal worker_done_raw : std_logic_vector(3 downto 0) := (others => '0');
+    signal worker_done : std_logic_vector(3 downto 0) := (others => '0');
     signal worker_illegal : std_logic_vector(3 downto 0) := (others => '0');
     signal worker_pc_debug : lane4_word_array_t := (others => (others => '0'));
     signal worker_instr_debug : lane4_word_array_t := (others => (others => '0'));
@@ -125,6 +129,10 @@ begin
                     pc_debug    => worker_pc_debug(i),
                     instr_debug => worker_instr_debug(i)
                 );
+
+            worker_done_raw(i) <= '1'
+                when worker_halted(i) = '1' or worker_instr_debug(i) = INSTR_DONE_SENTINEL
+                else '0';
         end generate;
 
         gen_inactive_worker : if i >= ACTIVE_CORES generate
@@ -145,6 +153,7 @@ begin
             worker_dmem_bank0_wdata2(i) <= (others => '0');
             worker_dmem_bank1_wdata2(i) <= (others => '0');
             worker_halted(i) <= '1';
+            worker_done_raw(i) <= '1';
             worker_illegal(i) <= '0';
             worker_pc_debug(i) <= (others => '0');
             worker_instr_debug(i) <= x"E1A00000";
@@ -159,6 +168,26 @@ begin
         variable waddr : natural range 0 to 7;
     begin
         if rising_edge(clk) then
+            if rst = '1' then
+                for i in 0 to 3 loop
+                    if i < ACTIVE_CORES then
+                        worker_done(i) <= '0';
+                    else
+                        worker_done(i) <= '1';
+                    end if;
+                end loop;
+            else
+                for i in 0 to 3 loop
+                    if i < ACTIVE_CORES then
+                        if worker_done_raw(i) = '1' then
+                            worker_done(i) <= '1';
+                        end if;
+                    else
+                        worker_done(i) <= '1';
+                    end if;
+                end loop;
+            end if;
+
             if dmem_we = '1' then
                 waddr := to_integer(unsigned(dmem_waddr));
                 if dmem_wbank = '0' then
@@ -207,7 +236,7 @@ begin
         end if;
     end process;
 
-    all_halted <= '1' when worker_halted = "1111" else '0';
+    all_halted <= '1' when worker_done = "1111" else '0';
     any_illegal <= '1' when worker_illegal /= "0000" else '0';
 
     pc_debug <= worker_pc_debug(0);

@@ -24,7 +24,7 @@
   FFT 的输入装载、bit-reversal、16/32-bit 打包拆包和输出 dump 只属于 `mcu_fft_system`
   或更外层 wrapper。
 - `cnt_start/cnt_stop` 计数边界不能为了降低成绩随意移动。当前性能口径是输入预装完成后，
-  从第一条 worker 指令读取开始计数，到所有 active worker 最后一条指令完成或 halt 后停止。
+  从第一条 worker 指令读取开始计数，到所有 active worker 到达标准 A32 `B .` 完成哨兵后停止。
 - FFT 性能版 ILA 保持 4 个 probe：`test_vector_in`、`cnt_test`、`verify_ram_addr`、
   `verify_vector_out`。不要在性能 bitstream 里恢复宽 debug trace 或 `verify_RAM`
   回读 FSM；临时调试请另建 debug run/top。
@@ -94,7 +94,7 @@ PPT 中排序与 FFT 都要求展示对应汇编指令。即使我们当前主�
 3. `cnt` 计数边界以聊天记录为准：从指令存储器第一条指令读取开始，到指令存储器中
    最后一条指令执行完成结束。
 
-这意味着当前 `mcu_fft_system` 先装载输入、再释放 core 开始计数、core halt 后停止计数、
+这意味着当前 `mcu_fft_system` 先装载输入、再释放 core 开始计数、core 到达 `B .` 完成哨兵后停止计数、
 最后回写 `verify_RAM` 的思路是允许的。输入加载和输出 dump 可以属于测试平台，不必计入
 core 指令执行窗口。
 
@@ -111,7 +111,7 @@ register file r0-r15
 ALU
 LDR/STR 访存路径
 ARM-DSP 风格多周期执行路径
-halt / illegal 状态
+done / illegal 状态
 ```
 
 当前顶层关系：
@@ -235,7 +235,7 @@ REG_PC
 
 ### LDR/STR 地址边界说明
 
-当前工程支持 ARM-like 的 `LDR/STR` 立即数地址形式，并由 decoder 把固定地址窗口映射到内部
+当前工程支持 A32 标准编码子集中的 `LDR/STR [r0,#imm12]` 立即数地址形式，并由 decoder 把固定地址窗口映射到内部
 data memory bank。展示时可以说“普通 `LDR/STR` 访问数据地址”；但不要夸大成完整 ARM
 任意基址寄存器、任意偏移的大数据 RAM。
 
@@ -324,7 +324,7 @@ test_ROM/test_vector_in
 - FFT 正确性以 `verify_RAM` 输出结果为准。
 - `cnt_test` 只统计指令执行窗口，以老师聊天记录为准。
 - `cnt_start` 应靠近第一条 worker 指令读取。
-- `cnt_stop` 应靠近所有 active worker 最后一条指令完成或 halt。
+- `cnt_stop` 应靠近所有 active worker 到达 `B .` 完成哨兵。
 
 `dmem_bank0/dmem_bank1` 是 MCU 的工作数据内存，不是外部 `verify_RAM`。它可以理解成两块小数据内存，也可以理解成一块数据内存的两个地址区域。实现上可以为了多核并行和时序复制读口，但对指令来说仍应表现为普通 `LDR/STR` 可访问的工作内存。
 
@@ -340,7 +340,7 @@ test_ROM/test_vector_in
 外部通用 dmem 写口/读口
   -> 内部 dmem_bank0/dmem_bank1
   -> ACTIVE_CORES 个 worker core
-  -> halted/illegal/debug 汇总
+  -> done/illegal/debug 汇总
 ```
 
 它可以为了多核并行和时序复制 data memory 读口，也可以把 worker 写入广播到各个 replica；
@@ -349,7 +349,7 @@ test_ROM/test_vector_in
 ```text
 mcu_fft_system 负责外部实验平台协议和 FFT 数据格式适配
 mcu4_multicycle_core 负责通用 MCU core 集群和通用 data memory
-mcu4_worker_core 负责单个 worker 的取指、译码、执行、访存和 halt/illegal
+mcu4_worker_core 负责单个 worker 的取指、译码、执行、访存和 illegal；顶层负责 `B .` 完成检测
 ```
 
 如果以后新增非 FFT 程序，应复用同一个 `dmem_*` 口预装输入、读回输出；不要在

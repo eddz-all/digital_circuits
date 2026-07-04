@@ -160,11 +160,11 @@ begin
 
         for i in 1 to 80 loop
             wait until rising_edge(clk);
-            exit when halted = '1';
+            exit when instr_debug = x"EAFFFFFE";
         end loop;
 
-        assert halted = '1'
-            report "minimum ARM self-test did not halt"
+        assert instr_debug = x"EAFFFFFE"
+            report "minimum ARM self-test did not reach B . sentinel"
             severity failure;
         assert illegal = '0'
             report "minimum ARM self-test hit illegal instruction"

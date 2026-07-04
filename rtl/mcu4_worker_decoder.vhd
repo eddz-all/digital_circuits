@@ -23,7 +23,7 @@ architecture rtl of mcu4_worker_decoder is
 begin
     process(instr_word, pc_index)
         variable word_addr : natural range 0 to 1023;
-        variable target_pc : integer range -4096 to 4095;
+        variable target_index : integer range -4096 to 4095;
         variable branch_off : integer range -8388608 to 8388607;
         variable pc_value : integer range 0 to 63;
     begin
@@ -37,18 +37,23 @@ begin
 
         pc_value := to_integer(unsigned(pc_index));
 
-        if instr_word = x"EAFFFFFE" then
-            op <= WOP_HALT;
-        elsif instr_word(31 downto 20) = x"E3A" then
+        if instr_word(31 downto 20) = x"E3A"
+          and instr_word(19 downto 16) = x"0"
+          and instr_word(11 downto 8) = x"0" then
             op <= WOP_MOV_IMM;
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
-            imm <= to_integer(unsigned(instr_word(11 downto 0)));
-        elsif instr_word(31 downto 20) = x"E3E" then
+            imm <= to_integer(unsigned(instr_word(7 downto 0)));
+        elsif instr_word(31 downto 20) = x"E1A"
+          and instr_word(19 downto 16) = x"0"
+          and instr_word(6 downto 5) = "10"
+          and instr_word(4) = '0' then
             op <= WOP_ASR;
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             rn <= to_integer(unsigned(instr_word(3 downto 0)));
             imm <= to_integer(unsigned(instr_word(11 downto 7)));
-        elsif instr_word(31 downto 20) = x"E1A" then
+        elsif instr_word(31 downto 20) = x"E1A"
+          and instr_word(19 downto 16) = x"0"
+          and instr_word(11 downto 4) = x"00" then
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             rm <= to_integer(unsigned(instr_word(3 downto 0)));
             if instr_word(15 downto 12) = x"0" and instr_word(3 downto 0) = x"0" then
@@ -56,33 +61,41 @@ begin
             else
                 op <= WOP_MOV_REG;
             end if;
-        elsif instr_word(31 downto 20) = x"E08" then
+        elsif instr_word(31 downto 20) = x"E08"
+          and instr_word(11 downto 4) = x"00" then
             op <= WOP_ADD;
             rn <= to_integer(unsigned(instr_word(19 downto 16)));
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             rm <= to_integer(unsigned(instr_word(3 downto 0)));
-        elsif instr_word(31 downto 20) = x"E04" then
+        elsif instr_word(31 downto 20) = x"E04"
+          and instr_word(11 downto 4) = x"00" then
             op <= WOP_SUB;
             rn <= to_integer(unsigned(instr_word(19 downto 16)));
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             rm <= to_integer(unsigned(instr_word(3 downto 0)));
-        elsif instr_word(31 downto 20) = x"E00" then
+        elsif instr_word(31 downto 20) = x"E00"
+          and instr_word(11 downto 4) = x"00" then
             op <= WOP_AND;
             rn <= to_integer(unsigned(instr_word(19 downto 16)));
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             rm <= to_integer(unsigned(instr_word(3 downto 0)));
-        elsif instr_word(31 downto 20) = x"E18" then
+        elsif instr_word(31 downto 20) = x"E18"
+          and instr_word(11 downto 4) = x"00" then
             op <= WOP_ORR;
             rn <= to_integer(unsigned(instr_word(19 downto 16)));
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             rm <= to_integer(unsigned(instr_word(3 downto 0)));
-        elsif instr_word(31 downto 20) = x"ECA" then
+        elsif instr_word(31 downto 28) = x"E"
+          and instr_word(27 downto 20) = x"68"
+          and instr_word(6 downto 5) = "00"
+          and instr_word(4) = '1' then
             op <= WOP_PKHBT;
             rn <= to_integer(unsigned(instr_word(19 downto 16)));
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             rm <= to_integer(unsigned(instr_word(3 downto 0)));
             imm <= to_integer(unsigned(instr_word(11 downto 7)));
-        elsif instr_word(31 downto 20) = x"E59" then
+        elsif instr_word(31 downto 20) = x"E59"
+          and instr_word(19 downto 16) = x"0" then
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             word_addr := to_integer(unsigned(instr_word(11 downto 0))) / 4;
             if word_addr >= DMEM_BANK0_BASE_WORD
@@ -96,7 +109,8 @@ begin
             else
                 illegal <= '1';
             end if;
-        elsif instr_word(31 downto 20) = x"E58" then
+        elsif instr_word(31 downto 20) = x"E58"
+          and instr_word(19 downto 16) = x"0" then
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             word_addr := to_integer(unsigned(instr_word(11 downto 0))) / 4;
             if word_addr >= DMEM_BANK0_BASE_WORD
@@ -110,13 +124,16 @@ begin
             else
                 illegal <= '1';
             end if;
-        elsif instr_word(31 downto 24) = x"ED" then
-            case instr_word(23 downto 20) is
-                when x"8" =>
+        elsif instr_word(31 downto 28) = x"E"
+          and instr_word(27 downto 20) = x"61"
+          and instr_word(11 downto 8) = x"F"
+          and instr_word(4) = '1' then
+            case instr_word(7 downto 4) is
+                when x"1" =>
                     op <= WOP_SADD16;
-                when x"2" =>
+                when x"7" =>
                     op <= WOP_SSUB16;
-                when x"0" =>
+                when x"5" =>
                     op <= WOP_SSAX;
                 when others =>
                     illegal <= '1';
@@ -124,27 +141,29 @@ begin
             rn <= to_integer(unsigned(instr_word(19 downto 16)));
             rd <= to_integer(unsigned(instr_word(15 downto 12)));
             rm <= to_integer(unsigned(instr_word(3 downto 0)));
-        elsif instr_word(31 downto 24) = x"EC" then
-            case instr_word(23 downto 20) is
-                when x"4" =>
+        elsif instr_word(31 downto 28) = x"E"
+          and instr_word(27 downto 20) = x"70"
+          and instr_word(15 downto 12) = x"F" then
+            case instr_word(7 downto 4) is
+                when x"1" =>
                     op <= WOP_SMUAD;
-                when x"6" =>
+                when x"5" =>
                     op <= WOP_SMUSD;
                 when others =>
                     illegal <= '1';
             end case;
-            rn <= to_integer(unsigned(instr_word(19 downto 16)));
-            rd <= to_integer(unsigned(instr_word(15 downto 12)));
-            rm <= to_integer(unsigned(instr_word(3 downto 0)));
+            rd <= to_integer(unsigned(instr_word(19 downto 16)));
+            rn <= to_integer(unsigned(instr_word(3 downto 0)));
+            rm <= to_integer(unsigned(instr_word(11 downto 8)));
         elsif instr_word(31 downto 24) = x"EA"
               or instr_word(31 downto 24) = x"EB" then
             branch_off := to_integer(signed(instr_word(23 downto 0)));
-            target_pc := pc_value + 2 + branch_off;
-            if target_pc < 0 or target_pc > 63 then
+            target_index := pc_value + 2 + branch_off;
+            if target_index < 0 or target_index > 63 then
                 illegal <= '1';
                 imm <= 0;
             else
-                imm <= target_pc;
+                imm <= target_index * 4;
             end if;
 
             if instr_word(31 downto 24) = x"EB" then

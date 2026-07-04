@@ -14,6 +14,8 @@ asm/mcu4_fft_workers_cnt22.s
 
 That file documents the ROM program; the canonical instruction encodings are
 the explicit 32-bit constant ROM entries in `rtl/mcu4_worker_instr_rom.vhd`.
+Those entries use the Armv7-A/R AArch32 A32 standard encoding for the implemented
+subset.
 
 The basic-instruction/PPT test listing is committed in:
 
@@ -29,7 +31,7 @@ basic test mode: PROGRAM_ID=1, ACTIVE_CORES=1
 ```
 
 There are four parallel worker cores. Each worker has its own PC, register file,
-32-bit instruction ROM, decoder, ARM-style ALU/DSP operations, halt state, and
+32-bit instruction ROM, decoder, A32-decoded ALU/DSP operations, done/illegal status, and
 work-memory ports. The workers execute the same timed program shape with
 lane-specific memory addresses.
 
@@ -56,7 +58,7 @@ conditions make that safe. The instruction words and program order remain
 visible; this is local worker scheduling, not a new FFT opcode and not a fixed
 FFT-PC window.
 
-The worker core also implements the course minimum ARM-style operations:
+The worker core also implements the course minimum A32-encoded ARM operations:
 
 ```asm
 ADD
@@ -99,7 +101,7 @@ stage1: dmem_bank1 -> dmem_bank0, W0/W2 butterflies
 stage2: dmem_bank0 -> dmem_bank1, W0/W1/W2/W3 butterflies
 ```
 
-Each butterfly is performed by ARM/ARM-DSP style operations:
+Each butterfly is performed by A32-encoded ARM/ARM-DSP operations:
 
 ```asm
 ; W0
@@ -149,5 +151,5 @@ decode-stage operand staging for the second store in a safe STR/STR pair
 ROM-local 3-bit pair_kind predecode for local dual-issue control
 ```
 
-The workers still retire the same ARM/ARM-DSP instruction stream in program
+The workers still retire the same A32 standard-encoded ARM/ARM-DSP instruction stream in program
 order. There is no hidden butterfly opcode and no hidden twiddle constant.

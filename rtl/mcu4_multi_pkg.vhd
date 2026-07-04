@@ -36,8 +36,7 @@ package mcu4_multi_pkg is
         WOP_SMUSD,
         WOP_ASR,
         WOP_B,
-        WOP_BL,
-        WOP_HALT
+        WOP_BL
     );
 
     constant REG_R0  : natural := 0;

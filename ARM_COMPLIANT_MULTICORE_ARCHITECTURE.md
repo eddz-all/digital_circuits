@@ -20,8 +20,11 @@ FFT butterfly 由 ARM/ARM DSP 指令序列组合完成。
 最终目标：
 
 ```text
-四核并行 + 多周期高频 + ARM 指令集内执行 + 明确可解释的内存结构。
+四核并行 + 多周期高频 + Armv7-A/R AArch32 A32 标准编码子集 + 明确可解释的内存结构。
 ```
+
+本版本只实现 ROM 中实际使用的 A32 指令形式，不声称是完整 ARM 处理器；
+但这些可见 ROM 指令字本身按 A32 标准 bit 编码保存。
 
 ## 2. 顶层数据流
 
@@ -298,7 +301,7 @@ cnt_stop:
 
 ```text
 cnt_start = release_cores_fetch_first_instruction
-cnt_stop  = all_cores_halted
+cnt_stop  = all_active_cores_done
 ```
 
 ## 12. 预期性能方向
@@ -336,7 +339,7 @@ rtl/mcu4_worker_core.vhd
 
 4. 共享 `dmem_bank0/dmem_bank1` 多端口工作数据内存在 `mcu4_multicycle_core` 内保留；FFT 输入输出格式转换在 `mcu_fft_system` 内完成。
 5. 每个 worker 从自己的 lane-specific 32-bit 指令 ROM 取指；ROM 中显式保存 `FFT_ROM_W0..W3` 和 `SELFTEST_ROM` 常量表。
-6. `cnt_stop` 由 `all_workers_halted` 产生，不等待输出 dump。
+6. `cnt_stop` 由顶层对所有 active worker 的 `B .` 完成哨兵检测产生，不等待输出 dump。
 7. Worker core 已补足课程最低 ARM 风格操作：`ADD/SUB/AND/ORR/MOV/LDR/STR/B/BL`。
 8. `PROGRAM_ID` 选择 FFT 或基础指令测试，`ACTIVE_CORES` 选择启动 1..4 个 worker。
 9. GHDL 已验证最低指令自测、FFT 输出和计数。
@@ -345,4 +348,4 @@ rtl/mcu4_worker_core.vhd
 
 推荐表述：
 
-> 我们采用四核多周期 ARM 指令执行结构。每个 core 都有 PC、32 位指令 ROM、译码器、寄存器组、ALU 和 ARM DSP 指令执行单元。FFT 数据存储在多端口数据内存 `dmem_bank0/dmem_bank1` 中，普通 ARM `LDR/STR` 可以单口访问该内存，四个 core 也可以并行访问。外部 16-bit 输入输出流的打包、bit-reversal 装载和拆包由 `mcu_fft_system` 完成。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持的 `SADD16/SSUB16/SSAX/SMUAD/SMUSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM 指令序列。
+> 我们采用四核多周期 ARM 指令执行结构。每个 core 都有 PC、32 位指令 ROM、译码器、寄存器组、ALU 和 ARM DSP 指令执行单元。ROM 中实际使用的机器码采用 Armv7-A/R AArch32 A32 标准编码子集。FFT 数据存储在多端口数据内存 `dmem_bank0/dmem_bank1` 中，普通 ARM `LDR/STR` 可以单口访问该内存，四个 core 也可以并行访问。外部 16-bit 输入输出流的打包、bit-reversal 装载和拆包由 `mcu_fft_system` 完成。FFT butterfly 不是由硬件黑盒一次完成，而是由 ARM 指令集支持的 `SADD16/SSUB16/SSAX/SMUAD/SMUSD/PKHBT` 等指令序列完成。多核并行体现在四个 core 同时执行不同 butterfly 的 ARM 指令序列。

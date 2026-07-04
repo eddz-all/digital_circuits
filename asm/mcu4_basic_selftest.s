@@ -41,6 +41,6 @@ pc16:   .word   0xE3A0B063      /* MOV r11, #99 ; skipped poison write */
 pc17:   .word   0xEB000002      /* BL pc21 */
 pc18:   .word   0xE08AC00B      /* ADD r12, r10, r11 */
 pc19:   .word   0xE580C05C      /* STR r12, [r0, #0x5C] ; data[7] = control-flow result */
-pc20:   .word   0xEAFFFFFE      /* HALT sentinel */
+pc20:   .word   0xEAFFFFFE      /* B . completion sentinel */
 pc21:   .word   0xE3A0A00F      /* MOV r10, #15 */
 pc22:   .word   0xE1A0F00E      /* MOV pc, lr */

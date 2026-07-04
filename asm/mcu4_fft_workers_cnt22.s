@@ -61,7 +61,7 @@ pc23:   NOP
 pc24:   NOP
 pc25:   NOP
 pc26:   NOP
-pc27:   HALT                            /* encoded as ARM B . sentinel */
+pc27:   B       .                       /* encoded as ARM B . completion sentinel */
 
 /* Worker 1 */
 worker1:
@@ -88,7 +88,7 @@ pc23:   SADD16  r10, r5, r9
 pc24:   SSUB16  r11, r5, r9
 pc25:   STR     r10, B[1]
 pc26:   STR     r11, B[5]
-pc27:   HALT                            /* encoded as ARM B . sentinel */
+pc27:   B       .                       /* encoded as ARM B . completion sentinel */
 
 /* Worker 2 */
 worker2:
@@ -115,7 +115,7 @@ pc23:   STR     r11, B[6]
 pc24:   NOP
 pc25:   NOP
 pc26:   NOP
-pc27:   HALT                            /* encoded as ARM B . sentinel */
+pc27:   B       .                       /* encoded as ARM B . completion sentinel */
 
 /* Worker 3 */
 worker3:
@@ -142,4 +142,4 @@ pc23:   SADD16  r10, r5, r9
 pc24:   SSUB16  r11, r5, r9
 pc25:   STR     r10, B[3]
 pc26:   STR     r11, B[7]
-pc27:   HALT                            /* encoded as ARM B . sentinel */
+pc27:   B       .                       /* encoded as ARM B . completion sentinel */

@@ -70,9 +70,9 @@ test = 0  -- error latched; reset is required to retry
 The checker watches generic MCU behavior rather than private registers:
 
 - `illegal` must never assert.
-- `data[1]` through `data[7]` must read back with the expected values after halt.
+- `data[1]` through `data[7]` must read back with the expected values after the `B .` completion sentinel.
 - the second internal data region must still read back as zero.
-- the worker must halt before the timeout.
+- the worker must reach the `B .` completion sentinel before the timeout.
 `pc_debug` and `instr_debug` remain useful trace signals, but the board-level
 pass/fail bit does not depend on an exact cycle-by-cycle debug-word comparison.
 
@@ -316,11 +316,11 @@ addr 0F  D874
 ## Notes For Presentation
 
 - This version uses four parallel worker cores rather than a memory-mapped butterfly accelerator.
-- Each worker has its own PC, 32-bit instruction ROM, decoder, register file, ARM-style ALU/DSP execution, work-memory ports, and halt state.
+- Each worker has its own PC, 32-bit instruction ROM, decoder, register file, A32-decoded ALU/DSP execution, work-memory ports, and top-level `B .` completion detection.
 - The worker instruction words are visible in `rtl/mcu4_worker_instr_rom.vhd` as `FFT_ROM_W0..FFT_ROM_W3` and `SELFTEST_ROM`.
 - MCU data is stored in data memory banks `dmem_bank0/dmem_bank1`, implemented as small multi-port register arrays. The FFT system wrapper packs/unpacks external 16-bit streams around these generic 32-bit words.
-- The worker core supports the course minimum ARM-style operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
-- Each butterfly is computed by worker instructions using ARM/ARM-DSP style operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
+- The worker core supports the course minimum A32-encoded ARM operations: `ADD`, `SUB`, `AND`, `ORR`, `MOV`, `LDR`, `STR`, `B`, and `BL`.
+- Each butterfly is computed by worker instructions using A32-encoded ARM/ARM-DSP operations: `LDR`, `STR`, `SADD16`, `SSUB16`, `SSAX`, `SMUAD`, `SMUSD`, `ASR`, and `PKHBT`.
 - `SMUAD` and `SMUSD` are internally multi-cycle to shorten the DSP critical path for 200 MHz-class timing.
 - Safe adjacent `MOV/MOV`, `LDR/LDR`, `STR/STR`, and `SADD16/SSUB16` instruction pairs can retire together when decoded dependencies make them safe; this is local dual issue, not a new FFT opcode.
 - The worker does not recognize fixed FFT PC windows. Pairing and DSP overlap are selected from decoded instruction properties and register dependencies.

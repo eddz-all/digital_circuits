@@ -79,11 +79,11 @@ architecture rtl of mcu4_worker_core is
   signal rst_rf_store_local  : std_logic                     := '1';
   signal rst_wb_local        : std_logic                     := '1';
   signal rst_mem_local       : std_logic                     := '1';
-  signal pc_fetch_reg        : natural range 0 to 63         := 0;
+  signal pc_fetch_reg        : word_t                        := (others => '0');
   signal pc_index            : std_logic_vector(5 downto 0)  := (others => '0');
   signal pc_pair_index       : std_logic_vector(5 downto 0)  := (others => '0');
   signal instr_reg           : word_t                        := x"E1A00000";
-  signal instr_pc_reg        : natural range 0 to 63         := 0;
+  signal instr_pc_reg        : word_t                        := (others => '0');
   signal regs_decode         : reg_file_t                    := (others => (others => '0'));
   signal regs_exec           : reg_file_t                    := (others => (others => '0'));
   signal regs_store          : reg_file_t                    := (others => (others => '0'));
@@ -151,7 +151,7 @@ architecture rtl of mcu4_worker_core is
   signal exec_idx                : natural range 0 to 7        := 0;
   signal exec_illegal            : std_logic                   := '0';
   signal exec_instr              : word_t                      := x"E1A00000";
-  signal exec_pc_reg             : natural range 0 to 63       := 0;
+  signal exec_pc_reg             : word_t                      := (others => '0');
   signal exec_rn_data            : word_t                      := (others => '0');
   signal exec_rm_data            : word_t                      := (others => '0');
   signal exec_rd_data            : word_t                      := (others => '0');
@@ -180,7 +180,7 @@ architecture rtl of mcu4_worker_core is
   signal dsp_rd              : natural range 0 to 15 := 0;
   signal dsp_sub             : std_logic             := '0';
   signal dsp_sub_acc         : std_logic             := '0';
-  signal dsp_pc_reg          : natural range 0 to 63 := 0;
+  signal dsp_pc_reg          : word_t                := (others => '0');
   signal dsp_instr_reg       : word_t                := x"E1A00000";
   signal dsp2_a              : word_t                := (others => '0');
   signal dsp2_b              : word_t                := (others => '0');
@@ -521,40 +521,59 @@ architecture rtl of mcu4_worker_core is
     or state_value = S_DSP_PAIR_WB;
   end function;
 
-  function clamp_pc(value : integer) return natural is
+  function pc_rom_index(value : word_t) return std_logic_vector is
   begin
-    if value < 0 then
-      return 0;
-    elsif value > 63 then
-      return 63;
-    end if;
-    return value;
+    return value(7 downto 2);
   end function;
 
-  function next_seq_pc(value : natural) return natural is
-  begin
-    if value < 63 then
-      return value + 1;
-    end if;
-    return 63;
-  end function;
-
-  function next_pair_pc(value : natural) return natural is
-  begin
-    if value < 62 then
-      return value + 2;
-    end if;
-    return 63;
-  end function;
-
-  function word_to_pc(value : word_t) return natural is
-  begin
-    return to_integer(unsigned(value(7 downto 2)));
-  end function;
-
-  function pc_to_byte_word(value : natural) return word_t is
+  function index_to_pc(value : natural range 0 to 63) return word_t is
   begin
     return std_logic_vector(shift_left(to_unsigned(value, 32), 2));
+  end function;
+
+  function clamp_pc(value : integer) return word_t is
+    variable idx : natural range 0 to 63;
+  begin
+    if value < 0 then
+      idx := 0;
+    elsif value > 252 then
+      idx := 63;
+    else
+      idx := value / 4;
+    end if;
+    return index_to_pc(idx);
+  end function;
+
+  function next_seq_pc(value : word_t) return word_t is
+    variable idx : natural range 0 to 63;
+  begin
+    idx := to_integer(unsigned(value(7 downto 2)));
+    if idx < 63 then
+      idx := idx + 1;
+    end if;
+    return index_to_pc(idx);
+  end function;
+
+  function next_pair_pc(value : word_t) return word_t is
+    variable idx : natural range 0 to 63;
+  begin
+    idx := to_integer(unsigned(value(7 downto 2)));
+    if idx < 62 then
+      idx := idx + 2;
+    else
+      idx := 63;
+    end if;
+    return index_to_pc(idx);
+  end function;
+
+  function word_to_pc(value : word_t) return word_t is
+  begin
+    return index_to_pc(to_integer(unsigned(value(7 downto 2))));
+  end function;
+
+  function pc_to_byte_word(value : word_t) return word_t is
+  begin
+    return value;
   end function;
 
 begin
@@ -566,8 +585,8 @@ begin
   rst_wb_local        <= rst;
   rst_mem_local       <= rst;
 
-  pc_index      <= std_logic_vector(to_unsigned(pc_fetch_reg, 6));
-  pc_pair_index <= std_logic_vector(to_unsigned(next_seq_pc(pc_fetch_reg), 6));
+  pc_index      <= pc_rom_index(pc_fetch_reg);
+  pc_pair_index <= pc_rom_index(next_seq_pc(pc_fetch_reg));
 
   u_instr_rom : entity work.mcu4_worker_instr_rom
     generic map(
@@ -671,7 +690,7 @@ begin
   process (clk)
     variable res            : word_t;
     variable branch_taken   : boolean;
-    variable branch_target  : natural range 0 to 63;
+    variable branch_target  : word_t;
     variable start_dsp      : boolean;
     variable wb_valid       : boolean;
     variable wb_rd          : natural range 0 to 15;
@@ -1075,7 +1094,7 @@ begin
 
       if rst_ctrl_local = '1' then
         set_worker_state(S_FETCH);
-        pc_fetch_reg <= 0;
+        pc_fetch_reg <= (others => '0');
         halted_reg   <= '0';
         illegal_reg  <= '0';
         dec_pair_kind <= WPAIR_NONE_CODE;
@@ -1171,7 +1190,7 @@ begin
                   halted_reg  <= '1';
                 else
                   branch_taken  := false;
-                  branch_target := 0;
+                  branch_target := (others => '0');
                   start_dsp     := false;
 
                   if pair_mov_imm_exec = '1' then
@@ -1330,13 +1349,11 @@ begin
                       when WOP_BL =>
                         wb_valid      := true;
                         wb_rd         := REG_LR;
-                        wb_data       := pc_to_byte_word(next_seq_pc(exec_pc_reg));
+                        wb_data       := next_seq_pc(exec_pc_reg);
                         branch_taken  := true;
                         branch_target := clamp_pc(exec_imm);
                       when WOP_STR_BANK0 | WOP_STR_BANK1 =>
                         null;
-                      when WOP_HALT =>
-                        halted_reg <= '1';
                     end case;
 
                     if wb_valid and run_ctrl_rf = '1' then
@@ -1346,9 +1363,7 @@ begin
                       rf_next_data      := wb_data;
                     end if;
 
-                    if exec_op = WOP_HALT then
-                      null;
-                    elsif branch_taken then
+                    if branch_taken then
                       exec_op      <= WOP_NOP;
                       exec_instr   <= x"E1A00000";
                       exec_pc_reg  <= branch_target;
