@@ -171,6 +171,10 @@ architecture rtl of mcu4_worker_core is
 
   signal dsp_a               : word_t                := (others => '0');
   signal dsp_b               : word_t                := (others => '0');
+  signal dsp_a_lo_mul        : std_logic_vector(15 downto 0) := (others => '0');
+  signal dsp_a_hi_mul        : std_logic_vector(15 downto 0) := (others => '0');
+  signal dsp_b_lo_mul        : std_logic_vector(15 downto 0) := (others => '0');
+  signal dsp_b_hi_mul        : std_logic_vector(15 downto 0) := (others => '0');
   signal dsp_prod_lo         : signed(31 downto 0)   := (others => '0');
   signal dsp_prod_hi         : signed(31 downto 0)   := (others => '0');
   signal dsp_sum             : word_t                := (others => '0');
@@ -182,6 +186,10 @@ architecture rtl of mcu4_worker_core is
   signal dsp_instr_reg       : word_t                := x"E1A00000";
   signal dsp2_a              : word_t                := (others => '0');
   signal dsp2_b              : word_t                := (others => '0');
+  signal dsp2_a_lo_mul       : std_logic_vector(15 downto 0) := (others => '0');
+  signal dsp2_a_hi_mul       : std_logic_vector(15 downto 0) := (others => '0');
+  signal dsp2_b_lo_mul       : std_logic_vector(15 downto 0) := (others => '0');
+  signal dsp2_b_hi_mul       : std_logic_vector(15 downto 0) := (others => '0');
   signal dsp2_prod_lo        : signed(31 downto 0)   := (others => '0');
   signal dsp2_prod_hi        : signed(31 downto 0)   := (others => '0');
   signal dsp2_sum            : word_t                := (others => '0');
@@ -236,6 +244,14 @@ architecture rtl of mcu4_worker_core is
   attribute max_fanout of rf_wb2_exec_we          : signal is 8;
   attribute max_fanout of rf_wb_store_we          : signal is 8;
   attribute max_fanout of rf_wb2_store_we         : signal is 8;
+  attribute max_fanout of dsp_a_lo_mul            : signal is 8;
+  attribute max_fanout of dsp_a_hi_mul            : signal is 8;
+  attribute max_fanout of dsp_b_lo_mul            : signal is 8;
+  attribute max_fanout of dsp_b_hi_mul            : signal is 8;
+  attribute max_fanout of dsp2_a_lo_mul           : signal is 8;
+  attribute max_fanout of dsp2_a_hi_mul           : signal is 8;
+  attribute max_fanout of dsp2_b_lo_mul           : signal is 8;
+  attribute max_fanout of dsp2_b_hi_mul           : signal is 8;
   attribute keep of regs_decode                   : signal is "true";
   attribute keep of regs_exec                     : signal is "true";
   attribute keep of regs_store                    : signal is "true";
@@ -248,14 +264,26 @@ architecture rtl of mcu4_worker_core is
   attribute keep of dsp2_sub_acc                  : signal is "true";
   attribute keep of exec_dsp_a                    : signal is "true";
   attribute keep of exec_dsp_b                    : signal is "true";
+  attribute keep of dsp_a_lo_mul                  : signal is "true";
+  attribute keep of dsp_a_hi_mul                  : signal is "true";
+  attribute keep of dsp_b_lo_mul                  : signal is "true";
+  attribute keep of dsp_b_hi_mul                  : signal is "true";
+  attribute keep of dsp2_a_lo_mul                 : signal is "true";
+  attribute keep of dsp2_a_hi_mul                 : signal is "true";
+  attribute keep of dsp2_b_lo_mul                 : signal is "true";
+  attribute keep of dsp2_b_hi_mul                 : signal is "true";
   attribute dont_touch of dsp_sub                 : signal is "true";
   attribute dont_touch of dsp_sub_acc             : signal is "true";
   attribute dont_touch of dsp2_sub                : signal is "true";
   attribute dont_touch of dsp2_sub_acc            : signal is "true";
   attribute dont_touch of exec_dsp_a              : signal is "true";
   attribute dont_touch of exec_dsp_b              : signal is "true";
+  attribute use_dsp of dsp_prod_lo                : signal is "no";
+  attribute use_dsp of dsp_prod_hi                : signal is "no";
   attribute use_dsp of dsp_sum                    : signal is "no";
   attribute use_dsp of dsp_diff                   : signal is "no";
+  attribute use_dsp of dsp2_prod_lo               : signal is "no";
+  attribute use_dsp of dsp2_prod_hi               : signal is "no";
   attribute use_dsp of dsp2_sum                   : signal is "no";
   attribute use_dsp of dsp2_diff                  : signal is "no";
 
@@ -1099,9 +1127,13 @@ begin
                         wb_rd    := exec_rd;
                         wb_data  := ssax(exec_rn_data, exec_rm_data);
                       when WOP_SMUAD | WOP_SMUSD =>
-                        dsp_a  <= exec_dsp_a;
-                        dsp_b  <= exec_dsp_b;
-                        dsp_rd <= exec_rd;
+                        dsp_a        <= exec_dsp_a;
+                        dsp_b        <= exec_dsp_b;
+                        dsp_a_lo_mul <= exec_dsp_a(15 downto 0);
+                        dsp_a_hi_mul <= exec_dsp_a(31 downto 16);
+                        dsp_b_lo_mul <= exec_dsp_b(15 downto 0);
+                        dsp_b_hi_mul <= exec_dsp_b(31 downto 16);
+                        dsp_rd       <= exec_rd;
                         if exec_op = WOP_SMUSD then
                           dsp_sub <= '1';
                         else
@@ -1185,15 +1217,19 @@ begin
               end if;
 
             when S_DSP_MUL =>
-              dsp_prod_lo <= signed(dsp_a(15 downto 0)) * signed(dsp_b(15 downto 0));
-              dsp_prod_hi <= signed(dsp_a(31 downto 16)) * signed(dsp_b(31 downto 16));
+              dsp_prod_lo <= signed(dsp_a_lo_mul) * signed(dsp_b_lo_mul);
+              dsp_prod_hi <= signed(dsp_a_hi_mul) * signed(dsp_b_hi_mul);
               dsp_sub_acc <= dsp_sub;
               -- Signal reads use the previous cycle's precomputed value here.
               dsp_pair_ready <= '0';
               if dsp_pair_ready = '1' then
-                dsp2_a  <= exec_dsp_a;
-                dsp2_b  <= exec_dsp_b;
-                dsp2_rd <= exec_rd;
+                dsp2_a        <= exec_dsp_a;
+                dsp2_b        <= exec_dsp_b;
+                dsp2_a_lo_mul <= exec_dsp_a(15 downto 0);
+                dsp2_a_hi_mul <= exec_dsp_a(31 downto 16);
+                dsp2_b_lo_mul <= exec_dsp_b(15 downto 0);
+                dsp2_b_hi_mul <= exec_dsp_b(31 downto 16);
+                dsp2_rd       <= exec_rd;
                 if exec_op = WOP_SMUSD then
                   dsp2_sub <= '1';
                 else
@@ -1232,8 +1268,8 @@ begin
             when S_DSP_PAIR_MUL_ACC =>
               dsp_sum      <= std_logic_vector(dsp_prod_lo + dsp_prod_hi);
               dsp_diff     <= std_logic_vector(dsp_prod_lo - dsp_prod_hi);
-              dsp2_prod_lo <= signed(dsp2_a(15 downto 0)) * signed(dsp2_b(15 downto 0));
-              dsp2_prod_hi <= signed(dsp2_a(31 downto 16)) * signed(dsp2_b(31 downto 16));
+              dsp2_prod_lo <= signed(dsp2_a_lo_mul) * signed(dsp2_b_lo_mul);
+              dsp2_prod_hi <= signed(dsp2_a_hi_mul) * signed(dsp2_b_hi_mul);
               dsp2_sub_acc <= dsp2_sub;
               set_worker_state(S_DSP_PAIR_WB_ACC);
 
