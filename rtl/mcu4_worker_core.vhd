@@ -273,6 +273,188 @@ architecture rtl of mcu4_worker_core is
   attribute use_dsp of dsp2_sum                   : signal is "no";
   attribute use_dsp of dsp2_diff                  : signal is "no";
 
+  subtype mul_prod_t is signed(31 downto 0);
+  subtype mul_u32_t is unsigned(31 downto 0);
+  type mul_stage_t is record
+    t0       : mul_u32_t;
+    t1       : mul_u32_t;
+    t2       : mul_u32_t;
+    t3       : mul_u32_t;
+    t4       : mul_u32_t;
+    t5       : mul_u32_t;
+    negative : std_logic;
+  end record;
+
+  constant MUL_STAGE_ZERO : mul_stage_t := (
+    t0       => (others => '0'),
+    t1       => (others => '0'),
+    t2       => (others => '0'),
+    t3       => (others => '0'),
+    t4       => (others => '0'),
+    t5       => (others => '0'),
+    negative => '0'
+  );
+
+  signal dsp_lo_mul_stage  : mul_stage_t := MUL_STAGE_ZERO;
+  signal dsp_hi_mul_stage  : mul_stage_t := MUL_STAGE_ZERO;
+  signal dsp2_lo_mul_stage : mul_stage_t := MUL_STAGE_ZERO;
+  signal dsp2_hi_mul_stage : mul_stage_t := MUL_STAGE_ZERO;
+
+  function mul_partial_u16(
+    a_mag       : unsigned(15 downto 0);
+    b_bit       : std_logic;
+    shift_count : natural
+  ) return mul_u32_t is
+    variable term : mul_u32_t := (others => '0');
+  begin
+    if b_bit = '1' then
+      term := shift_left(resize(a_mag, 32), shift_count);
+    end if;
+    return term;
+  end function;
+
+  function csa_sum(a : mul_u32_t; b : mul_u32_t; c : mul_u32_t) return mul_u32_t is
+  begin
+    return a xor b xor c;
+  end function;
+
+  function csa_carry(a : mul_u32_t; b : mul_u32_t; c : mul_u32_t) return mul_u32_t is
+  begin
+    return shift_left((a and b) or (a and c) or (b and c), 1);
+  end function;
+
+  function mul_s16_stage1(a : std_logic_vector(15 downto 0); b : std_logic_vector(15 downto 0)) return mul_stage_t is
+    variable a_mag    : unsigned(15 downto 0);
+    variable b_mag    : unsigned(15 downto 0);
+    variable result   : mul_stage_t;
+    variable pp0      : mul_u32_t;
+    variable pp1      : mul_u32_t;
+    variable pp2      : mul_u32_t;
+    variable pp3      : mul_u32_t;
+    variable pp4      : mul_u32_t;
+    variable pp5      : mul_u32_t;
+    variable pp6      : mul_u32_t;
+    variable pp7      : mul_u32_t;
+    variable pp8      : mul_u32_t;
+    variable pp9      : mul_u32_t;
+    variable pp10     : mul_u32_t;
+    variable pp11     : mul_u32_t;
+    variable pp12     : mul_u32_t;
+    variable pp13     : mul_u32_t;
+    variable pp14     : mul_u32_t;
+    variable pp15     : mul_u32_t;
+    variable s0       : mul_u32_t;
+    variable c0       : mul_u32_t;
+    variable s1       : mul_u32_t;
+    variable c1       : mul_u32_t;
+    variable s2       : mul_u32_t;
+    variable c2       : mul_u32_t;
+    variable s3       : mul_u32_t;
+    variable c3       : mul_u32_t;
+    variable s4       : mul_u32_t;
+    variable c4       : mul_u32_t;
+    variable s5       : mul_u32_t;
+    variable c5       : mul_u32_t;
+    variable s6       : mul_u32_t;
+    variable c6       : mul_u32_t;
+    variable s7       : mul_u32_t;
+    variable c7       : mul_u32_t;
+    variable s8       : mul_u32_t;
+    variable c8       : mul_u32_t;
+    variable s9       : mul_u32_t;
+    variable c9       : mul_u32_t;
+  begin
+    if a(15) = '1' then
+      a_mag := unsigned(not a) + 1;
+    else
+      a_mag := unsigned(a);
+    end if;
+
+    if b(15) = '1' then
+      b_mag := unsigned(not b) + 1;
+    else
+      b_mag := unsigned(b);
+    end if;
+
+    result.negative := a(15) xor b(15);
+
+    pp0  := mul_partial_u16(a_mag, b_mag(0), 0);
+    pp1  := mul_partial_u16(a_mag, b_mag(1), 1);
+    pp2  := mul_partial_u16(a_mag, b_mag(2), 2);
+    pp3  := mul_partial_u16(a_mag, b_mag(3), 3);
+    pp4  := mul_partial_u16(a_mag, b_mag(4), 4);
+    pp5  := mul_partial_u16(a_mag, b_mag(5), 5);
+    pp6  := mul_partial_u16(a_mag, b_mag(6), 6);
+    pp7  := mul_partial_u16(a_mag, b_mag(7), 7);
+    pp8  := mul_partial_u16(a_mag, b_mag(8), 8);
+    pp9  := mul_partial_u16(a_mag, b_mag(9), 9);
+    pp10 := mul_partial_u16(a_mag, b_mag(10), 10);
+    pp11 := mul_partial_u16(a_mag, b_mag(11), 11);
+    pp12 := mul_partial_u16(a_mag, b_mag(12), 12);
+    pp13 := mul_partial_u16(a_mag, b_mag(13), 13);
+    pp14 := mul_partial_u16(a_mag, b_mag(14), 14);
+    pp15 := mul_partial_u16(a_mag, b_mag(15), 15);
+
+    s0 := csa_sum(pp0, pp1, pp2);
+    c0 := csa_carry(pp0, pp1, pp2);
+    s1 := csa_sum(pp3, pp4, pp5);
+    c1 := csa_carry(pp3, pp4, pp5);
+    s2 := csa_sum(pp6, pp7, pp8);
+    c2 := csa_carry(pp6, pp7, pp8);
+    s3 := csa_sum(pp9, pp10, pp11);
+    c3 := csa_carry(pp9, pp10, pp11);
+    s4 := csa_sum(pp12, pp13, pp14);
+    c4 := csa_carry(pp12, pp13, pp14);
+
+    s5 := csa_sum(s0, c0, s1);
+    c5 := csa_carry(s0, c0, s1);
+    s6 := csa_sum(c1, s2, c2);
+    c6 := csa_carry(c1, s2, c2);
+    s7 := csa_sum(s3, c3, s4);
+    c7 := csa_carry(s3, c3, s4);
+
+    s8 := csa_sum(s5, c5, s6);
+    c8 := csa_carry(s5, c5, s6);
+    s9 := csa_sum(c6, s7, c7);
+    c9 := csa_carry(c6, s7, c7);
+
+    result.t0 := s8;
+    result.t1 := c8;
+    result.t2 := s9;
+    result.t3 := c9;
+    result.t4 := c4;
+    result.t5 := pp15;
+    return result;
+  end function;
+
+  function mul_s16_stage2(stage : mul_stage_t) return mul_prod_t is
+    variable s10     : mul_u32_t;
+    variable c10     : mul_u32_t;
+    variable s11     : mul_u32_t;
+    variable c11     : mul_u32_t;
+    variable s12     : mul_u32_t;
+    variable c12     : mul_u32_t;
+    variable s13     : mul_u32_t;
+    variable c13     : mul_u32_t;
+    variable product : mul_u32_t;
+  begin
+    s10 := csa_sum(stage.t0, stage.t1, stage.t2);
+    c10 := csa_carry(stage.t0, stage.t1, stage.t2);
+    s11 := csa_sum(stage.t3, stage.t4, stage.t5);
+    c11 := csa_carry(stage.t3, stage.t4, stage.t5);
+
+    s12 := csa_sum(s10, c10, s11);
+    c12 := csa_carry(s10, c10, s11);
+    s13 := csa_sum(s12, c12, c11);
+    c13 := csa_carry(s12, c12, c11);
+
+    product := s13 + c13;
+    if stage.negative = '1' then
+      return -signed(product);
+    end if;
+    return signed(product);
+  end function;
+
   function sadd16(a : word_t; b : word_t) return word_t is
     variable a_lo17 : signed(16 downto 0);
     variable a_hi17 : signed(16 downto 0);
@@ -1110,8 +1292,14 @@ begin
                         dsp_a_hi_mul <= exec_rn_data(31 downto 16);
                         dsp_b_lo_mul <= exec_rm_data(15 downto 0);
                         dsp_b_hi_mul <= exec_rm_data(31 downto 16);
-                        dsp_prod_lo  <= signed(exec_rn_data(15 downto 0)) * signed(exec_rm_data(15 downto 0));
-                        dsp_prod_hi  <= signed(exec_rn_data(31 downto 16)) * signed(exec_rm_data(31 downto 16));
+                        dsp_lo_mul_stage <= mul_s16_stage1(
+                          exec_rn_data(15 downto 0),
+                          exec_rm_data(15 downto 0)
+                        );
+                        dsp_hi_mul_stage <= mul_s16_stage1(
+                          exec_rn_data(31 downto 16),
+                          exec_rm_data(31 downto 16)
+                        );
                         dsp_rd       <= exec_rd;
                         if exec_op = WOP_SMUSD then
                           dsp_sub <= '1';
@@ -1196,6 +1384,8 @@ begin
               end if;
 
             when S_DSP_MUL =>
+              dsp_prod_lo <= mul_s16_stage2(dsp_lo_mul_stage);
+              dsp_prod_hi <= mul_s16_stage2(dsp_hi_mul_stage);
               dsp_sub_acc <= dsp_sub;
               -- Signal reads use the previous cycle's precomputed value here.
               dsp_pair_ready <= '0';
@@ -1206,8 +1396,14 @@ begin
                 dsp2_a_hi_mul <= exec_rn_data(31 downto 16);
                 dsp2_b_lo_mul <= exec_rm_data(15 downto 0);
                 dsp2_b_hi_mul <= exec_rm_data(31 downto 16);
-                dsp2_prod_lo  <= signed(exec_rn_data(15 downto 0)) * signed(exec_rm_data(15 downto 0));
-                dsp2_prod_hi  <= signed(exec_rn_data(31 downto 16)) * signed(exec_rm_data(31 downto 16));
+                dsp2_lo_mul_stage <= mul_s16_stage1(
+                  exec_rn_data(15 downto 0),
+                  exec_rm_data(15 downto 0)
+                );
+                dsp2_hi_mul_stage <= mul_s16_stage1(
+                  exec_rn_data(31 downto 16),
+                  exec_rm_data(31 downto 16)
+                );
                 dsp2_rd       <= exec_rd;
                 if exec_op = WOP_SMUSD then
                   dsp2_sub <= '1';
@@ -1247,6 +1443,8 @@ begin
             when S_DSP_PAIR_MUL_ACC =>
               dsp_sum      <= std_logic_vector(dsp_prod_lo + dsp_prod_hi);
               dsp_diff     <= std_logic_vector(dsp_prod_lo - dsp_prod_hi);
+              dsp2_prod_lo <= mul_s16_stage2(dsp2_lo_mul_stage);
+              dsp2_prod_hi <= mul_s16_stage2(dsp2_hi_mul_stage);
               dsp2_sub_acc <= dsp2_sub;
               set_worker_state(S_DSP_PAIR_WB_ACC);
 
