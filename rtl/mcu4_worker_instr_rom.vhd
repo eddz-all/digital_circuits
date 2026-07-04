@@ -26,6 +26,26 @@ end entity mcu4_worker_instr_rom;
 
 architecture rtl of mcu4_worker_instr_rom is
     type worker_pair_rom_t is array (0 to 63) of std_logic_vector(2 downto 0);
+    type worker_decode_entry_t is record
+        op      : worker_op_t;
+        rd      : natural range 0 to 15;
+        rn      : natural range 0 to 15;
+        rm      : natural range 0 to 15;
+        imm     : integer range -4096 to 4095;
+        idx     : natural range 0 to 7;
+        illegal : std_logic;
+    end record;
+    type worker_decode_rom_t is array (0 to 63) of worker_decode_entry_t;
+
+    constant DECODE_NOP : worker_decode_entry_t := (
+        op      => WOP_NOP,
+        rd      => 0,
+        rn      => 0,
+        rm      => 0,
+        imm     => 0,
+        idx     => 0,
+        illegal => '0'
+    );
 
     constant WPAIR_NONE_CODE          : std_logic_vector(2 downto 0) := "000";
     constant WPAIR_MOV_IMM_CODE       : std_logic_vector(2 downto 0) := "001";
@@ -383,6 +403,43 @@ architecture rtl of mcu4_worker_instr_rom is
         return WPAIR_NONE_CODE;
     end function;
 
+    function build_decode_rom(constant rom : program_rom_t) return worker_decode_rom_t is
+        variable result : worker_decode_rom_t := (others => DECODE_NOP);
+        variable pc_vec : std_logic_vector(5 downto 0);
+        variable op_v : worker_op_t;
+        variable rd_v : natural range 0 to 15;
+        variable rn_v : natural range 0 to 15;
+        variable rm_v : natural range 0 to 15;
+        variable imm_v : integer range -4096 to 4095;
+        variable idx_v : natural range 0 to 7;
+        variable illegal_v : std_logic;
+    begin
+        for pc in 0 to 63 loop
+            pc_vec := std_logic_vector(to_unsigned(pc, 6));
+            decode_instr_word(
+                rom(pc),
+                pc_vec,
+                op_v,
+                rd_v,
+                rn_v,
+                rm_v,
+                imm_v,
+                idx_v,
+                illegal_v
+            );
+
+            result(pc).op      := op_v;
+            result(pc).rd      := rd_v;
+            result(pc).rn      := rn_v;
+            result(pc).rm      := rm_v;
+            result(pc).imm     := imm_v;
+            result(pc).idx     := idx_v;
+            result(pc).illegal := illegal_v;
+        end loop;
+
+        return result;
+    end function;
+
     function build_pair_rom(constant rom : program_rom_t) return worker_pair_rom_t is
         variable result : worker_pair_rom_t := (others => WPAIR_NONE_CODE);
         variable pc_vec : std_logic_vector(5 downto 0);
@@ -460,6 +517,11 @@ architecture rtl of mcu4_worker_instr_rom is
     constant FFT_PAIR_W2 : worker_pair_rom_t := build_pair_rom(FFT_ROM_W2);
     constant FFT_PAIR_W3 : worker_pair_rom_t := build_pair_rom(FFT_ROM_W3);
     constant SELFTEST_PAIR : worker_pair_rom_t := build_pair_rom(SELFTEST_ROM);
+    constant FFT_DEC_W0 : worker_decode_rom_t := build_decode_rom(FFT_ROM_W0);
+    constant FFT_DEC_W1 : worker_decode_rom_t := build_decode_rom(FFT_ROM_W1);
+    constant FFT_DEC_W2 : worker_decode_rom_t := build_decode_rom(FFT_ROM_W2);
+    constant FFT_DEC_W3 : worker_decode_rom_t := build_decode_rom(FFT_ROM_W3);
+    constant SELFTEST_DEC : worker_decode_rom_t := build_decode_rom(SELFTEST_ROM);
 begin
     process(pc_index)
         variable pc : natural range 0 to 63;
@@ -467,13 +529,7 @@ begin
         variable instr_value : word_t;
         variable pair_value : std_logic_vector(2 downto 0);
         variable next_pair_value : std_logic_vector(2 downto 0);
-        variable op_value : worker_op_t;
-        variable rd_value : natural range 0 to 15;
-        variable rn_value : natural range 0 to 15;
-        variable rm_value : natural range 0 to 15;
-        variable imm_value : integer range -4096 to 4095;
-        variable idx_value : natural range 0 to 7;
-        variable illegal_value : std_logic;
+        variable decode_value : worker_decode_entry_t;
     begin
         pc := to_integer(unsigned(pc_index));
         if pc < 63 then
@@ -486,47 +542,40 @@ begin
             instr_value := SELFTEST_ROM(pc);
             pair_value := SELFTEST_PAIR(pc);
             next_pair_value := SELFTEST_PAIR(next_pc);
+            decode_value := SELFTEST_DEC(pc);
         else
             case WORKER_ID is
                 when 0 =>
                     instr_value := FFT_ROM_W0(pc);
                     pair_value := FFT_PAIR_W0(pc);
                     next_pair_value := FFT_PAIR_W0(next_pc);
+                    decode_value := FFT_DEC_W0(pc);
                 when 1 =>
                     instr_value := FFT_ROM_W1(pc);
                     pair_value := FFT_PAIR_W1(pc);
                     next_pair_value := FFT_PAIR_W1(next_pc);
+                    decode_value := FFT_DEC_W1(pc);
                 when 2 =>
                     instr_value := FFT_ROM_W2(pc);
                     pair_value := FFT_PAIR_W2(pc);
                     next_pair_value := FFT_PAIR_W2(next_pc);
+                    decode_value := FFT_DEC_W2(pc);
                 when others =>
                     instr_value := FFT_ROM_W3(pc);
                     pair_value := FFT_PAIR_W3(pc);
                     next_pair_value := FFT_PAIR_W3(next_pc);
+                    decode_value := FFT_DEC_W3(pc);
             end case;
         end if;
 
-        decode_instr_word(
-            instr_value,
-            pc_index,
-            op_value,
-            rd_value,
-            rn_value,
-            rm_value,
-            imm_value,
-            idx_value,
-            illegal_value
-        );
-
         instr <= instr_value;
-        dec_op <= op_value;
-        dec_rd <= rd_value;
-        dec_rn <= rn_value;
-        dec_rm <= rm_value;
-        dec_imm <= imm_value;
-        dec_idx <= idx_value;
-        dec_illegal <= illegal_value;
+        dec_op <= decode_value.op;
+        dec_rd <= decode_value.rd;
+        dec_rn <= decode_value.rn;
+        dec_rm <= decode_value.rm;
+        dec_imm <= decode_value.imm;
+        dec_idx <= decode_value.idx;
+        dec_illegal <= decode_value.illegal;
         pair_kind <= pair_value;
         next_pair_kind <= next_pair_value;
     end process;

@@ -51,7 +51,8 @@ architecture rtl of mcu_fft_system is
 
     signal input_samples : sample16_array_t := (others => (others => '0'));
 
-    signal core_rst        : std_logic := '1';
+    signal core_release_req : std_logic := '0';
+    signal core_rst         : std_logic := '1';
     signal core_dmem_we    : std_logic := '0';
     signal core_dmem_wbank : std_logic := '0';
     signal core_dmem_waddr : std_logic_vector(2 downto 0) := (others => '0');
@@ -64,6 +65,10 @@ architecture rtl of mcu_fft_system is
     signal core_illegal : std_logic;
     signal core_flag_z  : std_logic;
     signal core_flag_n  : std_logic;
+
+    attribute max_fanout : integer;
+    attribute max_fanout of core_release_req : signal is 16;
+    attribute max_fanout of core_rst         : signal is 16;
 begin
     assert INPUT_COUNT = 16
         report "mcu_fft_system expects exactly 16 teacher input slots"
@@ -121,6 +126,7 @@ begin
                 state <= S_LOAD_REQ;
                 load_idx <= 0;
                 dump_idx <= 0;
+                core_release_req <= '0';
                 core_rst <= '1';
                 input_samples <= (others => (others => '0'));
                 core_dmem_we <= '0';
@@ -134,6 +140,7 @@ begin
                 verify_vector_out <= (others => '0');
                 cnt_start <= '0';
             else
+                core_rst <= not core_release_req;
                 core_dmem_we <= '0';
                 test_rom_en <= '0';
                 verify_ram_we <= '0';
@@ -141,19 +148,16 @@ begin
 
                 case state is
                     when S_LOAD_REQ =>
-                        core_rst <= '1';
                         test_rom_en <= '1';
                         test_rom_addr <= std_logic_vector(to_unsigned(INPUT_ROM_BASE + load_idx, 8));
                         state <= S_LOAD_WAIT;
 
                     when S_LOAD_WAIT =>
-                        core_rst <= '1';
                         test_rom_en <= '1';
                         test_rom_addr <= std_logic_vector(to_unsigned(INPUT_ROM_BASE + load_idx, 8));
                         state <= S_LOAD_WRITE;
 
                     when S_LOAD_WRITE =>
-                        core_rst <= '1';
                         input_samples(load_idx) <= test_vector_in;
                         if load_idx >= 8 then
                             src_idx := load_idx - 8;
@@ -163,6 +167,7 @@ begin
                             core_dmem_wdata <= pack_q5_to_q12(input_samples(src_idx), test_vector_in);
                         end if;
                         if load_idx = last_input then
+                            core_release_req <= '1';
                             load_idx <= 0;
                             state <= S_START_RUN;
                         else
@@ -171,19 +176,16 @@ begin
                         end if;
 
                     when S_START_RUN =>
-                        core_rst <= '0';
                         cnt_start <= '1';
                         state <= S_RUN;
 
                     when S_RUN =>
-                        core_rst <= '0';
                         if core_halted = '1' or core_illegal = '1' then
                             dump_idx <= 0;
                             state <= S_DUMP_WRITE;
                         end if;
 
                     when S_DUMP_WRITE =>
-                        core_rst <= '0';
                         verify_ram_we <= '1';
                         verify_ram_addr <= std_logic_vector(to_unsigned(dump_idx, 6));
                         if dump_idx < 8 then
@@ -199,7 +201,6 @@ begin
                         end if;
 
                     when S_DONE =>
-                        core_rst <= '0';
                         null;
                 end case;
             end if;
