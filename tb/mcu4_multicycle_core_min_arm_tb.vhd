@@ -51,6 +51,20 @@ begin
         );
 
     stim : process
+        procedure check_bank0(
+            constant addr : in natural;
+            constant expected : in word_t;
+            constant label_text : in string
+        ) is
+        begin
+            dmem_rbank <= '0';
+            dmem_raddr <= std_logic_vector(to_unsigned(addr, 3));
+            wait for 1 ns;
+            assert dmem_rdata = expected
+                report "single-core minimum ARM program " & label_text & " mismatch"
+                severity failure;
+        end procedure;
+
         procedure wait_cycles(count : natural) is
         begin
             for i in 1 to count loop
@@ -80,24 +94,13 @@ begin
             report "single-core minimum ARM program hit illegal instruction"
             severity failure;
 
-        dmem_rbank <= '0';
-        dmem_raddr <= std_logic_vector(to_unsigned(1, 3));
-        wait for 1 ns;
-        assert dmem_rdata = x"00000008"
-            report "single-core minimum ARM program dmem_bank0[1] mismatch"
-            severity failure;
-
-        dmem_raddr <= std_logic_vector(to_unsigned(2, 3));
-        wait for 1 ns;
-        assert dmem_rdata = x"00000007"
-            report "single-core minimum ARM program dmem_bank0[2] mismatch"
-            severity failure;
-
-        dmem_raddr <= std_logic_vector(to_unsigned(3, 3));
-        wait for 1 ns;
-        assert dmem_rdata = x"0000000F"
-            report "single-core minimum ARM program dmem_bank0[3] mismatch"
-            severity failure;
+        check_bank0(1, x"00000007", "dmem_bank0[1]");
+        check_bank0(2, x"0000000A", "dmem_bank0[2]");
+        check_bank0(3, x"00000007", "dmem_bank0[3]");
+        check_bank0(4, x"00000002", "dmem_bank0[4]");
+        check_bank0(5, x"00000003", "dmem_bank0[5]");
+        check_bank0(6, x"00000005", "dmem_bank0[6]");
+        check_bank0(7, x"0000000F", "dmem_bank0[7]");
 
         report "mcu4_multicycle_core_min_arm_tb passed" severity note;
         finish;

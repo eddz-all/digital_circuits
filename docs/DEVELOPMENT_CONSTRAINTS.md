@@ -180,6 +180,10 @@ data[0]  byte address 0x40
 data[1]  byte address 0x44
 data[2]  byte address 0x48
 data[3]  byte address 0x4C
+data[4]  byte address 0x50
+data[5]  byte address 0x54
+data[6]  byte address 0x58
+data[7]  byte address 0x5C
 ```
 
 基础测试不应该在程序注释里写成 `LDR [bank0+0]`、`STR [bank1+0]` 这类实现口径。`bank0/bank1`
@@ -370,8 +374,7 @@ basic 上板 checker 应检查通用行为结果，而不是依赖某个私有�
 ```text
 illegal 必须为 0
 worker 必须在 timeout 前 halt
-data[1] / data[2] / data[3] 必须读回 signature
-data[4..7] 必须保持 0，用于证明 B 跳过毒性写入
+data[1..7] 必须读回 MOV/ADD/SUB/AND/ORR/LDR/控制流 signature
 dmem_bank1 必须保持 0，用于证明 basic 程序没有误访问第二数据区
 ```
 

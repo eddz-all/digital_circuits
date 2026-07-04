@@ -27,30 +27,53 @@ architecture rtl of board_top_basic_test is
         S_INIT_BANK0,
         S_INIT_BANK1,
         S_RUN,
-        S_CHECK_RESULT1,
-        S_CHECK_RESULT2,
-        S_CHECK_RESULT3,
-        S_CHECK_BANK0_UNUSED,
+        S_CHECK_MOV,
+        S_CHECK_ADD,
+        S_CHECK_SUB,
+        S_CHECK_AND,
+        S_CHECK_ORR,
+        S_CHECK_LDR,
+        S_CHECK_CONTROL,
         S_CHECK_BANK1,
         S_DONE
     );
 
     constant TIMEOUT_CYCLES : unsigned(7 downto 0) := to_unsigned(120, 8);
-    constant ERROR_NONE         : std_logic_vector(3 downto 0) := x"0";
-    constant ERROR_ILLEGAL      : std_logic_vector(3 downto 0) := x"1";
-    constant ERROR_TIMEOUT      : std_logic_vector(3 downto 0) := x"2";
-    constant ERROR_RESULT1      : std_logic_vector(3 downto 0) := x"3";
-    constant ERROR_RESULT2      : std_logic_vector(3 downto 0) := x"4";
-    constant ERROR_RESULT3      : std_logic_vector(3 downto 0) := x"5";
-    constant ERROR_BANK0_DIRTY  : std_logic_vector(3 downto 0) := x"6";
-    constant ERROR_BANK1_DIRTY  : std_logic_vector(3 downto 0) := x"7";
+    constant ERROR_NONE        : std_logic_vector(3 downto 0) := x"0";
+    constant ERROR_ILLEGAL     : std_logic_vector(3 downto 0) := x"1";
+    constant ERROR_TIMEOUT     : std_logic_vector(3 downto 0) := x"2";
+    constant ERROR_MOV         : std_logic_vector(3 downto 0) := x"3";
+    constant ERROR_ADD         : std_logic_vector(3 downto 0) := x"4";
+    constant ERROR_SUB         : std_logic_vector(3 downto 0) := x"5";
+    constant ERROR_AND         : std_logic_vector(3 downto 0) := x"6";
+    constant ERROR_ORR         : std_logic_vector(3 downto 0) := x"7";
+    constant ERROR_LDR         : std_logic_vector(3 downto 0) := x"8";
+    constant ERROR_CONTROL     : std_logic_vector(3 downto 0) := x"9";
+    constant ERROR_BANK1_DIRTY : std_logic_vector(3 downto 0) := x"A";
+
+    constant ADDR_INPUT   : natural := 0;
+    constant ADDR_MOV     : natural := 1;
+    constant ADDR_ADD     : natural := 2;
+    constant ADDR_SUB     : natural := 3;
+    constant ADDR_AND     : natural := 4;
+    constant ADDR_ORR     : natural := 5;
+    constant ADDR_LDR     : natural := 6;
+    constant ADDR_CONTROL : natural := 7;
+
+    constant EXPECT_INPUT   : word_t := x"00000005";
+    constant EXPECT_MOV     : word_t := x"00000007";
+    constant EXPECT_ADD     : word_t := x"0000000A";
+    constant EXPECT_SUB     : word_t := x"00000007";
+    constant EXPECT_AND     : word_t := x"00000002";
+    constant EXPECT_ORR     : word_t := x"00000003";
+    constant EXPECT_LDR     : word_t := x"00000005";
+    constant EXPECT_CONTROL : word_t := x"0000000F";
 
     signal sys_clk : std_logic;
     signal sys_rst : std_logic;
 
     signal state : state_t := S_INIT_BANK0;
     signal init_idx : natural range 0 to 7 := 0;
-    signal bank0_check_idx : natural range 0 to 7 := 4;
     signal bank1_check_idx : natural range 0 to 7 := 0;
 
     signal core_rst : std_logic := '1';
@@ -87,12 +110,15 @@ begin
         x"0" when S_INIT_BANK0,
         x"1" when S_INIT_BANK1,
         x"2" when S_RUN,
-        x"3" when S_CHECK_RESULT1,
-        x"4" when S_CHECK_RESULT2,
-        x"5" when S_CHECK_RESULT3,
-        x"6" when S_CHECK_BANK0_UNUSED,
-        x"7" when S_CHECK_BANK1,
-        x"8" when S_DONE;
+        x"3" when S_CHECK_MOV,
+        x"4" when S_CHECK_ADD,
+        x"5" when S_CHECK_SUB,
+        x"6" when S_CHECK_AND,
+        x"7" when S_CHECK_ORR,
+        x"8" when S_CHECK_LDR,
+        x"9" when S_CHECK_CONTROL,
+        x"A" when S_CHECK_BANK1,
+        x"B" when S_DONE;
 
     u_core : entity work.mcu4_multicycle_core
         generic map (
@@ -124,7 +150,6 @@ begin
             if sys_rst = '1' then
                 state <= S_INIT_BANK0;
                 init_idx <= 0;
-                bank0_check_idx <= 4;
                 bank1_check_idx <= 0;
                 core_rst <= '1';
                 dmem_we <= '0';
@@ -147,8 +172,8 @@ begin
                         dmem_we <= '1';
                         dmem_wbank <= '0';
                         dmem_waddr <= std_logic_vector(to_unsigned(init_idx, 3));
-                        if init_idx = 0 then
-                            dmem_wdata <= x"00000005";
+                        if init_idx = ADDR_INPUT then
+                            dmem_wdata <= EXPECT_INPUT;
                         else
                             dmem_wdata <= (others => '0');
                         end if;
@@ -190,8 +215,8 @@ begin
                                 if halted = '1' then
                                     done_seen <= '1';
                                     dmem_rbank <= '0';
-                                    dmem_raddr <= std_logic_vector(to_unsigned(1, 3));
-                                    state <= S_CHECK_RESULT1;
+                                    dmem_raddr <= std_logic_vector(to_unsigned(ADDR_MOV, 3));
+                                    state <= S_CHECK_MOV;
                                 elsif cycle_count = TIMEOUT_CYCLES then
                                     next_test := '0';
                                     if error_code = ERROR_NONE then
@@ -204,59 +229,84 @@ begin
                             end if;
                         end if;
 
-                    when S_CHECK_RESULT1 =>
+                    when S_CHECK_MOV =>
                         core_rst <= '0';
-                        if dmem_rdata /= x"00000008" then
+                        if dmem_rdata /= EXPECT_MOV then
                             next_test := '0';
                             if error_code = ERROR_NONE then
-                                error_code <= ERROR_RESULT1;
+                                error_code <= ERROR_MOV;
                             end if;
                         end if;
-                        dmem_raddr <= std_logic_vector(to_unsigned(2, 3));
-                        state <= S_CHECK_RESULT2;
+                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_ADD, 3));
+                        state <= S_CHECK_ADD;
 
-                    when S_CHECK_RESULT2 =>
+                    when S_CHECK_ADD =>
                         core_rst <= '0';
-                        if dmem_rdata /= x"00000007" then
+                        if dmem_rdata /= EXPECT_ADD then
                             next_test := '0';
                             if error_code = ERROR_NONE then
-                                error_code <= ERROR_RESULT2;
+                                error_code <= ERROR_ADD;
                             end if;
                         end if;
-                        dmem_raddr <= std_logic_vector(to_unsigned(3, 3));
-                        state <= S_CHECK_RESULT3;
+                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_SUB, 3));
+                        state <= S_CHECK_SUB;
 
-                    when S_CHECK_RESULT3 =>
+                    when S_CHECK_SUB =>
                         core_rst <= '0';
-                        if dmem_rdata /= x"0000000F" then
+                        if dmem_rdata /= EXPECT_SUB then
                             next_test := '0';
                             if error_code = ERROR_NONE then
-                                error_code <= ERROR_RESULT3;
+                                error_code <= ERROR_SUB;
                             end if;
                         end if;
-                        bank0_check_idx <= 4;
-                        dmem_rbank <= '0';
-                        dmem_raddr <= std_logic_vector(to_unsigned(4, 3));
-                        state <= S_CHECK_BANK0_UNUSED;
+                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_AND, 3));
+                        state <= S_CHECK_AND;
 
-                    when S_CHECK_BANK0_UNUSED =>
+                    when S_CHECK_AND =>
                         core_rst <= '0';
-                        if dmem_rdata /= x"00000000" then
+                        if dmem_rdata /= EXPECT_AND then
                             next_test := '0';
                             if error_code = ERROR_NONE then
-                                error_code <= ERROR_BANK0_DIRTY;
+                                error_code <= ERROR_AND;
                             end if;
                         end if;
+                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_ORR, 3));
+                        state <= S_CHECK_ORR;
 
-                        if bank0_check_idx = 7 then
-                            bank1_check_idx <= 0;
-                            dmem_rbank <= '1';
-                            dmem_raddr <= std_logic_vector(to_unsigned(0, 3));
-                            state <= S_CHECK_BANK1;
-                        else
-                            bank0_check_idx <= bank0_check_idx + 1;
-                            dmem_raddr <= std_logic_vector(to_unsigned(bank0_check_idx + 1, 3));
+                    when S_CHECK_ORR =>
+                        core_rst <= '0';
+                        if dmem_rdata /= EXPECT_ORR then
+                            next_test := '0';
+                            if error_code = ERROR_NONE then
+                                error_code <= ERROR_ORR;
+                            end if;
                         end if;
+                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_LDR, 3));
+                        state <= S_CHECK_LDR;
+
+                    when S_CHECK_LDR =>
+                        core_rst <= '0';
+                        if dmem_rdata /= EXPECT_LDR then
+                            next_test := '0';
+                            if error_code = ERROR_NONE then
+                                error_code <= ERROR_LDR;
+                            end if;
+                        end if;
+                        dmem_raddr <= std_logic_vector(to_unsigned(ADDR_CONTROL, 3));
+                        state <= S_CHECK_CONTROL;
+
+                    when S_CHECK_CONTROL =>
+                        core_rst <= '0';
+                        if dmem_rdata /= EXPECT_CONTROL then
+                            next_test := '0';
+                            if error_code = ERROR_NONE then
+                                error_code <= ERROR_CONTROL;
+                            end if;
+                        end if;
+                        bank1_check_idx <= 0;
+                        dmem_rbank <= '1';
+                        dmem_raddr <= std_logic_vector(to_unsigned(0, 3));
+                        state <= S_CHECK_BANK1;
 
                     when S_CHECK_BANK1 =>
                         core_rst <= '0';

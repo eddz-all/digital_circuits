@@ -40,6 +40,10 @@ architecture sim of mcu4_worker_core_min_arm_tb is
     signal saw_result1 : std_logic := '0';
     signal saw_result2 : std_logic := '0';
     signal saw_result3 : std_logic := '0';
+    signal saw_result4 : std_logic := '0';
+    signal saw_result5 : std_logic := '0';
+    signal saw_result6 : std_logic := '0';
+    signal saw_result7 : std_logic := '0';
 begin
     clk <= not clk after 5 ns;
 
@@ -93,20 +97,40 @@ begin
             if rst = '0' and dmem_bank0_we = '1' then
                 case to_integer(unsigned(dmem_bank0_waddr)) is
                     when 1 =>
-                        assert dmem_bank0_wdata = x"00000008"
-                            report "ADD/AND/ORR/MOV/LDR/STR result write mismatch at dmem_bank0[1]"
+                        assert dmem_bank0_wdata = x"00000007"
+                            report "MOV result write mismatch at dmem_bank0[1]"
                             severity failure;
                         saw_result1 <= '1';
                     when 2 =>
-                        assert dmem_bank0_wdata = x"00000007"
-                            report "STR/STR first result write mismatch at dmem_bank0[2]"
+                        assert dmem_bank0_wdata = x"0000000A"
+                            report "ADD result write mismatch at dmem_bank0[2]"
                             severity failure;
                         saw_result2 <= '1';
                     when 3 =>
-                        assert dmem_bank0_wdata = x"0000000F"
-                            report "BL/MOV pc,lr return result write mismatch at dmem_bank0[3]"
+                        assert dmem_bank0_wdata = x"00000007"
+                            report "SUB result write mismatch at dmem_bank0[3]"
                             severity failure;
                         saw_result3 <= '1';
+                    when 4 =>
+                        assert dmem_bank0_wdata = x"00000002"
+                            report "AND result write mismatch at dmem_bank0[4]"
+                            severity failure;
+                        saw_result4 <= '1';
+                    when 5 =>
+                        assert dmem_bank0_wdata = x"00000003"
+                            report "ORR result write mismatch at dmem_bank0[5]"
+                            severity failure;
+                        saw_result5 <= '1';
+                    when 6 =>
+                        assert dmem_bank0_wdata = x"00000005"
+                            report "LDR result write mismatch at dmem_bank0[6]"
+                            severity failure;
+                        saw_result6 <= '1';
+                    when 7 =>
+                        assert dmem_bank0_wdata = x"0000000F"
+                            report "BL/MOV pc,lr result write mismatch at dmem_bank0[7]"
+                            severity failure;
+                        saw_result7 <= '1';
                     when others =>
                         assert false
                             report "unexpected STR target dmem_bank0["
@@ -116,23 +140,9 @@ begin
             end if;
 
             if rst = '0' and dmem_bank0_we2 = '1' then
-                case to_integer(unsigned(dmem_bank0_waddr2)) is
-                    when 2 =>
-                        assert dmem_bank0_wdata2 = x"00000007"
-                            report "STR/STR first result write mismatch at dmem_bank0[2] second port"
-                            severity failure;
-                        saw_result2 <= '1';
-                    when 3 =>
-                        assert dmem_bank0_wdata2 = x"0000000F"
-                            report "STR/STR second result write mismatch at dmem_bank0[3] second port"
-                            severity failure;
-                        saw_result3 <= '1';
-                    when others =>
-                        assert false
-                            report "unexpected STR second-port target dmem_bank0["
-                                & integer'image(to_integer(unsigned(dmem_bank0_waddr2))) & "]"
-                            severity failure;
-                end case;
+                assert false
+                    report "legacy minimum ARM self-test unexpectedly used dmem_bank0 second write port"
+                    severity failure;
             end if;
         end if;
     end process;
@@ -160,12 +170,24 @@ begin
             report "minimum ARM self-test hit illegal instruction"
             severity failure;
         assert saw_result1 = '1'
-            report "minimum ARM self-test did not execute LDR/STR data path"
+            report "minimum ARM self-test did not execute MOV result store"
             severity failure;
         assert saw_result2 = '1'
-            report "minimum ARM self-test did not execute first STR/STR store"
+            report "minimum ARM self-test did not execute ADD result store"
             severity failure;
         assert saw_result3 = '1'
+            report "minimum ARM self-test did not execute SUB result store"
+            severity failure;
+        assert saw_result4 = '1'
+            report "minimum ARM self-test did not execute AND result store"
+            severity failure;
+        assert saw_result5 = '1'
+            report "minimum ARM self-test did not execute ORR result store"
+            severity failure;
+        assert saw_result6 = '1'
+            report "minimum ARM self-test did not execute LDR result store"
+            severity failure;
+        assert saw_result7 = '1'
             report "minimum ARM self-test did not return from BL"
             severity failure;
 

@@ -70,7 +70,7 @@ test = 0  -- error latched; reset is required to retry
 The checker watches generic MCU behavior rather than private registers:
 
 - `illegal` must never assert.
-- `data[1]`, `data[2]`, and `data[3]` must read back with the expected values after halt.
+- `data[1]` through `data[7]` must read back with the expected values after halt.
 - the second internal data region must still read back as zero.
 - the worker must halt before the timeout.
 `pc_debug` and `instr_debug` remain useful trace signals, but the board-level
@@ -107,11 +107,14 @@ If `probe0` drops to 0, read `probe2`:
 0  no error latched
 1  illegal instruction
 2  timeout before halt
-3  data[1] readback mismatch, expected 0x00000008
-4  data[2] readback mismatch, expected 0x00000007
-5  data[3] readback mismatch, expected 0x0000000F
-6  data[4..7] was not zero; the skipped poison instruction may have run
-7  dmem_bank1 was not zero
+3  data[1] MOV result mismatch, expected 0x00000007
+4  data[2] ADD result mismatch, expected 0x0000000A
+5  data[3] SUB result mismatch, expected 0x00000007
+6  data[4] AND result mismatch, expected 0x00000002
+7  data[5] ORR result mismatch, expected 0x00000003
+8  data[6] LDR result mismatch, expected 0x00000005
+9  data[7] control-flow result mismatch, expected 0x0000000F
+A  dmem_bank1 was not zero
 ```
 
 `probe3` shows the checker state:
@@ -123,9 +126,12 @@ If `probe0` drops to 0, read `probe2`:
 3 check data[1]
 4 check data[2]
 5 check data[3]
-6 check unused data[4..7]
-7 check bank1
-8 done
+6 check data[4]
+7 check data[5]
+8 check data[6]
+9 check data[7]
+A check bank1
+B done
 ```
 
 Optional failure trigger:

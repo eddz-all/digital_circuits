@@ -177,11 +177,11 @@ MOV, ADD, SUB, AND, ORR, LDR, STR, B, BL, MOV pc, lr
 ```
 
 The worker-level testbench drives the self-test data region with `data[0]=5`
-at byte address `0x40`, then checks stores to `data[1]=8`, `data[2]=7`, and
-`data[3]=15`. It also asserts that the basic self-test does not access the
-second internal data region. The multicycle-level test leaves `data[0]=0`, so
-it checks the same program path with `data[1]=3`, `data[2]=7`, and `data[3]=10`
-at the 16-bit output port.
+at byte address `0x40`, then checks stores to `data[1]=7`, `data[2]=10`,
+`data[3]=7`, `data[4]=2`, `data[5]=3`, `data[6]=5`, and `data[7]=15`. It also
+asserts that the basic self-test does not access the second internal data
+region. The multicycle-level test checks the same bank0 result slots through the
+wrapper data-memory read port.
 
 ## Expected Output
 

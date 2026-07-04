@@ -189,23 +189,27 @@ architecture rtl of mcu4_worker_instr_rom is
     constant SELFTEST_ROM : program_rom_t := (
          0 => x"E3A00000", -- MOV r0, #0
          1 => x"E3A01007", -- MOV r1, #7
-         2 => x"E3A02003", -- MOV r2, #3
-         3 => x"E0813002", -- ADD r3, r1, r2
-         4 => x"E0434002", -- SUB r4, r3, r2
-         5 => x"E0035001", -- AND r5, r3, r1
-         6 => x"E1856002", -- ORR r6, r5, r2
-         7 => x"E1A07006", -- MOV r7, r6
-         8 => x"E5908040", -- LDR r8, [r0, #0x40] ; data[0]
-         9 => x"E0889007", -- ADD r9, r8, r7
-        10 => x"E5809044", -- STR r9, [r0, #0x44] ; data[1]
-        11 => x"EA000000", -- B selftest_after_skip
-        12 => x"E5802050", -- STR r2, [r0, #0x50] ; data[4], skipped poison
-        13 => x"EB000002", -- BL selftest_subroutine
-        14 => x"E5801048", -- STR r1, [r0, #0x48] ; data[2]
-        15 => x"E580A04C", -- STR r10, [r0, #0x4C] ; data[3]
-        16 => INSTR_HALT,   -- HALT
-        17 => x"E089A004", -- ADD r10, r9, r4
-        18 => x"E1A0F00E", -- MOV pc, lr
+         2 => x"E5801044", -- STR r1, [r0, #0x44] ; data[1] = MOV result
+         3 => x"E3A02003", -- MOV r2, #3
+         4 => x"E0813002", -- ADD r3, r1, r2
+         5 => x"E5803048", -- STR r3, [r0, #0x48] ; data[2] = ADD result
+         6 => x"E0434002", -- SUB r4, r3, r2
+         7 => x"E580404C", -- STR r4, [r0, #0x4C] ; data[3] = SUB result
+         8 => x"E0035001", -- AND r5, r3, r1
+         9 => x"E5805050", -- STR r5, [r0, #0x50] ; data[4] = AND result
+        10 => x"E1856002", -- ORR r6, r5, r2
+        11 => x"E5806054", -- STR r6, [r0, #0x54] ; data[5] = ORR result
+        12 => x"E5908040", -- LDR r8, [r0, #0x40] ; data[0] input
+        13 => x"E5808058", -- STR r8, [r0, #0x58] ; data[6] = LDR result
+        14 => x"E3A0B000", -- MOV r11, #0 ; branch poison accumulator
+        15 => x"EA000000", -- B selftest_after_skip
+        16 => x"E3A0B063", -- MOV r11, #99 ; skipped poison
+        17 => x"EB000002", -- BL selftest_subroutine
+        18 => x"E08AC00B", -- ADD r12, r10, r11
+        19 => x"E580C05C", -- STR r12, [r0, #0x5C] ; data[7] = control-flow result
+        20 => INSTR_HALT,   -- HALT
+        21 => x"E3A0A00F", -- MOV r10, #15
+        22 => x"E1A0F00E", -- MOV pc, lr
         others => INSTR_HALT
     );
 
