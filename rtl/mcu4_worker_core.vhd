@@ -155,8 +155,6 @@ architecture rtl of mcu4_worker_core is
   signal exec_rn_data            : word_t                      := (others => '0');
   signal exec_rm_data            : word_t                      := (others => '0');
   signal exec_rd_data            : word_t                      := (others => '0');
-  signal exec_dsp_a              : word_t                      := (others => '0');
-  signal exec_dsp_b              : word_t                      := (others => '0');
   signal exec_pair_kind          : std_logic_vector(2 downto 0) := WPAIR_NONE_CODE;
   signal pair_mov_imm_exec       : std_logic                   := '0';
   signal pair_ldr_bank0_exec     : std_logic                   := '0';
@@ -244,14 +242,14 @@ architecture rtl of mcu4_worker_core is
   attribute max_fanout of rf_wb2_exec_we          : signal is 8;
   attribute max_fanout of rf_wb_store_we          : signal is 8;
   attribute max_fanout of rf_wb2_store_we         : signal is 8;
-  attribute max_fanout of dsp_a_lo_mul            : signal is 8;
-  attribute max_fanout of dsp_a_hi_mul            : signal is 8;
-  attribute max_fanout of dsp_b_lo_mul            : signal is 8;
-  attribute max_fanout of dsp_b_hi_mul            : signal is 8;
-  attribute max_fanout of dsp2_a_lo_mul           : signal is 8;
-  attribute max_fanout of dsp2_a_hi_mul           : signal is 8;
-  attribute max_fanout of dsp2_b_lo_mul           : signal is 8;
-  attribute max_fanout of dsp2_b_hi_mul           : signal is 8;
+  attribute max_fanout of dsp_a_lo_mul            : signal is 2;
+  attribute max_fanout of dsp_a_hi_mul            : signal is 2;
+  attribute max_fanout of dsp_b_lo_mul            : signal is 2;
+  attribute max_fanout of dsp_b_hi_mul            : signal is 2;
+  attribute max_fanout of dsp2_a_lo_mul           : signal is 2;
+  attribute max_fanout of dsp2_a_hi_mul           : signal is 2;
+  attribute max_fanout of dsp2_b_lo_mul           : signal is 2;
+  attribute max_fanout of dsp2_b_hi_mul           : signal is 2;
   attribute keep of regs_decode                   : signal is "true";
   attribute keep of regs_exec                     : signal is "true";
   attribute keep of regs_store                    : signal is "true";
@@ -262,22 +260,10 @@ architecture rtl of mcu4_worker_core is
   attribute keep of dsp_sub_acc                   : signal is "true";
   attribute keep of dsp2_sub                      : signal is "true";
   attribute keep of dsp2_sub_acc                  : signal is "true";
-  attribute keep of exec_dsp_a                    : signal is "true";
-  attribute keep of exec_dsp_b                    : signal is "true";
-  attribute keep of dsp_a_lo_mul                  : signal is "true";
-  attribute keep of dsp_a_hi_mul                  : signal is "true";
-  attribute keep of dsp_b_lo_mul                  : signal is "true";
-  attribute keep of dsp_b_hi_mul                  : signal is "true";
-  attribute keep of dsp2_a_lo_mul                 : signal is "true";
-  attribute keep of dsp2_a_hi_mul                 : signal is "true";
-  attribute keep of dsp2_b_lo_mul                 : signal is "true";
-  attribute keep of dsp2_b_hi_mul                 : signal is "true";
   attribute dont_touch of dsp_sub                 : signal is "true";
   attribute dont_touch of dsp_sub_acc             : signal is "true";
   attribute dont_touch of dsp2_sub                : signal is "true";
   attribute dont_touch of dsp2_sub_acc            : signal is "true";
-  attribute dont_touch of exec_dsp_a              : signal is "true";
-  attribute dont_touch of exec_dsp_b              : signal is "true";
   attribute use_dsp of dsp_prod_lo                : signal is "no";
   attribute use_dsp of dsp_prod_hi                : signal is "no";
   attribute use_dsp of dsp_sum                    : signal is "no";
@@ -694,8 +680,6 @@ begin
       exec_rn_data <= rn_value;
       exec_rm_data <= rm_value;
       exec_rd_data <= rd_value;
-      exec_dsp_a   <= rn_value;
-      exec_dsp_b   <= rm_value;
     end procedure;
 
     procedure load_exec_from_decode_dual(
@@ -738,8 +722,6 @@ begin
       exec_rn_data <= rn_value;
       exec_rm_data <= rm_value;
       exec_rd_data <= rd_value;
-      exec_dsp_a   <= rn_value;
-      exec_dsp_b   <= rm_value;
     end procedure;
 
     procedure load_exec_from_fetch_dual(
@@ -782,8 +764,6 @@ begin
       exec_rn_data <= rn_value;
       exec_rm_data <= rm_value;
       exec_rd_data <= rd_value;
-      exec_dsp_a   <= rn_value;
-      exec_dsp_b   <= rm_value;
 
       instr_reg    <= instr_pair_word;
       instr_pc_reg <= next_seq_pc(pc_fetch_reg);
@@ -832,8 +812,6 @@ begin
       exec_rn_data <= rn_value;
       exec_rm_data <= rm_value;
       exec_rd_data <= rd_value;
-      exec_dsp_a   <= rn_value;
-      exec_dsp_b   <= rm_value;
     end procedure;
 
     procedure fetch_into_decode(
@@ -1127,12 +1105,12 @@ begin
                         wb_rd    := exec_rd;
                         wb_data  := ssax(exec_rn_data, exec_rm_data);
                       when WOP_SMUAD | WOP_SMUSD =>
-                        dsp_a        <= exec_dsp_a;
-                        dsp_b        <= exec_dsp_b;
-                        dsp_a_lo_mul <= exec_dsp_a(15 downto 0);
-                        dsp_a_hi_mul <= exec_dsp_a(31 downto 16);
-                        dsp_b_lo_mul <= exec_dsp_b(15 downto 0);
-                        dsp_b_hi_mul <= exec_dsp_b(31 downto 16);
+                        dsp_a        <= exec_rn_data;
+                        dsp_b        <= exec_rm_data;
+                        dsp_a_lo_mul <= exec_rn_data(15 downto 0);
+                        dsp_a_hi_mul <= exec_rn_data(31 downto 16);
+                        dsp_b_lo_mul <= exec_rm_data(15 downto 0);
+                        dsp_b_hi_mul <= exec_rm_data(31 downto 16);
                         dsp_rd       <= exec_rd;
                         if exec_op = WOP_SMUSD then
                           dsp_sub <= '1';
@@ -1223,12 +1201,12 @@ begin
               -- Signal reads use the previous cycle's precomputed value here.
               dsp_pair_ready <= '0';
               if dsp_pair_ready = '1' then
-                dsp2_a        <= exec_dsp_a;
-                dsp2_b        <= exec_dsp_b;
-                dsp2_a_lo_mul <= exec_dsp_a(15 downto 0);
-                dsp2_a_hi_mul <= exec_dsp_a(31 downto 16);
-                dsp2_b_lo_mul <= exec_dsp_b(15 downto 0);
-                dsp2_b_hi_mul <= exec_dsp_b(31 downto 16);
+                dsp2_a        <= exec_rn_data;
+                dsp2_b        <= exec_rm_data;
+                dsp2_a_lo_mul <= exec_rn_data(15 downto 0);
+                dsp2_a_hi_mul <= exec_rn_data(31 downto 16);
+                dsp2_b_lo_mul <= exec_rm_data(15 downto 0);
+                dsp2_b_hi_mul <= exec_rm_data(31 downto 16);
                 dsp2_rd       <= exec_rd;
                 if exec_op = WOP_SMUSD then
                   dsp2_sub <= '1';
